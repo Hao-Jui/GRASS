@@ -30,6 +30,7 @@ subroutine const_j
   real(8), dimension(LMAX+1,SDIV) :: D1_metric_rho,D1_metric_gama,D1_metric_omega
   real(8), dimension(SDIV,LMAX+1) :: D2_metric_rho,D2_metric_gama,D2_metric_omega
   real(8) :: e_at_p,p_at_h,p_at_e,h_at_p,n0_at_e
+  character(8) :: fil1, fil2, fil3
   external rotation_law_const_j, diff_rotation_const_j
 
   dif = 1.d0; n_of_it =0
@@ -411,9 +412,13 @@ subroutine const_j
     endif
 
     do s = 1, SDIV
-      alpha(s,1) = 0.0
-      do m = 1, MDIV-1
-        alpha(s,m+1) = alpha(s,m) + dm * (da_dm(s,m+1)+da_dm(s,m)) / 2.d0
+      alpha(s,1) = 0.d0
+      do m = 1, 2
+        alpha(s,m+1) = alpha(s,m) + dm * ( da_dm(s,m+1) + da_dm(s,m) ) / 2.d0
+      enddo
+      do m = 4, MDIV
+        call d01gaf( mu(1:m), da_dm(s,1:m), m, alpha(s,m), er2, ifail)
+        !alpha(s,m+1) = alpha(s,m) + dm * ( da_dm(s,m+1) + da_dm(s,m) ) / 2.d0
       enddo
     enddo
 
@@ -437,15 +442,20 @@ subroutine const_j
   !write(*,*) n_of_it -1 
 
   ! compute omega
-  Omega_c = Omega_c/r_e_new * (C/sqrt(kappa))
-  Omega_e = Omega_e/r_e_new * (C/sqrt(kappa))
+  Omega_c = Omega_c/r_e_new
+  Omega_e = Omega_e/r_e_new
   
   r_e = r_e_new
 
   if (output) then
-    open(98,file="./check2D.dat")
-#if defined(to_Alan)
-    write(98,*) SDIV, MDIV, r_e*sqrt(KAPPA)/1.d5
+    write(fil1,"(f4.2)") ang_mom
+    write(fil2,"(f4.2)") mass_0/MSUN
+    write(fil3,"(f4.2)") A_diff
+    open(98,file="./Cont/J"//trim(adjustl(fil1))//"_Mb"//trim(adjustl(fil2))// &
+                  "_constJ_A"//trim(adjustl(fil3))//".dat")
+#if defined(matlab)
+#else
+        write(98,"(2i5,99es27.17)") SDIV, MDIV, r_e*sqrt(KAPPA)/1.d5, energy(1,1)/(C*C*KSCALE), r_ratio
 #endif
     do s = 1, SDIV
       do m = 1, MDIV
