@@ -15,9 +15,9 @@ subroutine uryu
   real(8) :: rsm, gsm, wwsm, esm, psm, v2sm, e_gsm, e_rsm
   real(8) :: grgr, term_in_Omega_h
   real(8) :: gama_pole_h,gama_max_h,gama_equator_h, &
-             rho_pole_h, rho_max_h,rho_equator_h, &
+              rho_pole_h, rho_max_h, rho_equator_h, &
              ww_equator_h, hh_max, omg_max_h, v2_max
-  real(8) :: Omg_ax, Omg_bx
+  real(8) :: diff_Fmax, Fmax_old
   real(8) :: r_e_new,r_e_new_sq
   real(8) :: deriv_s,deriv_m,deriv_sm,deriv_ss,deriv_mm
   real(8) :: e_at_p,p_at_h,p_at_e,h_at_p,n0_at_e
@@ -25,22 +25,23 @@ subroutine uryu
   integer :: ifail, imax
   real(8) :: er2, Int_m(MDIV), Int_s(SDIV)
   real(8), dimension(SDIV) :: gama_mu_1,gama_mu_0,rho_mu_1
-  real(8), dimension(SDIV) :: rho_mu_0 ,  ww_mu_0, ee_mu_0, v2_mu_0
+  real(8), dimension(SDIV) :: rho_mu_0 ,  ww_mu_0, ee_mu_0, omg_mu_0, v2_mu_0
   real(8), dimension(SDIV,MDIV) :: da_dm,dgds,dgdm
   real(8), dimension(SDIV,MDIV) :: S_metric_rho, S_metric_gama, S_metric_omega
   real(8), dimension(LMAX+1,SDIV) :: D1_metric_rho,D1_metric_gama,D1_metric_omega
   real(8), dimension(SDIV,LMAX+1) :: D2_metric_rho,D2_metric_gama,D2_metric_omega
+  real(8) :: ax, fa, AA_h, BB_h
+  character(8) :: fil1, fil2
   
   external diff_rotation_uryu, rotation_law_uryu
 
   dif = 1.d0; n_of_it =0
-  if(r_ratio == 1.0) r_ratio = 9.999-1
   r_e_new = r_e; r_e_new_sq = r_e_new**2
   
   do while( dif > accuracy .or. n_of_it <2 )
-
-    Omega_c = Omega_c * r_e_new / (C/sqrt(kappa))
-    Omega_e = Omega_e * r_e_new / (C/sqrt(kappa))
+    
+    Omega_c = Omega_c * r_e_new
+    Omega_e = Omega_e * r_e_new
     
     do s = 1, SDIV
       do m = 1, MDIV
@@ -74,30 +75,28 @@ subroutine uryu
     call interp(s_gp,  rho_mu_0, SDIV, s_e,  rho_equator_h)
     call interp(s_gp,   ww_mu_0, SDIV, s_e,   ww_equator_h)
 
-    imax    = maxloc( ee_mu_0, 1 )
+    imax    = maxloc( ee_mu_0, 1 ); p = p_at_e(ee_mu_0(imax))
     if (imax > SDIV/2) stop "please check the profile of ee_mu_0; L76 in Uryu"
     rho_max_h = rho_mu_0 ( imax  ) ! hat
     gama_max_h= gama_mu_0( imax  ) ! hat
-    hh_max    = enthalpy ( imax,1)
+    hh_max    = h_at_p(p)
     omg_max_h = omg      ( imax,1)
     v2_max    = v2_mu_0  ( imax  )
     
-    !if ( n_of_it == 0.d0 ) then
-    !  r_e_new_sq = 2.d0 * (h_center-enthalpy_min) / (gama_pole_h + rho_pole_h - gama_mu_0(1) - rho_mu_0(1))
-    !else
-    !  grgr = 2.d0 * (hh_max-enthalpy_min) + log( 1.d0 - v2_max ) + 2.d0 * intF(omg_max_h, F_j(imax,1) )
-    !  r_e_new_sq = grgr / (gama_pole_h + rho_pole_h - gama_max_h - rho_max_h)
-    !endif
-    r_e_new_sq = 2.d0 * (h_center-enthalpy_min) / (gama_pole_h + rho_pole_h - gama_mu_0(1) - rho_mu_0(1))
+    ! --- v1
+      !grgr = 2.d0 * (hh_max-enthalpy_min) + log( 1.d0 - v2_max ) + 2.d0 * intF(omg_max_h, F_j(imax,1) )
+      !r_e_new_sq = grgr / (gama_pole_h + rho_pole_h - gama_max_h - rho_max_h)
+    ! --- v2
+      r_e_new_sq = 2.d0 * (h_center - enthalpy_min) / (gama_pole_h + rho_pole_h - gama_mu_0(1) - rho_mu_0(1))
+    !write(*,"(es15.6,A10,es15.6)") r_e_new, "--->", sqrt(r_e_new_sq)
     r_e_new = sqrt(r_e_new_sq)
   
     if ( r_e_new .ne. r_e_new .or. r_e_new/r_e_old > 2.d0 ) then
-      write(*,*) " "
-      write(*,"(A10,2es15.6)") "[r_e_new, r_e_old]",r_e_new,r_e_old 
+      write(*,"(10es15.6)") hh_max,h_center, v2_max, gama_max_h, gama_mu_0(1)
+      write(*,"(A20,2es15.6)") "[r_e_new, r_e_old]",r_e_new,r_e_old 
       stop 'change in r_e is too dramatic; L94 in spin'
     endif
-
-!!! Compute Omega_c, Omega_e, F_equator_h
+    
     if ( omg (1,1)==0.d0 ) then
       grgr = gama_pole_h + rho_pole_h - gama_equator_h - rho_equator_h ! hat
       term_in_Omega_h = 1.d0 - exp( r_e_new_sq * grgr )
@@ -107,52 +106,50 @@ subroutine uryu
         write(*,"(10es15.6)") rho_mu_0
         stop "L106 in uryu"
       endif
-      F_equator_h = 5.d-1
-      Fmax_h      = F_equator_h / (lambda1/lambda2)**(1.d0/uyru_q) / 5.d0
+      F_equator_h = (Omega_e-ww_equator_h) / ( exp(2.d0*r_e_new_sq*rho_equator_h) - (Omega_e-ww_equator_h)**2 )
+      Fmax_h      = 1.d-2
     endif
-    stop
-    call zbrent_diff(Omega_e*8.d-1, r_e_new,rho_equator_h,gama_equator_h, &
-                       ww_equator_h,rho_pole_h,gama_pole_h,1.d-5, Omega_e, diff_rotation_uryu)
 
-    F_equator_h  = (Omega_e-ww_equator_h) / ( exp(2.d0*r_e_new_sq*rho_equator_h) - (Omega_e-ww_equator_h)**2 )
-    if ( F_equator_h < 0.d0 ) then
-      write(*,"(19es15.6)") Omg_ax,Omg_bx,Omega_e,ww_equator_h
-      stop "negative F_equator_h; L118 in uryu"
-    endif
-      !if ( omg(1,1) == 0 ) then 
-      !  Fmax_h  = F_equator_h / (lambda1/lambda2)**(1.d0/uyru_q) / 5.d0
-      !  call zbrent_diff(Omega_e, r_e_new,rho_equator_h,gama_equator_h, &
-      !            ww_equator_h,rho_pole_h,gama_pole_h,1.d-7, Omega_e, diff_rotation_uryu)
-      !endif
-    Omega_c = Omega_e / lambda2
-    write(*,"(A20,33es18.9)") "[O_c F_m F_e]", Omega_c, Fmax_h, F_equator_h; stop "L131 in Uryu"
-      
-!!! compute Omega profile
-    Omg     (1,1:MDIV-1) = Omega_c
-    Omg(1:2*SDIV/3,MDIV) = Omega_c
-    do s = 2, SDIV*2/3
-      do m = 1, MDIV-1
-        rsm = rho(s,m) ! hat
-        wwsm= ww (s,m) ! hat
-        mum = mu(m)
-        sgp = s_gp(s)
-        call zbrent_rot( Omg(s-1,m)*8.d-1, r_e_new,rsm,wwsm,sgp,mum, 1.d-5, omg(s,m), rotation_law_uryu)
-      enddo
-    enddo
+    diff_Fmax = 1.d99
+    do while(diff_Fmax > 1.d-5)
+      !write(*,"(10es15.6)") F_equator_h, Fmax_h, Omega_e, AA_h(F_equator_h, Fmax_h), BB_h(F_equator_h, Fmax_h)
+      Fmax_old = Fmax_h
+      !!! Compute Omega_c, Omega_e, F_equator_h
+      ax = Omega_e
+      call zbrent_diff(ax, r_e_new,rho_equator_h,gama_equator_h, &
+                        ww_equator_h,rho_pole_h,gama_pole_h,1.d-7, Omega_e, diff_rotation_uryu) ! Fmax_h used here
 
-    
-    imax = maxloc( omg(:,1), 1 )
-    Fmax_h = 0.d0
-    do s = 1, SDIV
-      do m = 1, MDIV
-        F_j(s,m) = (omg(s,m)-ww(s,m)) * sgp**2 * (1.d0-mum**2) * exp(-2.d0*r_e_new_sq*rsm) &
-                / (  (1.d0-sgp**2) - (omg(s,m)-ww(s,m))**2 * sgp**2 * (1.d0-mum**2) * exp(-2.d0*r_e_new_sq*rsm) )
-        !Fmax_h = max( F_j(s,m), Fmax_h )
+      F_equator_h  = (Omega_e-ww_equator_h) / ( exp(2.d0*r_e_new_sq*rho_equator_h) - (Omega_e-ww_equator_h)**2 )
+      if ( F_equator_h < 0.d0 ) then
+        stop "negative F_equator_h; L120 in uryu"
+      endif
+      Omega_c = Omega_e / lambda2
+        
+      !!! compute Omega profile
+      Omg     (1,1:MDIV-1) = Omega_c
+      Omg(1:2*SDIV/3,MDIV) = Omega_c
+      do s = 2, SDIV*2/3
+        do m = 1, MDIV-1
+          rsm = rho(s,m) ! hat
+          wwsm= ww (s,m) ! hat
+          mum = mu(m)
+          sgp = s_gp(s)
+          ax  = Omg(s-1,m)*8.d-1
+          call zbrent_rot( ax, r_e_new,rsm,wwsm,sgp,mum, 1.d-7, omg(s,m), rotation_law_uryu)
+          F_j(s,m) = (omg(s,m)-ww(s,m)) * sgp**2 * (1.d0-mum**2) &
+                  / (  (1.d0-sgp**2) * exp(2.d0*r_e_new_sq*rsm) - (omg(s,m)-ww(s,m))**2 * sgp**2 * (1.d0-mum**2) )
+        enddo
       enddo
+
+      omg_mu_0(:) = omg(:,1)
+      imax = maxloc( omg_mu_0, 1 )
+      Fmax_h = ( Omega_c * lambda1 - ww(imax,1) ) * s_gp(imax)**2 &
+              / (  (1.d0-s_gp(imax)**2) * exp(2.d0*r_e_new_sq*rho(imax,1)) - (Omega_c * lambda1-ww(imax,1))**2 * s_gp(imax)**2 )
+      if (Fmax_h >= F_equator_h * (lambda2/lambda1)**(1.d0/uyru_q)) stop "L156 uryu"
+      diff_Fmax = abs( Fmax_old/Fmax_h - 1.d0 )
+      !write(*,"(3es15.6)") diff_Fmax
     enddo
-    Fmax_h = F_j(imax,1)
-    !write(*,*) omg(imax,1),omega_c,F_equator_h/(lambda1/lambda2)**(1.d0/uyru_q),Fmax_h; stop
-    !write(*,"(A20,33es18.9)") "[O_c F_m F_e]", Omega_c, Fmax_h, F_equator_h
+    !stop
     
 !!! Compute velocity, energy density and pressure
     do s = 1, SDIV
@@ -173,7 +170,7 @@ subroutine uryu
         ! enthalpy_min is the assumed small value for the value at the pole
         enthalpy(s,m) = enthalpy_min + 5.d-1 * ( &
                 r_e_new_sq * ( gama_pole_h + rho_pole_h - gama(s,m) - rsm ) &
-                - log(1.d0-velocity_sq(s,m)) ) - intF(omg(s,m),F_j(s,m))
+                - log(1.d0-velocity_sq(s,m)) ) - intF( omg(s,m), F_j(s,m) )
 
         if (enthalpy(s,m) <= enthalpy_min .or. sgp > s_e) then
           enthalpy   (s,m) = enthalpy_min
@@ -192,14 +189,18 @@ subroutine uryu
     enddo
 
 #if defined(debug)
-    open(78,file="./chech_uryu.dat"); open(77,file="./check_uryu_1D.dat")
+    open(78,file="./chech_uryu.dat")
       do s = 1, SDIV
         do m = 1, MDIV
           write(78,"(99es18.9)") s_gp(s),mu(m),F_j(s,m),enthalpy(s,m),omg(s,m),velocity_sq(s,m),ww(s,m) ! 11-12
         enddo
-        write(77,"(99es18.9)") s_gp(s), omg(s,1), F_j(s,1)
       enddo
-    close(78); close(77)
+    close(78)
+    open(10,file="./Cont/Omega.dat")
+    do s = 1, SDIV
+      write(10,"(10es15.6)") s_gp(s)/(1.d0-s_gp(s)), omg_mu_0(s), F_j(s,1)
+    enddo
+    close(10)
 #endif
 
     !!! Compute metric potentials
@@ -452,9 +453,13 @@ subroutine uryu
     endif
 
     do s = 1, SDIV
-      alpha(s,1) = 0.0
-      do m = 1, MDIV-1
-        alpha(s,m+1) = alpha(s,m) + dm * (da_dm(s,m+1)+da_dm(s,m)) / 2.d0
+      alpha(s,1) = 0.d0
+      do m = 1, 2
+        alpha(s,m+1) = alpha(s,m) + dm * ( da_dm(s,m+1) + da_dm(s,m) ) / 2.d0
+      enddo
+      do m = 4, MDIV
+        call d01gaf( mu(1:m), da_dm(s,1:m), m, alpha(s,m), er2, ifail)
+        !alpha(s,m+1) = alpha(s,m) + dm * ( da_dm(s,m+1) + da_dm(s,m) ) / 2.d0
       enddo
     enddo
 
@@ -477,11 +482,12 @@ subroutine uryu
                 / (  (1.d0-sgp**2) - (omg(s,m)-ww(s,m))**2 * sgp**2 * (1.d0-mum**2) * exp(-2.d0*r_e_new_sq*rsm) )
       enddo
     enddo
-    Omega_c = Omega_c / r_e_new * (C/sqrt(kappa))
-    Omega_e = Omega_e / r_e_new * (C/sqrt(kappa))
+    Omega_c = Omega_c / r_e_new
+    Omega_e = Omega_e / r_e_new
 
     dif = abs(r_e_old-r_e_new)/r_e_new
     n_of_it = n_of_it + 1
+    !write(*,"(i5,es15.6)") n_of_it, dif
   enddo
   ! --- End of iteration 
   
@@ -489,15 +495,22 @@ subroutine uryu
   r_e = r_e_new
 
   if (output) then
-    open(98,file="./check2D.dat")
-    !write(98,*) SDIV, MDIV, r_e*sqrt(KAPPA)/1.d5
-    do s=1,SDIV
-      do m=1,MDIV
+    write(fil1,"(f4.2)") ang_mom
+    write(fil2,"(f4.2)") mass_0/MSUN
+    open(98,file="./Cont/J"//trim(adjustl(fil1))//"_Mb"//trim(adjustl(fil2))// &
+                  "_Uryu.dat")
+#if defined(matlab)
+#else
+        write(98,"(2i5,99es27.17)") SDIV, MDIV, r_e*sqrt(KAPPA)/1.d5, energy(1,1)/(C*C*KSCALE), r_ratio
+#endif
+    do s = 1, SDIV
+      do m = 1, MDIV
         ! r, \theta, \apha, \gamma, \rho, \omega, \phi, \varepsilon, \rho_0, p
         if (enthalpy(s,m) > enthalpy_min) then 
           rho_0 = n0_at_e( energy(s,m) ) * MB
         else 
           rho_0 = 0.d0
+          !omg(s,m) = 0.d0
         endif
         write(98,"(99es18.9)") s_gp(s),mu(m),alpha(s,m),gama(s,m),rho(s,m),ww(s,m)* (C/sqrt(kappa)), & ! 1-6
         pressure(s,m)/KSCALE, energy(s,m)/(C*C*KSCALE), enthalpy(s,m), rho_0, & ! 7-10
@@ -511,18 +524,27 @@ end subroutine uryu
 
 subroutine diff_rotation_uryu(x, fx, re, rho_e, g_e, w_e, rho_p, g_p)
 ! Compute Omega_e
-  use para_mod, only: lambda1, lambda2, uyru_p, uyru_q
+  use para_mod, only: lambda1, lambda2, uyru_p, uyru_q, Fmax_h
   implicit none
   real(8), intent(in) :: x, re, rho_e, g_e, w_e, rho_p, g_p
   real(8), intent(out):: fx
-  real(8) :: intF, F_e, ocre
+  real(8) :: F_e, ocre, RHS, AA_h, BB_h, aa, bb
 
   ocre = x / lambda2
   F_e  = (x-w_e) / ( exp(2.d0*re**2*rho_e) - (x-w_e)**2 )
 
-  fx = re**2 * (g_e + rho_e - g_p - rho_p) + log(1.d0 - ((x-w_e)*exp(-re**2*rho_e))**2 ) + 2.d0 * intF(x, F_e) 
-  !write(*,"(A10,19es15.6)") "brent:",F_equator_h, F_max
-  !stop
+  aa = AA_h(F_e, Fmax_h)
+  bb = BB_h(F_e, Fmax_h)
+
+  RHS = F_e * x - aa * ocre / 4.d0 * &
+        (2.d0 * aa / bb * atan(F_e**2/aa**2) &
+        - sqrt(2.d0)* ( atan(1.d0-F_e*sqrt(2.d0)/aa) - atan(1.d0+F_e*sqrt(2.d0)/aa) ) &
+        + sqrt(2.d0)*ATANH(aa*F_e*sqrt(2.d0)/(F_e**2+aa**2)) )
+
+  fx = re**2 * (g_e + rho_e - g_p - rho_p) + log(1.d0 - ((x-w_e)*exp(-re**2*rho_e))**2 ) &
+    + 2.d0 * RHS
+  !write(*,"(A10,19es15.6)") "brent:", x, fx, ((x-w_e)*exp(-re**2*rho_e))**2
+  !if (fx.ne.fx) stop "L536"
 
 end subroutine diff_rotation_uryu
 
@@ -536,8 +558,8 @@ subroutine rotation_law_uryu(x, fx, re, rho_p, ww_p, sgp, mugp)
   aa = AA_h(F_equator_h, Fmax_h)
   bb = BB_h(F_equator_h, Fmax_h)
 
-  tmp1 = (x-ww_p) * sgp**2 * (1.d0-mugp**2) * exp(-2.d0*re**2*rho_p)
-  tmp2 = (1.d0-sgp)**2 - (x-ww_p)**2 * sgp**2 * (1.d0-mugp**2) * exp(-2.d0*re**2*rho_p)
+  tmp1 = (x-ww_p) * sgp**2 * (1.d0-mugp**2)
+  tmp2 = (1.d0-sgp)**2 * exp(2.d0*re**2*rho_p) - (x-ww_p)**2 * sgp**2 * (1.d0-mugp**2)
   fx = x / Omega_c * ( 1.d0 + (tmp1 / (aa*tmp2))**(uyru_p+uyru_q) )  - ( 1.d0 + (tmp1 / (bb*tmp2))**uyru_p )
   
   !write(*,"(10es15.6)") x,fx,tmp2,BB,AA
@@ -545,22 +567,27 @@ subroutine rotation_law_uryu(x, fx, re, rho_p, ww_p, sgp, mugp)
 end subroutine rotation_law_uryu
 
 real(8) function intF(x, F_at_x)
-  use para_mod, only: Omega_c, lambda2, F_equator_h, Fmax_h
+  use para_mod, only: lambda2, F_equator_h, Fmax_h, Omega_c
   implicit none
   real(8), intent(in) :: x, F_at_x
   real(8) :: AA_h, BB_h, aa, bb
 
-  aa = AA_h(F_equator_h, Fmax_h)
-  bb = BB_h(F_equator_h, Fmax_h)
+  if ( x == 0.d0 .and. F_at_x == 0.d0 ) then
+    intF = 0.d0
+  else
+    aa = AA_h(F_equator_h, Fmax_h)
+    bb = BB_h(F_equator_h, Fmax_h)
 
-  intF = F_at_x * x - aa * x / lambda2 / 4.d0 * &
+    intF = F_at_x * x - aa * omega_c / 4.d0 * &
         (2.d0 * aa / bb * atan(F_at_x**2/aa**2) &
         - sqrt(2.d0)* ( atan(1.d0-F_at_x*sqrt(2.d0)/aa) - atan(1.d0+F_at_x*sqrt(2.d0)/aa) ) &
         + sqrt(2.d0)*ATANH(aa*F_at_x*sqrt(2.d0)/(F_at_x**2+aa**2)) )
+  endif
 
 end function intF
 
 real(8) function AA_h(F_e, F_m)
+! AA_h = A^2 * Omega_c
   use para_mod, only: lambda1, lambda2, uyru_p, uyru_q
   implicit none
   real(8), intent(in) :: F_e, F_m
@@ -575,6 +602,7 @@ real(8) function AA_h(F_e, F_m)
 end function
 
 real(8) function BB_h(F_e, F_m)
+! BB_h = B^2 * Omega_c
   use para_mod, only: lambda1, lambda2, uyru_p, uyru_q
   implicit none
   real(8), intent(in) :: F_e, F_m
