@@ -30,7 +30,7 @@ subroutine uryu
   real(8), dimension(SDIV,MDIV) :: S_metric_rho, S_metric_gama, S_metric_omega
   real(8), dimension(LMAX+1,SDIV) :: D1_metric_rho,D1_metric_gama,D1_metric_omega
   real(8), dimension(SDIV,LMAX+1) :: D2_metric_rho,D2_metric_gama,D2_metric_omega
-  real(8) :: ax, fa, AA_h, BB_h
+  real(8) :: ax, fa
   character(8) :: fil1, fil2
   
   external diff_rotation_uryu, rotation_law_uryu
@@ -40,9 +40,6 @@ subroutine uryu
   
   do while( dif > accuracy .or. n_of_it <2 )
     
-    Omega_c = Omega_c * r_e_new
-    Omega_e = Omega_e * r_e_new
-    
     do s = 1, SDIV
       do m = 1, MDIV
         rho  (s,m) = rho  (s,m) / r_e_new_sq ! hat
@@ -50,6 +47,7 @@ subroutine uryu
         alpha(s,m) = alpha(s,m) / r_e_new_sq ! hat
         ww   (s,m) = ww   (s,m) * r_e_new    ! hat
         omg  (s,m) = omg  (s,m) * r_e_new    ! hat
+        F_j  (s,m) = F_j  (s,m) / r_e_new
       enddo
       ! along x-axis
       rho_mu_0 (s) = rho        (s,1) ! hat
@@ -106,50 +104,51 @@ subroutine uryu
         write(*,"(10es15.6)") rho_mu_0
         stop "L106 in uryu"
       endif
-      F_equator_h = (Omega_e-ww_equator_h) / ( exp(2.d0*r_e_new_sq*rho_equator_h) - (Omega_e-ww_equator_h)**2 )
-      Fmax_h      = 1.d-2
+      Fmax_h = 1.d-3
     endif
 
-    diff_Fmax = 1.d99
-    do while(diff_Fmax > 1.d-5)
-      !write(*,"(10es15.6)") F_equator_h, Fmax_h, Omega_e, AA_h(F_equator_h, Fmax_h), BB_h(F_equator_h, Fmax_h)
-      Fmax_old = Fmax_h
-      !!! Compute Omega_c, Omega_e, F_equator_h
-      ax = Omega_e
-      call zbrent_diff(ax, r_e_new,rho_equator_h,gama_equator_h, &
-                        ww_equator_h,rho_pole_h,gama_pole_h,1.d-7, Omega_e, diff_rotation_uryu) ! Fmax_h used here
-
-      F_equator_h  = (Omega_e-ww_equator_h) / ( exp(2.d0*r_e_new_sq*rho_equator_h) - (Omega_e-ww_equator_h)**2 )
-      if ( F_equator_h < 0.d0 ) then
-        stop "negative F_equator_h; L120 in uryu"
-      endif
-      Omega_c = Omega_e / lambda2
-        
-      !!! compute Omega profile
-      Omg     (1,1:MDIV-1) = Omega_c
-      Omg(1:2*SDIV/3,MDIV) = Omega_c
-      do s = 2, SDIV*2/3
-        do m = 1, MDIV-1
-          rsm = rho(s,m) ! hat
-          wwsm= ww (s,m) ! hat
-          mum = mu(m)
-          sgp = s_gp(s)
-          ax  = Omg(s-1,m)*8.d-1
-          call zbrent_rot( ax, r_e_new,rsm,wwsm,sgp,mum, 1.d-7, omg(s,m), rotation_law_uryu)
-          F_j(s,m) = (omg(s,m)-ww(s,m)) * sgp**2 * (1.d0-mum**2) &
-                  / (  (1.d0-sgp**2) * exp(2.d0*r_e_new_sq*rsm) - (omg(s,m)-ww(s,m))**2 * sgp**2 * (1.d0-mum**2) )
+    diff_Fmax = 1.d99; Fmax_old = Fmax_h; Fmax_h = Fmax_h/2.d0
+    do while( abs(diff_Fmax) > 1.d-7)
+        ax = Omega_e
+        call zbrent_diff(ax, r_e_new,rho_equator_h,gama_equator_h,ww_equator_h, &
+                        rho_pole_h,gama_pole_h,1.d-5, fa, diff_rotation_uryu) ! Fmax_h used here
+        Omega_e = fa
+        F_equator_h  = (Omega_e-ww_equator_h) / ( exp(2.d0*r_e_new_sq*rho_equator_h) - (Omega_e-ww_equator_h)**2 )
+        if ( F_equator_h < 0.d0 ) stop "negative F_equator_h; L120 in uryu"
+          
+        Omega_c = Omega_e / lambda2
+        omg_mu_0(1) = Omega_c
+        do s = 2, SDIV*2/3
+            rsm = rho(s,1) ! hat
+            wwsm= ww (s,1) ! hat
+            sgp = s_gp(s)
+            ax  = omg_mu_0(s-1)
+            call zbrent_rot( ax, r_e_new, rsm, wwsm, sgp, 0.d0, 1.d-5, omg_mu_0(s), rotation_law_uryu)
         enddo
-      enddo
+        imax = maxloc( omg_mu_0, 1 )
+        omg_max_h = omg_mu_0(imax)
+        diff_Fmax = ( Omega_c * lambda1/omg_max_h - 1.d0 )
+        Fmax_h = Fmax_h - diff_Fmax*2.d-2
+        !write(*,"(3es15.6)") Fmax_h, diff_Fmax
+    enddo 
+    !write(*,"(A10,es15.6,A10,es15.6)") "Fmax_h", Fmax_old,"--->", Fmax_h
+    !write(*,"(10es15.6)") Omega_c, Omega_e, F_equator_h
 
-      omg_mu_0(:) = omg(:,1)
-      imax = maxloc( omg_mu_0, 1 )
-      Fmax_h = ( Omega_c * lambda1 - ww(imax,1) ) * s_gp(imax)**2 &
-              / (  (1.d0-s_gp(imax)**2) * exp(2.d0*r_e_new_sq*rho(imax,1)) - (Omega_c * lambda1-ww(imax,1))**2 * s_gp(imax)**2 )
-      if (Fmax_h >= F_equator_h * (lambda2/lambda1)**(1.d0/uyru_q)) stop "L156 uryu"
-      diff_Fmax = abs( Fmax_old/Fmax_h - 1.d0 )
-      !write(*,"(3es15.6)") diff_Fmax
+    !!! compute Omega profile
+    Omg     (1,1:MDIV-1) = Omega_c
+    Omg(1:3*SDIV/4,MDIV) = Omega_c
+    do s = 2, SDIV*3/4
+      do m = 1, MDIV-1
+        rsm = rho(s,m) ! hat
+        wwsm= ww (s,m) ! hat
+        mum = mu(m)
+        sgp = s_gp(s)
+        ax  = Omg(s-1,m)
+        call zbrent_rot( ax, r_e_new, rsm, wwsm, sgp, mum, 1.d-5, omg(s,m), rotation_law_uryu)
+        F_j(s,m) = (omg(s,m)-wwsm) * sgp**2 * (1.d0-mum**2) &
+                / (  (1.d0-sgp)**2 * exp(2.d0*r_e_new_sq*rsm) - (omg(s,m)-wwsm)**2 * sgp**2 * (1.d0-mum**2) )
+      enddo
     enddo
-    !stop
     
 !!! Compute velocity, energy density and pressure
     do s = 1, SDIV
@@ -472,6 +471,7 @@ subroutine uryu
         endif
         ww(s,m) =  ww(s,m) / r_e_new
         omg(s,m)= omg(s,m) / r_e_new
+        F_j(s,m)= F_j(s,m) * r_e_new
       enddo
     enddo
     do s = 2, SDIV
@@ -482,16 +482,16 @@ subroutine uryu
                 / (  (1.d0-sgp**2) - (omg(s,m)-ww(s,m))**2 * sgp**2 * (1.d0-mum**2) * exp(-2.d0*r_e_new_sq*rsm) )
       enddo
     enddo
-    Omega_c = Omega_c / r_e_new
-    Omega_e = Omega_e / r_e_new
 
     dif = abs(r_e_old-r_e_new)/r_e_new
     n_of_it = n_of_it + 1
     !write(*,"(i5,es15.6)") n_of_it, dif
+    if (n_of_it == 100) stop "Cannot converge; L404 in uryu"
   enddo
   ! --- End of iteration 
   
-  !write(*,"(es15.6)") hh_max
+  Omega_c = Omega_c / r_e_new
+  Omega_e = Omega_e / r_e_new
   r_e = r_e_new
 
   if (output) then
@@ -531,18 +531,18 @@ subroutine diff_rotation_uryu(x, fx, re, rho_e, g_e, w_e, rho_p, g_p)
   real(8) :: F_e, ocre, RHS, AA_h, BB_h, aa, bb
 
   ocre = x / lambda2
-  F_e  = (x-w_e) / ( exp(2.d0*re**2*rho_e) - (x-w_e)**2 )
+  F_e  = (x - w_e) / ( exp(2.d0*re**2*rho_e) - (x-w_e)**2 )
 
   aa = AA_h(F_e, Fmax_h)
   bb = BB_h(F_e, Fmax_h)
 
   RHS = F_e * x - aa * ocre / 4.d0 * &
         (2.d0 * aa / bb * atan(F_e**2/aa**2) &
-        - sqrt(2.d0)* ( atan(1.d0-F_e*sqrt(2.d0)/aa) - atan(1.d0+F_e*sqrt(2.d0)/aa) ) &
-        + sqrt(2.d0)*ATANH(aa*F_e*sqrt(2.d0)/(F_e**2+aa**2)) )
+        - sqrt(2.d0) * ( atan(1.d0 - F_e*sqrt(2.d0)/aa) - atan(1.d0 + F_e*sqrt(2.d0)/aa) ) &
+        + sqrt(2.d0) * ATANH( aa * F_e * sqrt(2.d0) / (F_e**2 + aa**2) ) )
 
-  fx = re**2 * (g_e + rho_e - g_p - rho_p) + log(1.d0 - ((x-w_e)*exp(-re**2*rho_e))**2 ) &
-    + 2.d0 * RHS
+  fx = re**2 * (g_e + rho_e - g_p - rho_p) + log( 1.d0 - ((x-w_e)*exp(-re**2*rho_e))**2 ) &
+      + 2.d0 * RHS
   !write(*,"(A10,19es15.6)") "brent:", x, fx, ((x-w_e)*exp(-re**2*rho_e))**2
   !if (fx.ne.fx) stop "L536"
 
@@ -553,21 +553,20 @@ subroutine rotation_law_uryu(x, fx, re, rho_p, ww_p, sgp, mugp)
   implicit none
   real(8), intent(in) :: x, re, rho_p, ww_p, sgp, mugp
   real(8), intent(out):: fx
-  real(8) :: tmp1, tmp2, AA_h, BB_h, aa, bb
+  real(8) :: Fj, AA_h, BB_h, aa, bb
 
   aa = AA_h(F_equator_h, Fmax_h)
   bb = BB_h(F_equator_h, Fmax_h)
 
-  tmp1 = (x-ww_p) * sgp**2 * (1.d0-mugp**2)
-  tmp2 = (1.d0-sgp)**2 * exp(2.d0*re**2*rho_p) - (x-ww_p)**2 * sgp**2 * (1.d0-mugp**2)
-  fx = x / Omega_c * ( 1.d0 + (tmp1 / (aa*tmp2))**(uyru_p+uyru_q) )  - ( 1.d0 + (tmp1 / (bb*tmp2))**uyru_p )
+  Fj = (x-ww_p) * sgp**2 * (1.d0-mugp**2) / ( (1.d0-sgp)**2 * exp(2.d0*re**2*rho_p) - (x-ww_p)**2 * sgp**2 * (1.d0-mugp**2) )
+  fx = x / Omega_c * ( 1.d0 + (Fj / aa)**(uyru_p+uyru_q) ) - ( 1.d0 + (Fj / bb)**uyru_p )
   
   !write(*,"(10es15.6)") x,fx,tmp2,BB,AA
 
 end subroutine rotation_law_uryu
 
 real(8) function intF(x, F_at_x)
-  use para_mod, only: lambda2, F_equator_h, Fmax_h, Omega_c
+  use para_mod, only: F_equator_h, Fmax_h, Omega_c
   implicit none
   real(8), intent(in) :: x, F_at_x
   real(8) :: AA_h, BB_h, aa, bb
@@ -575,13 +574,13 @@ real(8) function intF(x, F_at_x)
   if ( x == 0.d0 .and. F_at_x == 0.d0 ) then
     intF = 0.d0
   else
-    aa = AA_h(F_equator_h, Fmax_h)
-    bb = BB_h(F_equator_h, Fmax_h)
+    aa = AA_h( F_equator_h, Fmax_h )
+    bb = BB_h( F_equator_h, Fmax_h )
 
     intF = F_at_x * x - aa * omega_c / 4.d0 * &
         (2.d0 * aa / bb * atan(F_at_x**2/aa**2) &
-        - sqrt(2.d0)* ( atan(1.d0-F_at_x*sqrt(2.d0)/aa) - atan(1.d0+F_at_x*sqrt(2.d0)/aa) ) &
-        + sqrt(2.d0)*ATANH(aa*F_at_x*sqrt(2.d0)/(F_at_x**2+aa**2)) )
+        - sqrt(2.d0) * ( atan(1.d0-F_at_x*sqrt(2.d0)/aa) - atan(1.d0+F_at_x*sqrt(2.d0)/aa) ) &
+        + sqrt(2.d0) * ATANH(aa*F_at_x*sqrt(2.d0)/(F_at_x**2 + aa**2)) )
   endif
 
 end function intF
