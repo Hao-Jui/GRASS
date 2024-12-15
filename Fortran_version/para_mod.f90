@@ -1,10 +1,11 @@
 module para_mod
 
   ! goals
-  real(8), parameter :: M_goal = 1.4d0
-  real(8), parameter :: Mb_goal= 1.8d0
-  real(8), parameter :: J_goal = 1.8d0
-  real(8), parameter :: chi_goal = 0.1d0
+  real(8), parameter :: M_goal = 1.35d0
+  real(8), parameter :: Mb_goal= 2.3d0
+  real(8), parameter :: J_goal = 2.d0
+  real(8), parameter :: chi_goal = 0.35d0
+  character(128) :: res_fil = "J2.00_Mb2.30_Uryu.dat"
 
   ! EoS
   integer num_tab
@@ -13,7 +14,7 @@ module para_mod
 
   ! grid
   integer, parameter :: LMAX = 10
-  integer, parameter :: res  = 300 ! 120 should be minimal for scientific run
+  integer, parameter :: res  = 200 ! 200 should be minimal for scientific run
   integer, parameter :: SDIV = 2*res+1
   integer, parameter :: MDIV = 2*res+1
   integer, parameter :: RDIV = 1800 ! how many points to save for static NS
@@ -35,7 +36,7 @@ module para_mod
 
   ! bulk properties
   real(8) :: Omega_c, Omega_e, r_e, ang_mom, Omega_K, r_circ
-  real(8) :: mass, mass_0, chi, T_diff
+  real(8) :: mass, mass_0, chi, T_kin, mass_p
   real(8) :: Fmax_h, F_equator_h
 
   ! special functions

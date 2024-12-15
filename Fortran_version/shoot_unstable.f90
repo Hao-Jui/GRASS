@@ -6,10 +6,10 @@ subroutine shoot_unstable
   integer :: it
   real(8) :: er,rho0,ee,e_c,e_c_uni
 
-  r_ratio  = 8.5d-1
+  r_ratio  = 9.d-1
   output   = .false.
 
-  e_c      = 2.65d15
+  e_c      = 2.1d15
   e_center = e_c
   
   if ( e_c > 2.d15 ) then

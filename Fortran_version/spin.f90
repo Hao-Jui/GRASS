@@ -65,6 +65,7 @@ subroutine spin
     
       grgr = gama_pole_h + rho_pole_h - gama_center_h - rho_center_h ! hat
       r_e_new_sq = 2.d0 * ( h_center - enthalpy_min ) / grgr
+      !write(*,"(es15.6,A10,es15.6)") r_e_new, "--->", sqrt(r_e_new_sq)
       r_e_new = sqrt( r_e_new_sq )
       if (r_e_new .ne. r_e_new .or. r_e_new/r_e_old > 2) then
         write(*,*) " "
@@ -72,7 +73,7 @@ subroutine spin
       endif
 
       ! Compute angular velocity Omega, only for rigid rotation
-      if(r_ratio == 1.0) then
+      if(r_ratio == 1.d0) then
         Omega_c = 0.d0
         ww_equator_h = 0.d0
       else
@@ -174,12 +175,6 @@ subroutine spin
             + 0.25*s1**2*(4.d0*d_rho_s**2 - d_gama_s**2) &
             + 0.25*m1   *(4.d0*d_rho_m**2 - d_gama_m**2) &
             - m1*e_rsm**2*(sgp**4*d_ww_s**2 + s2*m1*d_ww_m**2)))
-                
-          if (S_metric_rho(s,m).ne.S_metric_rho(s,m) .or. S_metric_gama(s,m).ne.S_metric_gama(s,m) &
-            .or. S_metric_omega(s,m).ne.S_metric_omega(s,m)) then 
-            write(*,*) esm,psm,enthalpy(s,m),s_gp(s)/s_e,mu(m)
-            stop "L184 in spin"
-          endif
         enddo
       enddo
 
@@ -383,7 +378,7 @@ subroutine spin
 
       do s = 1, SDIV
         alpha(s,1) = 0.d0
-        do m = 1, 2
+        do m = 1, MDIV-1
           alpha(s,m+1) = alpha(s,m) + dm * ( da_dm(s,m+1) + da_dm(s,m) ) / 2.d0
         enddo
         do m = 4, MDIV
@@ -414,6 +409,7 @@ subroutine spin
   ! compute omega
   omg(:,:) = Omega_c / r_e_new
   Omega_c  = Omega_c / r_e_new
+  Omega_e  = Omega_c
   r_e      = r_e_new
 
   if (output) then
@@ -421,10 +417,7 @@ subroutine spin
     write(fil2,"(f4.2)") mass_0/MSUN
     open(98,file="./Cont/J"//trim(adjustl(fil1))//"_Mb"//trim(adjustl(fil2))//".dat")
     !open(98,file="./Cont/check2D.dat")
-#if defined(matlab)
-#else
     write(98,"(2i5,99es27.17)") SDIV, MDIV, r_e*sqrt(KAPPA)/1.d5, energy(1,1)/(C*C*KSCALE), r_ratio
-#endif
     do s = 1, SDIV
       do m = 1, MDIV
         ! r, \theta, \apha, \gamma, \rho, \omega, \phi, \varepsilon, \rho_0, p

@@ -20,7 +20,8 @@ subroutine mass_radius
   if (output) then
     open(21, file="./Cont/Omega.dat")
     do s = 1, 2*SDIV/3
-      write(21,"(99es18.9)") r_e* (s_gp(s)/(1.d0-s_gp(s))) *sqrt(KAPPA)/1.d5, omg(s,1)/2.d0/pi* (C/sqrt(kappa)),ww(s,1) / omg(s,1)
+      write(21,"(99es18.9)") (s_gp(s)/(1.d0-s_gp(s))), omg(s,1)/2.d0/pi* (C/sqrt(kappa)), &
+              enthalpy(s,1)
     enddo
     close(21)
   endif
