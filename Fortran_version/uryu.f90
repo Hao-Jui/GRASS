@@ -94,7 +94,10 @@ subroutine uryu
       write(*,"(A20,2es15.6)") "[r_e_new, r_e_old]",r_e_new,r_e_old 
       stop 'change in r_e is too dramatic; L94 in spin'
     endif
-    
+
+#if defined(restart)
+    Fmax_h = 2.d-2
+#else
     if ( omg (1,1)==0.d0 ) then
       grgr = gama_pole_h + rho_pole_h - gama_equator_h - rho_equator_h ! hat
       term_in_Omega_h = 1.d0 - exp( r_e_new_sq * grgr )
@@ -102,10 +105,11 @@ subroutine uryu
         Omega_e = ( ww_equator_h + exp(r_e_new_sq*rho_equator_h) * sqrt(term_in_Omega_h) ) ! hat
       else
         write(*,"(10es15.6)") rho_mu_0
-        stop "L106 in uryu"
+        stop "L107 in uryu"
       endif
-      Fmax_h = 1.d-3
+      Fmax_h = 2.d-3
     endif
+#endif
 
     diff_Fmax = 1.d99; Fmax_old = Fmax_h; Fmax_h = Fmax_h/2.d0
     do while( abs(diff_Fmax) > 1.d-7)
@@ -501,7 +505,8 @@ subroutine uryu
                   "_Uryu.dat")
 #if defined(matlab)
 #else
-        write(98,"(2i5,99es27.17)") SDIV, MDIV, r_e*sqrt(KAPPA)/1.d5, energy(1,1)/(C*C*KSCALE), r_ratio
+        write(98,"(2i5,99es27.17)") SDIV, MDIV, r_e*sqrt(KAPPA)/1.d5, &
+        energy(1,1)/(C*C*KSCALE), r_ratio, Omega_e* (C/sqrt(kappa)) , Omega_c* (C/sqrt(kappa)) 
 #endif
     do s = 1, SDIV
       do m = 1, MDIV
@@ -512,7 +517,7 @@ subroutine uryu
           rho_0 = 0.d0
           !omg(s,m) = 0.d0
         endif
-        write(98,"(99es18.9)") s_gp(s),mu(m),alpha(s,m),gama(s,m),rho(s,m),ww(s,m)* (C/sqrt(kappa)), & ! 1-6
+        write(98,"(99es27.17)") s_gp(s),mu(m),alpha(s,m),gama(s,m),rho(s,m),ww(s,m)* (C/sqrt(kappa)), & ! 1-6
         pressure(s,m)/KSCALE, energy(s,m)/(C*C*KSCALE), enthalpy(s,m), rho_0, & ! 7-10
         velocity_sq(s,m), omg(s,m)* (C/sqrt(kappa)) ! 11-12
       enddo

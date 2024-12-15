@@ -3,7 +3,7 @@ subroutine zbrent_diff(x_guess, re, rho_e, g_e, w_e, rho_p, g_p, tol, return_val
   implicit none
   real(8), intent(in) :: x_guess, re, rho_e, g_e, w_e, rho_p, g_p, tol
   real(8), intent(out):: return_value
-  integer :: iter
+  integer :: iter, n
   real(8), parameter :: ZEPS  = 3.d-8
   real(8) :: a,b,c,d,e, fa, fb, fc, p,q,r,s, xm, tol1
   real(8) ::  ax, bx
@@ -13,17 +13,31 @@ subroutine zbrent_diff(x_guess, re, rho_e, g_e, w_e, rho_p, g_p, tol, return_val
   ax   = x_guess
   bx   = x_guess
 
-  do iter = 1, 20
-    ax = ax * 1.1d0
-    bx = bx / 1.1d0
+  do iter = 1, 50
+    ax = ax * 1.2d0
+    bx = bx / 1.05d0
     call f(ax, fa, re, rho_e, g_e, w_e, rho_p, g_p)
     call f(bx, fb, re, rho_e, g_e, w_e, rho_p, g_p)
+    if ( fa.ne.fa ) then 
+      ax = ax / 1.2d0
+      call f(ax, fa, re, rho_e, g_e, w_e, rho_p, g_p)
+    endif
+    if ( fb.ne.fb ) then 
+      bx = bx * 1.05d0
+      call f(bx, fb, re, rho_e, g_e, w_e, rho_p, g_p)
+    endif
     if ( fa*fb <= 0.d0 ) then
       exit
     endif
-    if ( iter == 256 ) then 
-      write(*,"(A10,5es15.6)") "-->",ax, bx, fa, fb
-      stop "root of Omega_e must be bracketed for zbrent, L221"
+    if ( iter == 50 ) then 
+      open(43,file="./Cont/diff_rotation.dat")
+      do n = 1, 100
+        ax = x_guess * 8.d-3 * n
+        call f(ax, fa, re, rho_e, g_e, w_e, rho_p, g_p)
+        write(43,"(2es15.6)") 8.d-3 * n, fa
+      enddo
+      close(43)
+      stop "root of Omega_e must be bracketed for zbrent, L32"
     endif
   enddo
 
@@ -99,7 +113,7 @@ subroutine zbrent_rot(x_guess, re, rho_p, ww_p, sgp, mugp, tol, return_value, f)
   implicit none
   real(8), intent(in) :: x_guess, re, rho_p, ww_p, sgp, mugp, tol
   real(8), intent(out):: return_value
-  integer :: iter
+  integer :: iter, n
   real(8), parameter :: ZEPS  = 3.d-8
   real(8) :: a,b,c,d,e, fa, fb, fc, p,q,r,s, xm, tol1
   real(8) ::  ax, bx
@@ -109,16 +123,30 @@ subroutine zbrent_rot(x_guess, re, rho_p, ww_p, sgp, mugp, tol, return_value, f)
   ax   = x_guess
   bx   = x_guess
 
-  do iter = 1, 20
+  do iter = 1, 40
     ax = ax * 1.1d0
     bx = bx / 1.1d0
     call f(ax, fa, re, rho_p, ww_p, sgp, mugp)
     call f(bx, fb, re, rho_p, ww_p, sgp, mugp)
+    if ( fa.ne.fa ) then 
+      ax = ax / 1.1d0
+      call f(ax, fa, re, rho_p, ww_p, sgp, mugp)
+    endif
+    if ( fb.ne.fb ) then 
+      bx = bx * 1.1d0
+      call f(bx, fb, re, rho_p, ww_p, sgp, mugp)
+    endif
     if ( fa*fb <= 0.d0 ) then
       exit
     endif
-    if ( iter == 256 ) then 
-      write(*,"(A10,5es15.6)") "-->",ax, bx, fa, fb
+    if ( iter == 40 ) then 
+      open(43,file="./Cont/rotation_law.dat")
+      do n = 1, 100
+        ax = x_guess * 8.d-3 * n
+        call f(ax, fa, re, rho_p, ww_p, sgp, mugp)
+        write(43,"(2es15.6)") 8.d-3 * n, fa
+      enddo
+      close(43)
       stop "root of omg(s,m) must be bracketed for zbrent, L122"
     endif
   enddo

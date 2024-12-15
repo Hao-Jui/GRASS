@@ -36,8 +36,6 @@ subroutine const_j
   dif = 1.d0; n_of_it =0
 
   r_e_new = r_e; r_e_new_sq = r_e_new**2
-  Omega_c = 0.d0
-  Omega_e = 0.d0
 
   do while( dif > accuracy .or. n_of_it <2 )
     do s = 1, SDIV
@@ -87,6 +85,8 @@ subroutine const_j
     else
       call interp(s_gp, ww_mu_0, SDIV, s_e, ww_equator_h)
 
+#if defined(restart)
+#else
       if (n_of_it==0) then
         term_in_Omega_h = 1.d0 - exp( r_e_new_sq * (gama_pole_h + rho_pole_h - gama_equator_h - rho_equator_h) )
         if (term_in_Omega_h >= 0.d0) then
@@ -95,6 +95,7 @@ subroutine const_j
           stop "L96 in const_j"
         endif
       endif
+#endif
 
       call zbrent_diff(Omega_e*8.d-1,r_e_new,rho_equator_h,gama_equator_h, &
                        ww_equator_h,rho_pole_h,gama_pole_h, 1.d-5, Omega_e,  diff_rotation_const_j)
@@ -116,14 +117,6 @@ subroutine const_j
         enddo
       enddo
     endif
-    
-    !open(78,file="./omg_diff.dat")
-    !do s=1,SDIV
-    !  do m=1,MDIV
-    !    write(78,"(99es18.9)") s_gp(s),mu(m),omg(s,m) ! 11-12
-    !  enddo
-    !enddo
-    !close(78)
     
     !!! Compute velocity, energy density and pressure
     do s = 1, SDIV
@@ -160,8 +153,8 @@ subroutine const_j
         gama (s,m) = gama (s,m) * r_e_new_sq
         alpha(s,m) = alpha(s,m) * r_e_new_sq
       enddo
-    enddo
-
+    enddo 
+    
     !!! Compute metric potentials
     S_metric_rho   = 0.d0
     S_metric_gama  = 0.d0
@@ -455,7 +448,8 @@ subroutine const_j
                   "_constJ_A"//trim(adjustl(fil3))//".dat")
 #if defined(matlab)
 #else
-        write(98,"(2i5,99es27.17)") SDIV, MDIV, r_e*sqrt(KAPPA)/1.d5, energy(1,1)/(C*C*KSCALE), r_ratio
+        write(98,"(2i5,99es27.17)") SDIV, MDIV, r_e*sqrt(KAPPA)/1.d5, &
+          energy(1,1)/(C*C*KSCALE), r_ratio, Omega_e* (C/sqrt(kappa)) , Omega_c* (C/sqrt(kappa)) 
 #endif
     do s = 1, SDIV
       do m = 1, MDIV
@@ -466,7 +460,7 @@ subroutine const_j
           rho_0 = 0.d0
           !omg(s,m) = 0.d0
         endif
-        write(98,"(99es18.9)") s_gp(s),mu(m),alpha(s,m),gama(s,m),rho(s,m),ww(s,m)* (C/sqrt(kappa)), & ! 1-6
+        write(98,"(99es27.17)") s_gp(s),mu(m),alpha(s,m),gama(s,m),rho(s,m),ww(s,m)* (C/sqrt(kappa)), & ! 1-6
         pressure(s,m)/KSCALE, energy(s,m)/(C*C*KSCALE), enthalpy(s,m), rho_0, & ! 7-10
         velocity_sq(s,m), omg(s,m)* (C/sqrt(kappa)) ! 11-12
       enddo
