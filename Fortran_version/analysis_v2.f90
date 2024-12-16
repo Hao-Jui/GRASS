@@ -40,6 +40,7 @@ subroutine mass_radius
   call interp(s_gp, gama_mu_0, SDIV, s_e, gama_equator)
   call interp(s_gp,  rho_mu_1, SDIV, s_p, rho_pole)
   call interp(s_gp,  rho_mu_0, SDIV, s_e, rho_equator)
+  
   ! Masses and angular momentum
   Mass   = 0.d0
   mass_0 = 0.d0
@@ -88,7 +89,7 @@ subroutine mass_radius
   call d01gaf( s_gp, Int, SDIV, Mass_0, er2, ifail)
 
   Int = s_gp(:)**2/(1.d0-s_gp(:))**4 * D_m_p(:)
-  call d01gaf( s_gp, Int, SDIV, Mass_0, er2, ifail)
+  call d01gaf( s_gp, Int, SDIV, Mass_p, er2, ifail)
 
   Int = s_gp(:)**3/(1.d0-s_gp(:))**5 * D_J(:)
   call d01gaf( s_gp, Int, SDIV, J, er2, ifail)
