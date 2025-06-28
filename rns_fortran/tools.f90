@@ -7,10 +7,8 @@ subroutine interp0(xp,yp,np, xb,yb)
   real(8),intent(in)  :: xp(np),yp(np)
   real(8),intent(in)  :: xb
   real(8),intent(out) :: yb
-  real(8) :: fr
   
-  
-  n_nearest_pt = minloc(abs(xb-xp),np)
+  n_nearest_pt = minloc(abs(xb-xp), 1)
   
   kk = min( max( n_nearest_pt-(n_order-1)/2,1 ),np+1-n_order)
 !  if( xb==xp(kk) .or.  xb==xp(kk+1) .or. xb==xp(kk+2) .or. xb==xp(kk+3)) &
@@ -31,7 +29,7 @@ subroutine interp(xp,yp,np, xb,yb)
 
   implicit none
   integer,intent(in) :: np
-  integer :: n_nearest_pt,ii,kk,ir
+  integer :: n_nearest_pt, ii, kk, ir
   integer :: n_order = 4
   real(8),intent(in)  :: xp(np),yp(np)
   real(8),intent(in)  :: xb
@@ -54,6 +52,49 @@ subroutine interp(xp,yp,np, xb,yb)
 
 end subroutine interp
 
+subroutine interp_pt(xp,yp,np, xb,yb)
+  use para_mod, only: p_at_PT, C, KSCALE
+  implicit none
+  integer,intent(in) :: np
+  integer :: n_nearest_pt, ii, kk, ir
+  integer :: n_order = 4
+  real(8),intent(in)  :: xp(np), yp(np)
+  real(8),intent(in)  :: xb
+  real(8),intent(out) :: yb
+  real(8) :: fr 
+  
+  n_nearest_pt = minloc( abs(xb-xp), 1 )
+
+  if ( abs(n_nearest_pt-p_at_PT) > n_order+1 ) then
+    ir = min(np - n_order, max(1 + n_order, n_nearest_pt - 1))
+    yb = 0.d0
+    do ii = -n_order, n_order
+      fr = 1.d0
+      do kk = -n_order, n_order
+        if ( ii == kk ) cycle
+        fr = fr * ( xb - xp(ir+kk) ) / ( xp(ir+ii) - xp(ir+kk) )
+      enddo
+      yb  = yb + fr * yp(ir+ii)
+    enddo
+  elseif ( n_nearest_pt == p_at_PT .or. n_nearest_pt == p_at_PT-1 ) then
+    if (xp(p_at_PT) < xb ) then 
+      yb = yp(p_at_PT+1) + ( xb - xp(p_at_PT+1) ) * ( yp(p_at_PT) - yp(p_at_PT+1) ) &
+          / ( xp(p_at_PT) - xp(p_at_PT+1) )
+    elseif ( xp(p_at_PT-1) < xb .and. xp(p_at_PT) > xb  ) then
+      yb = yp(p_at_PT-1)
+    else
+      yb = yp(p_at_PT-2) + ( xb - xp(p_at_PT-2) ) * ( yp(p_at_PT-1) - yp(p_at_PT-2) ) &
+        / ( xp(p_at_PT-1) - xp(p_at_PT-2) )
+    endif
+  else
+    yb = merge( yp(n_nearest_pt-1) + ( xb - xp(n_nearest_pt-1) ) * ( yp(n_nearest_pt) - yp(n_nearest_pt-1) ) &
+                        / ( xp(n_nearest_pt) - xp(n_nearest_pt-1) ), &
+        yp(n_nearest_pt+1) + ( xb - xp(n_nearest_pt+1) ) * ( yp(n_nearest_pt) - yp(n_nearest_pt+1) ) &
+                                    / ( xp(n_nearest_pt) - xp(n_nearest_pt+1) ), &
+        xp(n_nearest_pt) > xb )
+  endif
+
+end subroutine interp_pt
 
 real(8) function deriv_s(f,s,m)
 
@@ -235,7 +276,7 @@ real(8) function plgndr(l,m,x)
   integer,intent(in) :: l,m
   real(8),intent(in) :: x
   integer :: ll
-  real(8) :: fact,pmm,pmmp1,somx2,pll
+  real(8) :: fact, pmm, pmmp1, somx2, pll
 
   if(m<0 .or. m>l .or. abs(x)>1.d0) then
     write(*,*) m,l,x
@@ -243,6 +284,7 @@ real(8) function plgndr(l,m,x)
   endif
 
   pmm = 1.d0
+  pll = 0.d0
   if ( m > 0 ) then
     somx2 = dsqrt((1.d0-x)*(1.d0+x))
     fact = 1.d0
@@ -259,7 +301,7 @@ real(8) function plgndr(l,m,x)
     if(l==(m+1)) then
       plgndr = pmmp1
     else
-      do ll=(m+2),l
+      do ll = (m+2), l
         pll = (x * dble(2*ll-1) * pmmp1 - dble(ll+m-1)*pmm ) / dble(ll-m)
         pmm = pmmp1
         pmmp1 = pll
@@ -269,3 +311,4 @@ real(8) function plgndr(l,m,x)
   endif
 
 end function plgndr
+

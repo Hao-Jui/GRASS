@@ -1,5 +1,5 @@
 # program file name
-PROG = rns
+PROG = a.out
 # compiler
 FXX = gfortran
 #FXX = ifort
