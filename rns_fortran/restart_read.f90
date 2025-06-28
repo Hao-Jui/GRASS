@@ -5,9 +5,11 @@ subroutine restart_read
   real(8) :: dum
   integer :: s, m
   
-  open(89, file="./Cont/"//trim(adjustl(res_fil)))
-  read(89,"(2i5,99es27.17)") res_r, res_t, r_e, e_center, r_ratio
+  open(89, file="./Res/res.dat" )
+  read(89,"(2i5,99es27.17)") res_r, res_t, r_e, e_center, r_ratio, Omega_e, Omega_c
   r_e = r_e / (sqrt(KAPPA)/1.d5)
+  Omega_e = Omega_e / (C/sqrt(kappa)) * r_e
+  Omega_c = Omega_c / (C/sqrt(kappa)) * r_e
   if (res_r .ne. SDIV) stop "Difference in the resolution."
   
   do s = 1, SDIV
@@ -33,7 +35,7 @@ subroutine refine_read
   real(8) :: dum
   integer :: s, m, k
   
-  open(89, file="./Cont/"//trim(adjustl(res_fil)) )
+  open(89, file="./Res/res.dat" )
   read(89,"(2i5,99es27.17)") res_r, res_t, r_e, e_center, r_ratio, Omega_e, Omega_c
   r_e = r_e / (sqrt(KAPPA)/1.d5)
   Omega_e = Omega_e / (C/sqrt(kappa)) * r_e

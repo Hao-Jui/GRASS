@@ -16,10 +16,11 @@ subroutine spin
   real(8) :: grgr, term_in_Omega_h
   real(8) :: gama_pole_h,gama_center_h,gama_equator_h, &
              rho_pole_h,rho_center_h,rho_equator_h, ww_equator_h
-  real(8) :: r_e_new,r_e_new_sq
-  real(8) :: deriv_s,deriv_m,deriv_sm!,deriv_ss,deriv_mm
-  real(8) :: e_at_p,p_at_h,n0_at_e
+  real(8) :: r_e_new, r_e_new_sq
+  real(8) :: deriv_s, deriv_m, deriv_sm!,deriv_ss,deriv_mm
+  real(8) :: e_at_p, p_at_h, n0_at_e, e_at_h
   real(8) :: rho_0
+  real(8) :: r_inf
   integer :: ifail
   real(8) :: er2, Int_m(MDIV), Int_s(SDIV)
   real(8), dimension(SDIV) :: gama_mu_1,gama_mu_0,rho_mu_1,rho_mu_0,ww_mu_0
@@ -27,13 +28,13 @@ subroutine spin
   real(8), dimension(SDIV,MDIV) :: S_metric_rho, S_metric_gama, S_metric_omega
   real(8), dimension(LMAX+1,SDIV) :: D1_metric_rho, D1_metric_gama, D1_metric_omega
   real(8), dimension(SDIV,LMAX+1) :: D2_metric_rho, D2_metric_gama, D2_metric_omega
-  character(8) :: fil1, fil2
+  character(32) :: fil1, fil2, fil3, fil4
 
   dif = 1.d0; n_of_it =0
 
   r_e_new = r_e; r_e_new_sq = r_e_new**2
   
-  do while( dif > accuracy .or. n_of_it <2 )
+  do while( dif > 1.d-7 .or. n_of_it <2 )
       do s = 1, SDIV
         do m = 1, MDIV
           rho  (s,m) = rho  (s,m) / r_e_new_sq ! hat
@@ -68,7 +69,7 @@ subroutine spin
       !write(*,"(es15.6,A10,es15.6)") r_e_new, "--->", sqrt(r_e_new_sq)
       r_e_new = sqrt( r_e_new_sq )
       if (r_e_new .ne. r_e_new .or. r_e_new/r_e_old > 2) then
-        write(*,*) " "
+        write(*,*) e_at_h (h_center)/(C * C * KSCALE), h_center, r_ratio
         stop 'change in r_e is too dramatic; L72 in spin'
       endif
 
@@ -265,7 +266,7 @@ subroutine spin
           gsm   = gama(s,m)
           rsm   = rho (s,m)
           wwsm  = ww  (s,m)
-          e_gsm = exp(-0.5*gsm)
+          e_gsm = exp(-gsm/2.d0)
           e_rsm = exp(rsm)
           temp1 = sin_theta(m)
 
@@ -295,7 +296,9 @@ subroutine spin
           
       ! check for divergence
       if (abs(rho(2,1))>100.d0 .or. abs(gama(2,1))>300.d0 .or. abs(ww(2,1))>100.d0) then
-        write(*,"(3es18.9)") rho(2,1), gama(2,1), ww(2,1); stop "Line 300 in spin"
+        write(*,"(3es18.9)") rho(2,1), gama(2,1), ww(2,1)
+        write(*,*) e_at_h (h_center)/(C * C * KSCALE), h_center, r_ratio
+        stop "Line 300 in spin"
       endif
             
       if (r_ratio == 1.d0) then
@@ -411,13 +414,23 @@ subroutine spin
   Omega_c  = Omega_c / r_e_new
   Omega_e  = Omega_c
   r_e      = r_e_new
+  rho_0    = n0_at_e( energy(1,1) ) * MB
 
   if (output) then
-    write(fil1,"(f4.2)") ang_mom
-    write(fil2,"(f4.2)") mass_0/MSUN
-    open(98,file="./Cont/J"//trim(adjustl(fil1))//"_Mb"//trim(adjustl(fil2))//".dat")
-    !open(98,file="./Cont/check2D.dat")
-    write(98,"(2i5,99es27.17)") SDIV, MDIV, r_e*sqrt(KAPPA)/1.d5, energy(1,1)/(C*C*KSCALE), r_ratio
+    call mass_radius
+    r_inf = r_e_new * sqrt(KAPPA) * s_gp(SDIV - 1) / ( 1.d0 - s_gp(SDIV - 1) )
+    M2    = - D2_metric_rho( SDIV-1, 1+1 ) / 2.d0 * r_inf**3 * ( C * C / G / Mass )**3
+    S3    = - D2_metric_omega(SDIV-1,2+1 ) / 2.d0 * r_inf**5 * ( C * C / G / Mass )**4 / sqrt(KAPPA)
+    M4    = D2_metric_rho( SDIV-1, 2+1 ) / 2.d0 * r_inf**5 * ( C * C / G / Mass )**5
+
+    write(fil1,"(f6.2)") ang_mom
+    write(fil2,"(f16.5)") mass_0/MSUN
+    write(fil3,"(es15.3)") rho_0
+    write(fil4,"(i6)") SDIV
+    open(98,file="./Cont/"//trim(adjustl(eos_file))//"_J_"//trim(adjustl(fil1))//&
+        "_Mb"//trim(adjustl(fil2))//"_rhoc"//trim(adjustl(fil3))//".dat")
+    write(98,"(2i5,99es27.17)") SDIV, MDIV, r_e*sqrt(KAPPA)/1.d5, &
+      energy(1,1)/(C*C*KSCALE), r_ratio, Omega_e* (C/sqrt(kappa)) , Omega_c* (C/sqrt(kappa)) 
     do s = 1, SDIV
       do m = 1, MDIV
         ! r, \theta, \apha, \gamma, \rho, \omega, \phi, \varepsilon, \rho_0, p
@@ -427,11 +440,29 @@ subroutine spin
           rho_0 = 0.d0
         endif
         write(98,"(99es27.17)") s_gp(s), mu(m), alpha(s,m), gama(s,m), rho(s,m), ww(s,m) * (C/sqrt(kappa)), & ! 1-6
-        pressure(s,m)/KSCALE, energy(s,m)/(C*C*KSCALE), enthalpy(s,m), rho_0, & ! 7-10
-        velocity_sq(s,m), omg(s,m) * (C/sqrt(kappa)) ! 11-12
+          pressure(s,m)/KSCALE, energy(s,m)/(C*C*KSCALE), enthalpy(s,m), rho_0, & ! 7-10
+          velocity_sq(s,m), omg(s,m) * (C/sqrt(kappa)) ! 11-12
       enddo
     enddo
     close(98)
+
+    open(99,file="./Res/res.dat")
+    write(99,"(2i5,99es27.17)") SDIV, MDIV, r_e*sqrt(KAPPA)/1.d5, &
+      energy(1,1)/(C*C*KSCALE), r_ratio, Omega_e* (C/sqrt(kappa)) , Omega_c* (C/sqrt(kappa))
+    do s = 1, SDIV
+      do m = 1, MDIV
+        ! r, \theta, \apha, \gamma, \rho, \omega, \phi, \varepsilon, \rho_0, p
+        if (enthalpy(s,m) > enthalpy_min) then 
+          rho_0 = n0_at_e( energy(s,m) ) * MB
+        else 
+          rho_0 = 0.d0
+        endif
+        write(99,"(99es27.17)") s_gp(s), mu(m), alpha(s,m), gama(s,m), rho(s,m), ww(s,m) * (C/sqrt(kappa)), & ! 1-6
+          pressure(s,m)/KSCALE, energy(s,m)/(C*C*KSCALE), enthalpy(s,m), rho_0, & ! 7-10
+          velocity_sq(s,m), omg(s,m) * (C/sqrt(kappa)) ! 11-12
+      enddo
+    enddo
+    close(99)
   endif
 
 

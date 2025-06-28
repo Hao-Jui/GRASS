@@ -1,51 +1,81 @@
-subroutine zbrent_diff(x_guess, re, rho_e, g_e, w_e, rho_p, g_p, tol, return_value,f)
+subroutine zbrent_diff(x_guess, re, rho_h, g_h, w_h, rho_p, g_p, dh, tol, return_value,f)
 ! Solve for Omega_e
   implicit none
-  real(8), intent(in) :: x_guess, re, rho_e, g_e, w_e, rho_p, g_p, tol
+  real(8), intent(in) :: x_guess, re, rho_h, g_h, w_h, rho_p, g_p, dh, tol
   real(8), intent(out):: return_value
   integer :: iter, n
-  real(8), parameter :: ZEPS  = 3.d-8
+  real(8), parameter :: ZEPS  = 1.d-8
   real(8) :: a,b,c,d,e, fa, fb, fc, p,q,r,s, xm, tol1
-  real(8) ::  ax, bx
+  real(8) :: ax, bx, cx, cx1
+  integer :: i_max = 200
   
   external f
 
-  ax   = x_guess
-  bx   = x_guess
-
-  do iter = 1, 50
+  ax   = x_guess 
+  bx   = x_guess 
+#if 1
+  do iter = 1, i_max
     ax = ax * 1.2d0
-    bx = bx / 1.05d0
-    call f(ax, fa, re, rho_e, g_e, w_e, rho_p, g_p)
-    call f(bx, fb, re, rho_e, g_e, w_e, rho_p, g_p)
+    bx = bx / 1.1d0
+    call f(ax, fa, re, rho_h, g_h, w_h, rho_p, g_p, dh)
+    call f(bx, fb, re, rho_h, g_h, w_h, rho_p, g_p, dh)
     if ( fa.ne.fa ) then 
       ax = ax / 1.2d0
-      call f(ax, fa, re, rho_e, g_e, w_e, rho_p, g_p)
+      call f(ax, fa, re, rho_h, g_h, w_h, rho_p, g_p, dh)
     endif
     if ( fb.ne.fb ) then 
-      bx = bx * 1.05d0
-      call f(bx, fb, re, rho_e, g_e, w_e, rho_p, g_p)
+      bx = bx * 1.1d0
+      call f(bx, fb, re, rho_h, g_h, w_h, rho_p, g_p, dh)
     endif
     if ( fa*fb <= 0.d0 ) then
       exit
     endif
-    if ( iter == 50 ) then 
+    !write(*,"(21es18.9)") ax, fa, bx, fb
+    
+    if ( iter == i_max ) then 
       open(43,file="./Cont/diff_rotation.dat")
-      do n = 1, 100
+      do n = 1, i_max
         ax = x_guess * 8.d-3 * n
-        call f(ax, fa, re, rho_e, g_e, w_e, rho_p, g_p)
-        write(43,"(2es15.6)") 8.d-3 * n, fa
+        call f(ax, fa, re, rho_h, g_h, w_h, rho_p, g_p, dh)
+        cx = fa
+        !write(*,"(2es18.9)") ax, fa
+        if ( n > 1 .and. cx * cx1 <= 0.d0 ) then
+            bx = x_guess * 8.d-3 * n
+            ax = x_guess * 8.d-3 * (n-1)
+            exit
+        endif
+        cx1 = cx
+        write(43,"(2es15.6)") x_guess* 8.d-3 * n, fa
       enddo
       close(43)
-      stop "root of Omega_e must be bracketed for zbrent, L32"
+      stop "check ./Cont/diff_rotation.dat, L40"
     endif
   enddo
-
+#endif  
+#if 0
+  do n = 1, i_max
+    ax = x_guess * 8.d-3 * n
+    call f(ax, fa, re, rho_h, g_h, w_h, rho_p, g_p, dh)
+    cx = fa
+   !write(*,"(2es18.9)") ax, fa
+    if ( n > 1 .and. cx * cx1 <= 0.d0 ) then
+        bx = x_guess * 8.d-3 * n
+        ax = x_guess * 8.d-3 * (n-1)
+        exit
+    endif
+    cx1 = cx
+  enddo
+#endif
+  !write(*,"(2es18.9)") ax, bx
+  !stop
+  
   a = ax
   b = bx
 
   c = b
   fc= fb
+  e = 0.d0 
+  d = 0.d0
 
   do iter = 1, 100
     if ( fb*fc > 0.d0) then ! Rename a, b, c and adjust bounding interval d
@@ -64,8 +94,8 @@ subroutine zbrent_diff(x_guess, re, rho_e, g_e, w_e, rho_p, g_p, tol, return_val
     endif
 
     tol1 = 2.d0 * zeps *abs(b) + 0.5d0 * tol ! convergence check
-    xm = (c-b)/2.d0
-    if ( abs(xm) <= tol1 .or. fb==0.d0 ) then
+    xm = (c-b) / 2.d0
+    if ( abs(xm) <= tol1 .or. fb == 0.d0 ) then
       return_value = b
       return
     endif
@@ -80,7 +110,7 @@ subroutine zbrent_diff(x_guess, re, rho_e, g_e, w_e, rho_p, g_p, tol, return_val
         p = s * (2.d0 * xm * q * (q-r) - (b-a) * (r-1.d0))
         q = (q-1.d0) * (r-1.d0) * (s-1.d0)
       endif
-      if (p>0.d0) q = -q ! Check whether in bounds
+      if ( p > 0.d0 ) q = -q ! Check whether in bounds
       p = abs(p)
       if( 2.d0*p < min( 3.d0*xm*q - abs(tol1*q), abs(e*q) ) ) then
         e=d ! Accept interpolation
@@ -101,10 +131,10 @@ subroutine zbrent_diff(x_guess, re, rho_e, g_e, w_e, rho_p, g_p, tol, return_val
       b = b + sign(tol1,xm)
     endif
 
-    call f(b, fb, re, rho_e, g_e, w_e, rho_p, g_p)
+    call f(b, fb, re, rho_h, g_h, w_h, rho_p, g_p, dh)
   enddo
 
-  stop "zbrent exceeding maximum iterations, L191"
+  stop "zbrent exceeding maximum iterations, L107"
 
 end subroutine zbrent_diff
 
@@ -114,16 +144,22 @@ subroutine zbrent_rot(x_guess, re, rho_p, ww_p, sgp, mugp, tol, return_value, f)
   real(8), intent(in) :: x_guess, re, rho_p, ww_p, sgp, mugp, tol
   real(8), intent(out):: return_value
   integer :: iter, n
-  real(8), parameter :: ZEPS  = 3.d-8
-  real(8) :: a,b,c,d,e, fa, fb, fc, p,q,r,s, xm, tol1
-  real(8) ::  ax, bx
+  real(8), parameter :: ZEPS  = 1.d-8
+  real(8) :: a, b, c, d, e, fa, fb, fc, p, q, r, s, xm, tol1
+  real(8) :: ax, bx, cx, cx1
+  integer :: i_max = 200
   
   external f
 
-  ax   = x_guess
-  bx   = x_guess
-
-  do iter = 1, 40
+  if ( x_guess == 0 ) then
+    ax = 1.d-3
+    bx = ax
+  else
+    ax   = x_guess
+    bx   = x_guess
+  endif
+#if 1
+  do iter = 1, i_max
     ax = ax * 1.1d0
     bx = bx / 1.1d0
     call f(ax, fa, re, rho_p, ww_p, sgp, mugp)
@@ -139,23 +175,39 @@ subroutine zbrent_rot(x_guess, re, rho_p, ww_p, sgp, mugp, tol, return_value, f)
     if ( fa*fb <= 0.d0 ) then
       exit
     endif
-    if ( iter == 40 ) then 
-      open(43,file="./Cont/rotation_law.dat")
-      do n = 1, 100
-        ax = x_guess * 8.d-3 * n
+    if ( iter == i_max ) then 
+      open(43, file="./Cont/rotation_law.dat")
+      do n = 1, i_max
+        ax = x_guess * 1.d-3 * n
         call f(ax, fa, re, rho_p, ww_p, sgp, mugp)
-        write(43,"(2es15.6)") 8.d-3 * n, fa
+        write(43,"(2es15.6)") x_guess* 8.d-3 * n, fa
       enddo
       close(43)
-      stop "root of omg(s,m) must be bracketed for zbrent, L122"
+      stop "check ./Cont/rotation_law.dat, L122"
     endif
   enddo
-  
+#endif
+#if 0
+  do n = 1, i_max
+    ax = x_guess * 8.d-3 * n
+    call f(ax, fa, re, rho_p, ww_p, sgp, mugp)
+    cx = fa
+    !write(*,"(A5,2es18.9)") "",ax, fa
+    if ( n > 1 .and. cx * cx1 <= 0.d0 ) then
+        bx = x_guess * 8.d-3 * n
+        ax = x_guess * 8.d-3 * (n-1)
+        exit
+    endif
+    cx1 = cx
+  enddo!; stop
+#endif  
   a = ax
   b = bx
 
   c = b
   fc= fb
+  e = 0.d0 
+  d = 0.d0
 
   do iter = 1, 100
     if ( fb*fc > 0.d0) then ! Rename a, b, c and adjust bounding interval d
@@ -254,6 +306,7 @@ subroutine brent(ax,bx,cx,f,tol,xmin,ymin)
     w = v 
     x = v
     e = 0 ! This will be the distance moved on the step before last.
+    d = 0.d0
   
     call f(x,fx)
     fv=fx

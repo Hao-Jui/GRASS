@@ -11,11 +11,11 @@ subroutine make_grid
     mu(m) = (m-1.0) * DM
   enddo
   mu(MDIV) = 1.d0
-  open(72,file="./trig/s_axis.dat")
-  write(72,"(es18.9)") s_gp
-  open(73,file="./trig/mu_axis.dat")
-  write(73,"(es18.9)") mu
-  close(72); close(73)
+  !open(72,file="./trig/s_axis.dat")
+  !write(72,"(es18.9)") s_gp
+  !open(73,file="./trig/mu_axis.dat")
+  !write(73,"(es18.9)") mu
+  !close(72); close(73)
 
 end subroutine make_grid
 
@@ -27,7 +27,7 @@ subroutine GridTrig
   integer :: i,j,k,n,m
   real(8) :: sk, sj, sk1, sj1
   real(8) :: legendre, plgndr
-  character(4) :: fil1, fil2
+  !character(4) :: fil1, fil2
   
   P_2n(:,:) = 0.d0
   P1_2n_1(:,:) = 0.d0
@@ -116,10 +116,10 @@ subroutine GridTrig
   !write(*,*) "compute_trig"
 
   n=0
-  write(fil1,"(i2)") n*2; open(100+n,file="./trig/P_"//trim(adjustl(fil1))//".dat")
+  !write(fil1,"(i2)") n*2; open(100+n,file="./trig/P_"//trim(adjustl(fil1))//".dat")
   do i = 1, MDIV
     P_2n(i,n+1) = legendre(2*n,mu(i))
-    write(100+n,"(2es18.9)") mu(i), P_2n(i,n+1)
+    !write(100+n,"(2es18.9)") mu(i), P_2n(i,n+1)
   enddo
   close(100+n)
 
@@ -129,15 +129,15 @@ subroutine GridTrig
   enddo
 
   do n = 1, LMAX
-    write(fil1,"(i2)") n*2
-    open(100+n,file="./trig/P_"//trim(adjustl(fil1))//".dat")
-    open(200+n,file="./trig/P1_"//trim(adjustl(fil1))//"_1.dat")
+    !write(fil1,"(i2)") n*2
+    !open(100+n,file="./trig/P_"//trim(adjustl(fil1))//".dat")
+    !open(200+n,file="./trig/P1_"//trim(adjustl(fil1))//"_1.dat")
     do i = 1, MDIV
       P_2n          (i,n+1) = legendre(2*n,mu(i))
       P1_2n_1       (i,n+1) = plgndr(2*n-1,1,mu(i))
       sin_2n_1_theta(i,n  ) = sin(  (2.d0*n-1.d0)*theta(i) )
-      write(100+n,"(2es18.9)") mu(i), P_2n(i,n+1)
-      write(200+n,"(2es18.9)") mu(i), sin_2n_1_theta(i,n)
+      !write(100+n,"(2es18.9)") mu(i), P_2n(i,n+1)
+      !write(200+n,"(2es18.9)") mu(i), sin_2n_1_theta(i,n)
     enddo
   enddo
   close(100+n)
