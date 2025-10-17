@@ -1,0 +1,13 @@
+# Ignore everything by default
+*
+
+# Allow directories so that unignored files inside them are tracked
+!*/
+
+# Keep Fortran source and build entrypoint
+!*.f90
+!Makefile
+!makefile
+
+# Always track this ignore file
+!.gitignore

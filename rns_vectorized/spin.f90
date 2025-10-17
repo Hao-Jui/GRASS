@@ -1,0 +1,551 @@
+subroutine spin
+#include "option_macro.h"
+  use toolkit_mod
+  use simpson_mod
+  use para_mod
+  implicit none
+  integer :: m, s, n, k, n_of_it, ifail
+  real(8) :: r_p, s_p, r_e_old, dif
+  real(8) :: r_e_new, r_e_new_sq, grgr, term_in_Omega_h
+  real(8) :: gama_pole_h, gama_center_h, gama_equator_h
+  real(8) :: rho_pole_h, rho_center_h, rho_equator_h, ww_equator_h
+  real(8) :: er2, rho_0, r_inf
+  logical :: valid(MDIV), diverg
+  character(32) :: fil1, fil2, fil3, fil4, fil5, fil6
+
+  ! externs used in precompute
+  real(8) :: n0_at_e, e_at_p, p_at_h, e_at_h
+
+  ! --- precompute caches ---
+  real(8), allocatable :: e_g_half_cache(:,:), e_mhalf_cache(:,:), e_mrho_cache(:,:), e2alpha_r2_cache(:,:)
+  real(8), allocatable :: s1_cache(:), s2_cache(:)
+  real(8), allocatable :: dr_s_cache(:,:), dr_m_cache(:,:), dg_s_cache(:,:), dg_m_cache(:,:), dww_s_cache(:,:), dww_m_cache(:,:)
+  real(8), allocatable :: dg_ss_cache(:,:), dg_mm_cache(:,:)
+
+  ! --- Main arrays (given by modules) ---
+  real(8) :: sum_rho, sum_gama, sum_omega
+  real(8), dimension(SDIV) :: gama_mu_1, gama_mu_0, rho_mu_1, rho_mu_0, ww_mu_0
+  real(8), dimension(SDIV,MDIV) :: da_dm
+  real(8), dimension(SDIV,MDIV) :: S_metric_rho, S_metric_gama, S_metric_omega, S_metric_sphi
+  real(8), dimension(LMAX+1,SDIV) :: D1_metric_rho, D1_metric_gama, D1_metric_omega, D1_metric_sphi
+  real(8), dimension(SDIV,LMAX+1) :: D2_metric_rho, D2_metric_gama, D2_metric_omega, D2_metric_sphi
+  real(8), dimension(MDIV,SDIV) :: Int_m
+  real(8), dimension(SDIV,SDIV) :: Int_s
+
+  ! local temps
+  real(8) :: sgp, mum, s_1, s1, s2, m1, ea
+  real(8) :: gsm, rsm, wwsm, esm, psm, v2sm, e_gsm, e_rsm
+  real(8) :: d_gama_s,d_gama_m,d_gama_ss,d_gama_mm,d_gama_sm
+  real(8) :: d_rho_s,d_rho_m,d_ww_s,d_ww_m,d_sphi_s,d_sphi_m
+  real(8) :: temp1,temp2,temp3,temp4,temp5,temp6,temp7,temp8
+  real(8) :: inv_ds, inv_dm, inv_2ds, inv_2dm
+  real(8), dimension(MDIV) :: row_rho, row_gama, row_ww, row_energy, row_pressure
+  real(8), dimension(MDIV) :: row_v2, row_e_g, row_e_r, row_ea, row_mum, row_m1
+  real(8), dimension(MDIV) :: row_dg_s, row_dg_m, row_dr_s, row_dr_m, row_dww_s, row_dww_m
+  real(8), dimension(MDIV) :: row_diff, row_term_a, row_term_b, row_term_c, row_term_d, row_term_e, row_term_f
+  real(8), dimension(MDIV) :: row_term_g, row_term_h, row_term_i, row_term_j, row_term_k
+  real(8), dimension(MDIV) :: row_term_l, row_term_m, row_term_n, row_term_o, row_term_p, row_term_q, row_term_r, row_term_s
+
+  real(8) :: D2_rho_row(LMAX+1)
+  real(8) :: D2_gama_row(LMAX+1)
+  real(8) :: D2_omega_row(LMAX+1)
+  real(8) :: nvec(LMAX)
+  real(8), dimension(LMAX) :: P1_term,  sin_term
+
+  ! compute alpha
+  real(8) :: alpha_end, shift, inv_r
+  ! ---------------------------------------------------------------
+
+  dif = 1.d0; n_of_it =0
+
+  s_p = r_ratio**(1.d0/dble(s_pwr)) / ( 1.d0 + r_ratio**(1.d0/dble(s_pwr)) )
+
+  r_e_new = r_e; r_e_new_sq = r_e_new**2
+
+  if (.not. allocated(e_g_half_cache)) then
+     allocate(e_g_half_cache(SDIV,MDIV), e_mhalf_cache(SDIV,MDIV), e_mrho_cache(SDIV,MDIV), e2alpha_r2_cache(SDIV,MDIV))
+     allocate(s1_cache(SDIV), s2_cache(SDIV))
+     allocate(dr_s_cache(SDIV,MDIV), dr_m_cache(SDIV,MDIV), dg_s_cache(SDIV,MDIV))
+     allocate(dg_m_cache(SDIV,MDIV), dww_s_cache(SDIV,MDIV), dww_m_cache(SDIV,MDIV))
+     allocate(dg_ss_cache(SDIV,MDIV), dg_mm_cache(SDIV,MDIV))
+  end if
+  
+  do while( dif > 1.d-7 .or. n_of_it <2 )
+      !call cpu_time(start)
+      rho    = rho / r_e_new_sq
+      gama   = gama / r_e_new_sq
+      alpha  = alpha / r_e_new_sq
+      ww     = ww * r_e_new
+      do s = 1, SDIV
+        ! along x-axis
+        rho_mu_0 (s) = rho (s,1) ! hat
+        gama_mu_0(s) = gama(s,1) ! hat
+        ww_mu_0  (s) = ww  (s,1) ! hat
+        ! along z-axis
+        rho_mu_1 (s) = rho (s,MDIV) ! hat
+        gama_mu_1(s) = gama(s,MDIV) ! hat
+      enddo
+    
+      r_e_old = r_e_new ! only to compute dif
+
+      ! > Compute new r_e
+      call interp(s_gp, gama_mu_1, SDIV, s_p, gama_pole_h)
+      call interp(s_gp, gama_mu_0, SDIV, s_e, gama_equator_h)
+      gama_center_h = gama(1,1) ! hat
+
+      call interp(s_gp,  rho_mu_1, SDIV, s_p, rho_pole_h)
+      call interp(s_gp,  rho_mu_0, SDIV, s_e, rho_equator_h)
+      rho_center_h = rho(1,1) ! hat
+    
+      grgr = gama_pole_h + rho_pole_h - gama_center_h - rho_center_h ! hat
+      r_e_new_sq = 2.d0 * ( h_center - enthalpy_min ) / grgr
+      !write(*,"(es15.6,A10,es15.6)") r_e_new, "--->", sqrt(r_e_new_sq)
+
+      r_e_new = sqrt( r_e_new_sq )
+      if (r_e_new .ne. r_e_new .or. r_e_new/r_e_old > 2) then
+          write(*,"(10es18.9)") grgr; stop 'change in r_e is too dramatic; L72 in spin'
+      endif
+
+      ! > Compute angular velocity Omega
+      if(r_ratio == 1.d0) then
+          Omega_c = 0.d0
+      else
+          call interp( s_gp, ww_mu_0, SDIV, s_e, ww_equator_h )
+          grgr = gama_pole_h + rho_pole_h - gama_equator_h - rho_equator_h ! hat
+          term_in_Omega_h = 1.d0 - exp( r_e_new_sq * grgr )
+          if (term_in_Omega_h >= 0.d0) then
+            Omega_c = ww_equator_h + exp(r_e_new_sq*rho_equator_h) * sqrt(term_in_Omega_h) ! hat
+          else
+            write(*,*) Omega_c,term_in_Omega_h; stop "Omega can't be found; L88 in spin"
+        endif
+      endif
+
+      ! > Compute velocity, energy density and pressure
+      do s = 1, SDIV
+        sgp = s_gp(s)
+        velocity_sq(s,:) = merge(0.d0, ((Omega_c - ww(s,:)) * (sgp / (1.d0 - sgp)) * &
+                            sin_theta(:) * exp(-rho(s,:) * r_e_new_sq))**2, r_ratio == 1.d0)
+
+        where (velocity_sq(s,:) > 1.d0) velocity_sq(s,:) = 0.d0
+
+        ! enthalpy_min is the assumed small value for the value at the pole
+        enthalpy(s,:) = enthalpy_min + 5.d-1 * ( &
+                r_e_new_sq * ( gama_pole_h + rho_pole_h - gama(s,:) - rho(s,:) ) - log(1.d0-velocity_sq(s,:))  )
+
+        valid = (enthalpy(s,:) > enthalpy_min) .and. (sgp <= s_e)
+        where (.not. valid)
+          enthalpy(s,:) = enthalpy_min
+          pressure(s,:) = 0.d0
+          energy(s,:)   = 0.d0
+        elsewhere
+          pressure(s,:) = exp( interp_log_h_to_p( log(enthalpy(s,:)) ) )
+          energy(s,:)   = exp( interp_log_p_to_e( log(pressure(s,:)) ) )
+        end where
+      enddo
+
+      rho  =  rho * r_e_new_sq
+      gama = gama * r_e_new_sq
+      alpha=alpha * r_e_new_sq
+      
+#if defined(Fishbone)
+      call set_disk(r_e_new)
+#endif
+      !------------------------------------------------------------
+      ! PRECOMPUTE derivatives, exponentials, and s-factors (on rescaled fields)
+      !------------------------------------------------------------
+      do s = 1, SDIV
+        sgp = s_gp(s)
+        s_1 = 1.d0 - sgp
+        s1_cache(s) = sgp * s_1 / dble(s_pwr)
+        s2_cache(s) = ( sgp / s_1 )**(2*s_pwr)
+        do m = 1, MDIV
+          e_g_half_cache(s,m) = exp( gama(s,m) / 2.d0 )
+          e_mhalf_cache(s,m)  = exp(-gama(s,m) / 2.d0 )
+          e_mrho_cache(s,m)   = exp(-rho(s,m))
+          e2alpha_r2_cache(s,m)= exp(2.d0*alpha(s,m)) * r_e_new_sq
+        end do
+      end do
+
+      inv_ds  = 1.d0 / DS
+      inv_dm  = 1.d0 / DM
+      inv_2ds = 0.5d0 * inv_ds
+      inv_2dm = 0.5d0 * inv_dm
+
+      dg_s_cache = 0.d0
+      dr_s_cache = 0.d0
+      dww_s_cache = 0.d0
+      if (SDIV > 1) then
+        dg_s_cache(1,:)    = (gama(2,:) - gama(1,:)) * inv_ds
+        dr_s_cache(1,:)    = (rho(2,:)  - rho(1,:))  * inv_ds
+        dww_s_cache(1,:)   = (ww(2,:)   - ww(1,:))   * inv_ds
+        dg_s_cache(SDIV,:) = (gama(SDIV,:) - gama(SDIV-1,:)) * inv_ds
+        dr_s_cache(SDIV,:) = (rho(SDIV,:)  - rho(SDIV-1,:))  * inv_ds
+        dww_s_cache(SDIV,:)= (ww(SDIV,:)   - ww(SDIV-1,:))   * inv_ds
+      end if
+      if (SDIV > 2) then
+        dg_s_cache(2:SDIV-1,:)  = (gama(3:SDIV,:) - gama(1:SDIV-2,:)) * inv_2ds
+        dr_s_cache(2:SDIV-1,:)  = (rho(3:SDIV,:)  - rho(1:SDIV-2,:))  * inv_2ds
+        dww_s_cache(2:SDIV-1,:) = (ww(3:SDIV,:)   - ww(1:SDIV-2,:))   * inv_2ds
+      end if
+
+      dg_m_cache = 0.d0
+      dr_m_cache = 0.d0
+      dww_m_cache = 0.d0
+      if (MDIV > 1) then
+        dg_m_cache(:,1)    = (gama(:,2) - gama(:,1)) * inv_dm
+        dr_m_cache(:,1)    = (rho(:,2)  - rho(:,1))  * inv_dm
+        dww_m_cache(:,1)   = (ww(:,2)   - ww(:,1))   * inv_dm
+        dg_m_cache(:,MDIV) = (gama(:,MDIV) - gama(:,MDIV-1)) * inv_dm
+        dr_m_cache(:,MDIV) = (rho(:,MDIV)  - rho(:,MDIV-1))  * inv_dm
+        dww_m_cache(:,MDIV)= (ww(:,MDIV)   - ww(:,MDIV-1))   * inv_dm
+      end if
+      if (MDIV > 2) then
+        dg_m_cache(:,2:MDIV-1)  = (gama(:,3:MDIV) - gama(:,1:MDIV-2)) * inv_2dm
+        dr_m_cache(:,2:MDIV-1)  = (rho(:,3:MDIV)  - rho(:,1:MDIV-2))  * inv_2dm
+        dww_m_cache(:,2:MDIV-1) = (ww(:,3:MDIV)   - ww(:,1:MDIV-2))   * inv_2dm
+      end if
+
+      dg_ss_cache = 0.d0
+      if (SDIV > 1) then
+        dg_ss_cache(1,:)    = (dg_s_cache(2,:) - dg_s_cache(1,:)) * inv_ds
+        dg_ss_cache(SDIV,:) = (dg_s_cache(SDIV,:) - dg_s_cache(SDIV-1,:)) * inv_ds
+      end if
+      if (SDIV > 2) then
+        dg_ss_cache(2:SDIV-1,:) = (dg_s_cache(3:SDIV,:) - dg_s_cache(1:SDIV-2,:)) * inv_2ds
+      end if
+
+      dg_mm_cache = 0.d0
+      if (MDIV > 1) then
+        dg_mm_cache(:,1)    = (dg_m_cache(:,2) - dg_m_cache(:,1)) * inv_dm
+        dg_mm_cache(:,MDIV) = (dg_m_cache(:,MDIV) - dg_m_cache(:,MDIV-1)) * inv_dm
+      end if
+      if (MDIV > 2) then
+        dg_mm_cache(:,2:MDIV-1) = (dg_m_cache(:,3:MDIV) - dg_m_cache(:,1:MDIV-2)) * inv_2dm
+      end if
+
+      !> Compute metric potentials (use caches)
+      S_metric_rho   = 0.d0
+      S_metric_gama  = 0.d0
+      S_metric_omega = 0.d0
+
+      do s = 1, SDIV
+        sgp = s_gp(s)
+        s1  = s1_cache(s)
+        s2  = s2_cache(s)
+        row_rho     = rho(s,:)
+        row_gama    = gama(s,:)
+        row_ww      = ww(s,:)
+        row_energy  = energy(s,:)
+        row_pressure= pressure(s,:)
+        row_v2      = velocity_sq(s,:)
+        row_e_g     = e_g_half_cache(s,:)
+        row_e_r     = e_mrho_cache(s,:)
+        row_ea      = 16.d0 * pi * e2alpha_r2_cache(s,:)
+        row_dg_s    = dg_s_cache(s,:)
+        row_dg_m    = dg_m_cache(s,:)
+        row_dr_s    = dr_s_cache(s,:)
+        row_dr_m    = dr_m_cache(s,:)
+        row_dww_s   = dww_s_cache(s,:)
+        row_dww_m   = dww_m_cache(s,:)
+        row_mum     = mu(:)
+        row_m1      = 1.d0 - row_mum**2
+        row_diff    = 1.d0 / max(1.d-14, 1.d0 - row_v2)
+
+        row_term_a = row_energy + row_pressure
+        row_term_b = (s1 * row_dww_s)**2 + row_m1 * row_dww_m**2
+        row_term_c = s1 * row_dg_s - row_mum * row_dg_m
+        row_term_d = row_ea * row_pressure * s2
+        row_term_e = s1 * row_dg_s
+        row_term_f = row_m1 * 0.5d0 * row_dg_m - row_mum
+        row_term_g = row_rho * 0.5d0 * ( row_term_d - row_term_e * (0.5d0 * row_term_e + 1.d0) - row_dg_m * row_term_f )
+        row_term_h = s2 * row_m1 * row_e_r**2 * row_term_b
+        row_term_i = row_ea * 0.5d0 * row_term_a * s2 * (1.d0 + row_v2) * row_diff
+
+        S_metric_rho(s,:) = row_e_g * ( row_term_i + row_term_h + row_term_c + row_term_g )
+
+        row_term_j = row_ea * row_pressure * s2
+        row_term_k = 0.5d0 * ( (s1 * row_dg_s)**2 + row_m1 * row_dg_m**2 )
+        S_metric_gama(s,:) = row_e_g * ( row_term_j + row_gama * 0.5d0 * ( row_term_j - row_term_k ) )
+
+        row_term_l = -row_ea * (Omega_c - row_ww) * row_term_a * s2 * row_diff
+        row_term_m = -0.5d0 * row_ea * s2 * ( ((1.d0 + row_v2) * row_energy + 2.d0 * row_v2 * row_pressure) * row_diff )
+        row_term_n = - s1 * ( 2.d0 * row_dr_s + 0.5d0 * row_dg_s )
+        row_term_o =   row_mum * ( 2.d0 * row_dr_m + 0.5d0 * row_dg_m )
+        row_term_p = 0.25d0 * s1**2 * ( 4.d0 * row_dr_s**2 - row_dg_s**2 )
+        row_term_q = 0.25d0 * row_m1 * ( 4.d0 * row_dr_m**2 - row_dg_m**2 )
+        row_term_r = - row_m1 * row_e_r**2 * s2 * row_term_b
+        row_term_s = row_term_m + row_term_n + row_term_o + row_term_p + row_term_q + row_term_r
+
+        S_metric_omega(s,:) = row_e_g * row_e_r * ( row_term_l + row_ww * row_term_s )
+      enddo
+
+      !--- Angular Integration
+      n = 0
+      do k = 1, SDIV
+        do m = 1, MDIV
+          Int_m(m,k) = P_2n(m,n+1) * S_metric_rho(k,m)
+        enddo
+      enddo
+      D1_metric_rho(n+1,:) = simpson_1d( Int_m, mu(1), mu(MDIV) )
+
+      do n = 1, LMAX
+        do k = 1, SDIV
+          do m = 1, MDIV
+            Int_m(m,k) = P_2n(m,n+1) * S_metric_rho(k,m)
+          enddo
+        enddo
+        D1_metric_rho(n+1,:) = simpson_1d( Int_m, mu(1), mu(MDIV) )
+
+        do k = 1, SDIV
+          do m = 1, MDIV
+            Int_m(m,k) = sin_2n_1_theta(m,n) * S_metric_gama(k,m)
+          enddo
+        enddo
+        D1_metric_gama(n+1,:) = simpson_1d( Int_m, mu(1), mu(MDIV) )
+        
+        do k = 1, SDIV
+          do m = 1, MDIV
+            Int_m(m,k) = sin_theta(m) * P1_2n_1(m,n+1) * S_metric_omega(k,m)
+          enddo
+        enddo
+        D1_metric_omega(n+1,:) = simpson_1d( Int_m, mu(1), mu(MDIV) )
+      enddo
+
+      !--- RADIAL INTEGRATION
+      n = 0
+      do s = 1, SDIV
+        do k = 1, SDIV
+          Int_s(k,s) = f_rho(s,n+1,k) * D1_metric_rho(n+1,k)
+        enddo
+      enddo
+      D2_metric_rho(:,n+1)   = simpson_1d( Int_s, s_gp(1), s_gp(MDIV) )
+      D2_metric_gama(:,n+1)  = 0.d0
+      D2_metric_omega(:,n+1) = 0.d0
+
+      do n = 1, LMAX
+        do s = 1, SDIV
+          do k = 1, SDIV
+            Int_s(k,s) = f_rho(s,n+1,  k) * D1_metric_rho(n+1,  k)
+          enddo
+        enddo
+        D2_metric_rho(:,n+1) = simpson_1d( Int_s, s_gp(1), s_gp(MDIV) )
+
+        do s = 1, SDIV
+          do k = 1, SDIV
+            Int_s(k,s) = f_gama(s,n+1,  k)*D1_metric_gama(n+1,  k)
+          enddo
+        enddo
+        D2_metric_gama(:,n+1) = simpson_1d( Int_s, s_gp(1), s_gp(MDIV) )
+
+        do s = 1, SDIV
+          do k = 1, SDIV
+            Int_s(k,s) = merge( f_rho(s,n+1,k)*D1_metric_omega(n+1,k), &
+                f_gama(s,n+1,k)*D1_metric_omega(n+1,k), k < s )
+          enddo
+        enddo
+        D2_metric_omega(:,n+1) = simpson_1d( Int_s, s_gp(1), s_gp(MDIV) )
+      enddo
+      
+      sum_rho   = 0.d0
+      sum_gama  = 0.d0
+      sum_omega = 0.d0
+      ! SUMMATION of COEFFICIENTS
+      do s = 1, SDIV
+        ! Pre-load arrays for D2_metric at s
+        D2_rho_row   = D2_metric_rho  (s,1:LMAX+1)
+        D2_gama_row  = D2_metric_gama (s,1:LMAX+1)
+        D2_omega_row = D2_metric_omega(s,1:LMAX+1)
+
+        do m = 1, MDIV
+          gsm   = gama(s,m)
+          rsm   = rho (s,m)
+          wwsm  = ww  (s,m)
+
+          e_gsm = e_mhalf_cache(s,m)
+          e_rsm = exp(rsm)
+          temp1 = sin_theta(m)
+          
+          ! > Vectorized sum over n (0:LMAX)
+          sum_rho = - e_gsm * sum( P_2n(m,1:LMAX+1) * D2_rho_row )
+
+          if (m == MDIV) then
+            ! m = MDIV: simpler formulas without n-dependence except D2 values
+            sum_gama  = - (2.d0/pi) * e_gsm * sum( D2_gama_row(2:LMAX+1) )
+            sum_omega = e_rsm * e_gsm * sum( D2_omega_row(2:LMAX+1) ) * 0.5d0
+          else
+            ! Build n-dependent factors for gamma and omega
+            nvec = [(n, n=1, LMAX)]
+
+            sin_term = sin_2n_1_theta(m,1:LMAX) / ( (2.d0*nvec - 1.d0) * temp1 )
+            P1_term  = P1_2n_1(m,2:LMAX+1) / ( 2.d0*nvec*(2.d0*nvec - 1.d0)*temp1 )
+
+            sum_gama  = - (2.d0/pi) * e_gsm * sum( sin_term * D2_gama_row(2:LMAX+1) )
+            sum_omega = - e_rsm * e_gsm * sum( P1_term  * D2_omega_row(2:LMAX+1) )
+          endif
+
+          ! > Update fields (vectorizable)
+          rho(s,m)  = rsm  + 1.2 * cf * (sum_rho  - rsm)
+          gama(s,m) = gsm  + cf * (sum_gama - gsm)
+          ww(s,m)   = wwsm + cf * (sum_omega- wwsm)
+        enddo
+      enddo
+
+      ! check for divergence
+      if (abs(rho(2,1))>100.d0 .or. abs(gama(2,1))>300.d0 .or. abs(ww(2,1))>100.d0) then
+        write(*,"(3es18.9)") rho(2,1), gama(2,1), ww(2,1)
+        write(*,*) e_at_h (h_center)/(C * C * KSCALE), h_center, r_ratio
+        stop "Line 300 in spin"
+      endif
+#if defined(Fishbone)
+#else
+      if (r_ratio == 1.d0) then
+        rho(s,:) = rho(s,1)
+        gama(s,:)= gama(s,1)
+        ww(s,:)  = 0.d0
+      endif
+#endif   
+    ! --- the fourth equation
+    
+    ! compute first order derivatives of gama
+      ! alpha
+      alpha(:,:) = 0.d0
+      da_dm(:,:) = 0.0
+
+      do s = 2, SDIV
+        do m = 1, MDIV
+            da_dm(1,m) = 0.d0
+            sgp = s_gp(s)
+            s1  = s1_cache(s) ! c_1 in the paper
+            mum = mu(m)
+            m1  = 1.d0 - mum**2
+            d_gama_s  = dg_s_cache(s,m)
+            d_gama_m  = dg_m_cache(s,m)
+            d_rho_s   = dr_s_cache(s,m)
+            d_rho_m   = dr_m_cache(s,m)
+            d_gama_sm = deriv_sm(gama,s,m)
+                        
+            d_ww_s    = dww_s_cache(s,m)
+            d_ww_m    = dww_m_cache(s,m)
+                        
+            d_gama_ss = s1 * dg_ss_cache(s,m) &
+                      + d_gama_s * ( 1.d0 - 2.d0 * sgp ) / dble(s_pwr)
+            d_gama_mm = m1 * dg_mm_cache(s,m) - 2.d0 * mum * d_gama_m
+
+
+            temp2 = 1.d0/( m1 * (1.d0+s1*d_gama_s)**2 + (-mum+m1*d_gama_m)**2 )
+
+            temp3 = s1 * d_gama_ss + ( s1 * d_gama_s )**2 ! d_gama_ss = (c_1 gama_s),s
+
+            temp4 = d_gama_m * (-mum + m1 * d_gama_m)
+
+            temp5 = ( ( s1 * (d_rho_s+d_gama_s) )**2 - m1*(d_rho_m+d_gama_m)**2 ) &
+              * (-mum + m1*d_gama_m)
+
+            temp6 = s1 * m1 * (  (d_rho_s+d_gama_s) * (d_rho_m+d_gama_m) / 2.d0 &
+              + d_gama_sm + d_gama_s * d_gama_m ) * ( 1.d0 + s1 * d_gama_s )
+
+            temp7 = s1 * mum * d_gama_s * ( 1.d0 + s1 * d_gama_s )
+
+            temp8 = m1 * exp( -2.d0 * rho(s,m) ) * (sgp / (1.d0-sgp) )**(2*s_pwr)
+
+            temp1 = 2.d0 * s1 * m1 * d_ww_s * d_ww_m * ( 1.d0 + s1 * d_gama_s ) &
+              - ( (s1 * d_ww_s)**2 - m1 * d_ww_m**2 ) * (-mum + m1*d_gama_m)
+                  
+            da_dm(s,m) = - ( d_rho_m + d_gama_m ) * 0.5d0 &
+              - temp2 * ( (temp3 - d_gama_mm - temp4) * (-mum + m1 * d_gama_m) * 0.5d0 & ! OK
+              + temp5 * 0.25d0 - temp6  + temp7 + temp8 * temp1 * 0.25d0 )
+        enddo
+      enddo
+
+      do s = 1, SDIV-1
+        alpha(s,1) = 0.d0
+        do m = 1, MDIV-1
+          alpha(s,m+1) = alpha(s,m) + dm * ( da_dm(s,m+1) + da_dm(s,m) ) * 0.5d0
+        enddo
+      enddo
+      alpha(SDIV,:) = 0.d0
+      diverg = .false.
+      inv_r = 1.d0 / r_e_new
+
+      do s = 1, SDIV
+        alpha_end = alpha(s,MDIV)
+        shift = ( gama(s,MDIV) - rho(s,MDIV) ) * 0.5d0
+        do m = 1, MDIV
+          alpha(s,m) = alpha(s,m) - alpha_end + shift
+          if ( .not. diverg .and. alpha(s,m) >= 300.d0) then
+            diverg = .true.
+          end if
+          ww(s,m) = ww(s,m) * inv_r
+        enddo
+      enddo
+      if (diverg) stop "L428, alpha fails"
+      dif = abs(r_e_old-r_e_new) * inv_r
+      n_of_it = n_of_it + 1
+      if (n_of_it == 100) stop "Cannot converge; L404 in spin"
+      !call cpu_time(finish); write(*,*) finish-start; stop
+  enddo
+! --- End of iteration
+
+  ! compute omega
+  do s = 1, SDIV
+    if ( s_gp(s) < s_inner ) then 
+      omg(s,:) = Omega_c / r_e_new
+    else   
+      omg(s,:) = omg(s,:) / r_e_new
+    endif
+  enddo
+  Omega_c  = Omega_c / r_e_new
+  Omega_e  = Omega_c
+  r_e      = r_e_new
+  rho_0    = n0_at_e( energy(1,1) ) * MB
+
+  if (output) then
+    call mass_radius
+    r_inf = r_e_new * sqrt(KAPPA) * (s_gp(SDIV - 1) / ( 1.d0 - s_gp(SDIV - 1) ))**s_pwr
+    M2    = - D2_metric_rho  (SDIV-1,1+1 ) / 2.d0 * r_inf**3 * ( C * C / G / Mass )**3
+    S3    = - D2_metric_omega(SDIV-1,2+1 ) / 2.d0 * r_inf**5 * ( C * C / G / Mass )**4 / sqrt(KAPPA)
+    M4    =   D2_metric_rho  (SDIV-1,2+1 ) / 2.d0 * r_inf**5 * ( C * C / G / Mass )**5
+
+    !write(fil1,"(f6.2)") ang_mom
+    !write(fil2,"(f16.5)") mass_0/MSUN
+    !write(fil3,"(es15.3)") rho_0
+    !write(fil4,"(i6)") SDIV
+    !open(98,file="./Cont/"//trim(adjustl(eos_file))//"_J_"//trim(adjustl(fil1))//&
+    !    "_Mb"//trim(adjustl(fil2))//"_rhoc"//trim(adjustl(fil3))//".dat")
+    !write(98,"(3i5,99es27.17)") SDIV, MDIV, s_pwr, r_e*sqrt(KAPPA)/1.d5, &
+    !  energy(1,1)/(C*C*KSCALE), r_ratio, Omega_e* (C/sqrt(kappa)) , Omega_c* (C/sqrt(kappa)) 
+    !do s = 1, SDIV
+    !  do m = 1, MDIV
+    !    ! r, \theta, \apha, \gamma, \rho, \omega, \phi, \varepsilon, \rho_0, p
+    !    if (enthalpy(s,m) > enthalpy_min) then 
+    !      rho_0 = n0_at_e( energy(s,m) ) * MB
+    !    else 
+    !      rho_0 = 0.d0
+    !    endif
+    !    write(98,"(99es27.17)") s_gp(s), mu(m), alpha(s,m), gama(s,m), rho(s,m), ww(s,m) * (C/sqrt(kappa)), & ! 1-6
+    !      pressure(s,m)/KSCALE, energy(s,m)/(C*C*KSCALE), enthalpy(s,m), rho_0, & ! 7-10
+    !      velocity_sq(s,m), omg(s,m) * (C/sqrt(kappa)) ! 11-12
+    !  enddo
+    !enddo
+    !close(98)
+
+    open(99,file="./Res/res.dat")
+    write(99,"(3i5,99es27.17)") SDIV, MDIV, s_pwr, r_e*sqrt(KAPPA)/1.d5, &
+      energy(1,1)/(C*C*KSCALE), r_ratio, Omega_e* (C/sqrt(kappa)) , Omega_c* (C/sqrt(kappa))
+    do s = 1, SDIV
+      do m = 1, MDIV
+        ! r, \theta, \apha, \gamma, \rho, \omega, \phi, \varepsilon, \rho_0, p
+        if (enthalpy(s,m) > enthalpy_min) then 
+          rho_0 = n0_at_e( energy(s,m) ) * MB
+        else 
+          rho_0 = 0.d0
+        endif
+        write(99,"(99es27.17)") s_gp(s), mu(m), alpha(s,m), gama(s,m), rho(s,m), ww(s,m) * (C/sqrt(kappa)), & ! 1-6
+          pressure(s,m)/KSCALE, energy(s,m)/(C*C*KSCALE), enthalpy(s,m), rho_0, & ! 7-10
+          velocity_sq(s,m), omg(s,m) * (C/sqrt(kappa)) ! 11-12
+      enddo
+    enddo
+    close(99)
+  endif
+
+end subroutine spin
