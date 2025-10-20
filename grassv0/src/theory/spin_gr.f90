@@ -1,4 +1,8 @@
-subroutine spin
+module rotation_gr
+  implicit none
+contains
+
+subroutine spin_gr
 #include "option_macro.h"
   use toolkit_mod
   use simpson_mod
@@ -38,7 +42,6 @@ subroutine spin
   real(8) :: d_gama_s,d_gama_m,d_gama_ss,d_gama_mm,d_gama_sm
   real(8) :: d_rho_s,d_rho_m,d_ww_s,d_ww_m,d_sphi_s,d_sphi_m
   real(8) :: temp1,temp2,temp3,temp4,temp5,temp6,temp7,temp8
-  real(8) :: inv_ds, inv_dm, inv_2ds, inv_2dm
   real(8), dimension(MDIV) :: row_rho, row_gama, row_ww, row_energy, row_pressure
   real(8), dimension(MDIV) :: row_v2, row_e_g, row_e_r, row_ea, row_mum, row_m1
   real(8), dimension(MDIV) :: row_dg_s, row_dg_m, row_dr_s, row_dr_m, row_dww_s, row_dww_m
@@ -56,11 +59,12 @@ subroutine spin
   real(8) :: alpha_end, shift, inv_r
   ! ---------------------------------------------------------------
 
-  dif = 1.d0; n_of_it =0
+  dif = 1.d0
+  n_of_it =0
+  r_e_new = r_e
+  r_e_new_sq = r_e_new**2
 
   s_p = r_ratio**(1.d0/dble(s_pwr)) / ( 1.d0 + r_ratio**(1.d0/dble(s_pwr)) )
-
-  r_e_new = r_e; r_e_new_sq = r_e_new**2
 
   if (.not. allocated(e_g_half_cache)) then
      allocate(e_g_half_cache(SDIV,MDIV), e_mhalf_cache(SDIV,MDIV), e_mrho_cache(SDIV,MDIV), e2alpha_r2_cache(SDIV,MDIV))
@@ -88,7 +92,7 @@ subroutine spin
     
       r_e_old = r_e_new ! only to compute dif
 
-      ! > Compute new r_e
+      ! --- Compute r_e ---
       call interp(s_gp, gama_mu_1, SDIV, s_p, gama_pole_h)
       call interp(s_gp, gama_mu_0, SDIV, s_e, gama_equator_h)
       gama_center_h = gama(1,1) ! hat
@@ -102,11 +106,10 @@ subroutine spin
       !write(*,"(es15.6,A10,es15.6)") r_e_new, "--->", sqrt(r_e_new_sq)
 
       r_e_new = sqrt( r_e_new_sq )
-      if (r_e_new .ne. r_e_new .or. r_e_new/r_e_old > 2) then
-          write(*,"(10es18.9)") grgr; stop 'change in r_e is too dramatic; L72 in spin'
-      endif
+      if (r_e_new/r_e_old > 2) stop "r_e changed too much"
+      if (r_e_new .ne. r_e_new) stop "nan in r_e_new"
 
-      ! > Compute angular velocity Omega
+      ! --- Angular velocity (rigid rotation) ---
       if(r_ratio == 1.d0) then
           Omega_c = 0.d0
       else
@@ -166,62 +169,18 @@ subroutine spin
         end do
       end do
 
-      inv_ds  = 1.d0 / DS
-      inv_dm  = 1.d0 / DM
-      inv_2ds = 0.5d0 * inv_ds
-      inv_2dm = 0.5d0 * inv_dm
-
-      dg_s_cache = 0.d0
-      dr_s_cache = 0.d0
-      dww_s_cache = 0.d0
-      if (SDIV > 1) then
-        dg_s_cache(1,:)    = (gama(2,:) - gama(1,:)) * inv_ds
-        dr_s_cache(1,:)    = (rho(2,:)  - rho(1,:))  * inv_ds
-        dww_s_cache(1,:)   = (ww(2,:)   - ww(1,:))   * inv_ds
-        dg_s_cache(SDIV,:) = (gama(SDIV,:) - gama(SDIV-1,:)) * inv_ds
-        dr_s_cache(SDIV,:) = (rho(SDIV,:)  - rho(SDIV-1,:))  * inv_ds
-        dww_s_cache(SDIV,:)= (ww(SDIV,:)   - ww(SDIV-1,:))   * inv_ds
-      end if
-      if (SDIV > 2) then
-        dg_s_cache(2:SDIV-1,:)  = (gama(3:SDIV,:) - gama(1:SDIV-2,:)) * inv_2ds
-        dr_s_cache(2:SDIV-1,:)  = (rho(3:SDIV,:)  - rho(1:SDIV-2,:))  * inv_2ds
-        dww_s_cache(2:SDIV-1,:) = (ww(3:SDIV,:)   - ww(1:SDIV-2,:))   * inv_2ds
-      end if
-
-      dg_m_cache = 0.d0
-      dr_m_cache = 0.d0
-      dww_m_cache = 0.d0
-      if (MDIV > 1) then
-        dg_m_cache(:,1)    = (gama(:,2) - gama(:,1)) * inv_dm
-        dr_m_cache(:,1)    = (rho(:,2)  - rho(:,1))  * inv_dm
-        dww_m_cache(:,1)   = (ww(:,2)   - ww(:,1))   * inv_dm
-        dg_m_cache(:,MDIV) = (gama(:,MDIV) - gama(:,MDIV-1)) * inv_dm
-        dr_m_cache(:,MDIV) = (rho(:,MDIV)  - rho(:,MDIV-1))  * inv_dm
-        dww_m_cache(:,MDIV)= (ww(:,MDIV)   - ww(:,MDIV-1))   * inv_dm
-      end if
-      if (MDIV > 2) then
-        dg_m_cache(:,2:MDIV-1)  = (gama(:,3:MDIV) - gama(:,1:MDIV-2)) * inv_2dm
-        dr_m_cache(:,2:MDIV-1)  = (rho(:,3:MDIV)  - rho(:,1:MDIV-2))  * inv_2dm
-        dww_m_cache(:,2:MDIV-1) = (ww(:,3:MDIV)   - ww(:,1:MDIV-2))   * inv_2dm
-      end if
-
-      dg_ss_cache = 0.d0
-      if (SDIV > 1) then
-        dg_ss_cache(1,:)    = (dg_s_cache(2,:) - dg_s_cache(1,:)) * inv_ds
-        dg_ss_cache(SDIV,:) = (dg_s_cache(SDIV,:) - dg_s_cache(SDIV-1,:)) * inv_ds
-      end if
-      if (SDIV > 2) then
-        dg_ss_cache(2:SDIV-1,:) = (dg_s_cache(3:SDIV,:) - dg_s_cache(1:SDIV-2,:)) * inv_2ds
-      end if
-
-      dg_mm_cache = 0.d0
-      if (MDIV > 1) then
-        dg_mm_cache(:,1)    = (dg_m_cache(:,2) - dg_m_cache(:,1)) * inv_dm
-        dg_mm_cache(:,MDIV) = (dg_m_cache(:,MDIV) - dg_m_cache(:,MDIV-1)) * inv_dm
-      end if
-      if (MDIV > 2) then
-        dg_mm_cache(:,2:MDIV-1) = (dg_m_cache(:,3:MDIV) - dg_m_cache(:,1:MDIV-2)) * inv_2dm
-      end if
+      do s = 1, SDIV
+        do m = 1, MDIV
+          dg_s_cache(s,m)  = deriv_s(gama, s, m)
+          dr_s_cache(s,m)  = deriv_s(rho,  s, m)
+          dww_s_cache(s,m) = deriv_s(ww,   s, m)
+          dg_m_cache(s,m)  = deriv_m(gama, s, m)
+          dr_m_cache(s,m)  = deriv_m(rho,  s, m)
+          dww_m_cache(s,m) = deriv_m(ww,   s, m)
+          dg_ss_cache(s,m) = deriv_ss(gama, s, m)
+          dg_mm_cache(s,m) = deriv_mm(gama, s, m)
+        end do
+      end do
 
       !> Compute metric potentials (use caches)
       S_metric_rho   = 0.d0
@@ -302,7 +261,6 @@ subroutine spin
           enddo
         enddo
         D1_metric_gama(n+1,:) = simpson_1d( Int_m, mu(1), mu(MDIV) )
-        
         do k = 1, SDIV
           do m = 1, MDIV
             Int_m(m,k) = sin_theta(m) * P1_2n_1(m,n+1) * S_metric_omega(k,m)
@@ -548,4 +506,6 @@ subroutine spin
     close(99)
   endif
 
-end subroutine spin
+end subroutine spin_gr
+
+end module rotation_gr

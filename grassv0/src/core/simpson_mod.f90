@@ -1,7 +1,5 @@
 module simpson_mod
   implicit none
-  private
-  public :: simpson_1d
 
 contains
 

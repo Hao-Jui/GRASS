@@ -40,6 +40,7 @@ subroutine sphere
           lambda_s = 2.d0 * log( 1.d0 + m_final / (2.d0*r_is_s) )
           nu_s     = log( (1.d0 - m_final / (2.d0*r_is_s)) / (1.d0 + m_final / (2.d0 * r_is_s) ) )
       endif
+      sphi (s,:) = ( 1.d0 - exp(nu_s) ) /1.d1 * exp(-sqrt(mphi_r)*r_is_s) 
       rho  (s,:) = nu_s-lambda_s
       gama (s,:) = lambda_s+nu_s
       alpha(s,:) = (lambda_s-nu_s) / 2.d0

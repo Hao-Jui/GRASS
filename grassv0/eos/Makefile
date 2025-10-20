@@ -3,14 +3,13 @@ PROG = a.out
 # compiler
 FXX = gfortran
 #FXX = ifort
-FFLAGS = -O3 -ffast-math -funroll-loops -march=native -cpp -Wconversion #-fopenmp #-fbacktrace -g --warn-all -fmax-stack-var-size=10
-
+# comiler option
+FFLAGS= -O3 -fopenmp -g -cpp #--warn-all
+#FFLAGS = -warn nousage -m64 -xHOST -O3 -ip -prec-div -pg
 # suffix rule
 .SUFFIXES: .f90 .c .o .mod
 # source file
-SRC = para_mod.f90 simpson_mod.f90 newton_mod.f90 toolkit_mod.f90 eos.f90 grid.f90 NAG.f90 set_disk.f90 \
-	sphere.f90 spin.f90 const_j.f90 uryu.f90 analysis_v2.f90 restart_read.f90 \
-	brent.f90 shoot_v2.f90 main.f90
+SRC = make_gamma_tab.f90
 
 OBJS = $(SRC:%.f90=%.o)
 
