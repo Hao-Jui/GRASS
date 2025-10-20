@@ -10,7 +10,9 @@ module shoot_solver_mod
     real(8) :: x_prev(2)    = 0.d0
     real(8) :: F_prev(2)    = 0.d0
   end type newton_state
+
 contains
+
   subroutine reset_newton_state(state)
     type(newton_state), intent(inout) :: state
     state%has_jacobian = .false.
@@ -19,7 +21,6 @@ contains
     state%x_prev       = 0.d0
     state%F_prev       = 0.d0
   end subroutine reset_newton_state
-
   subroutine to_solver_coords(hc, rep, x)
     real(8), intent(in)  :: hc, rep
     real(8), intent(out) :: x(2)
@@ -29,7 +30,6 @@ contains
     x(1) = log(max(hc, 1.d-12))
     x(2) = log(rep_clip / (1.d0 - rep_clip))
   end subroutine to_solver_coords
-
   subroutine from_solver_coords(x, hc, rep)
     real(8), intent(in)  :: x(2)
     real(8), intent(out) :: hc, rep
@@ -40,7 +40,6 @@ contains
     rep = 1.d0 / (1.d0 + exp_arg)
     rep = min(max(rep, r_eps), 1.d0 - r_eps)
   end subroutine from_solver_coords
-
   subroutine clamp_step(delta)
     real(8), intent(inout) :: delta(2)
     delta = max(-max_step, min(delta, max_step))
@@ -61,7 +60,6 @@ contains
       solve_linear = .true.
     endif
   end function solve_linear
-
   subroutine broyden_update(state, x, F)
     type(newton_state), intent(inout) :: state
     real(8), intent(in) :: x(2), F(2)
@@ -79,7 +77,6 @@ contains
 
     state%J = state%J + matmul(reshape(dF - Jdx, (/2,1/)), reshape(dx, (/1,2/))) / denom
   end subroutine broyden_update
-
   subroutine commit_state(state, x, F)
     type(newton_state), intent(inout) :: state
     real(8), intent(in) :: x(2), F(2)
@@ -93,6 +90,7 @@ end module shoot_solver_mod
 
 module shoot_newton_helpers
   use para_mod
+  use rotation_dispatch, only: call_rotation_solver
   use shoot_solver_mod
   implicit none
 contains
@@ -101,21 +99,27 @@ contains
     real(8), intent(out) :: F(2), rho0, ee, er
     real(8) :: n0_at_h, e_at_h
     external :: n0_at_h, e_at_h
-    external :: call_rotation_solver, mass_radius
+    external :: mass_radius
     real(8) :: deviA, deviB
 
     r_ratio  = rep
     h_center = hc
 
+    write(*,"(A40,2es18.9)") "(rep, hc) to evaluate_solution :", rep, hc
     call call_rotation_solver
     call mass_radius
-
+    
     rho0 = n0_at_h(h_center)
     ee   = e_at_h (h_center)
-
-    deviA = Mass_0/MSUN/Mb_goal - 1.d0
-    deviB = ( Omega_e - Omega_K / (C/sqrt(kappa)) ) / 5.d0
-
+    
+    if (has_scalar) then
+      deviA = mass/MSUN - M_goal
+      deviB = ang_mom - J_goal
+    else
+      deviA = mass_0/MSUN/Mb_goal - 1.d0
+      deviB = ( Omega_e - Omega_K / (C/sqrt(kappa)) ) / 5.d0
+    end if
+  
     F(1) = deviA
     F(2) = deviB
     er   = abs(deviA) + abs(deviB)
@@ -148,4 +152,3 @@ contains
   end subroutine build_jacobian
 
 end module shoot_newton_helpers
-
