@@ -1,12 +1,14 @@
 subroutine mass_radius
   use para_mod
-  use toolkit_mod, only: interp, deriv_s, deriv_s_1d, write_eq_profile, integrate_profiles
+  use miscellaneous_mod, only: write_eq_profile
+  use toolkit_mod, only: interp, deriv_s, deriv_s_1d, integrate_profiles
+  use ad_mod, only: dual, dual_var
   implicit none
   integer :: s, m
   real(8) :: s_p, r_p
   real(8) :: gama_pole, rho_pole, gama_equator, rho_equator, ww_equator, sphi_equator
   real(8) :: doe, dge, dre, dve, vek
-  real(8) :: sqrt_term, mphi_local, dp_eq, de_eq
+  real(8) :: sqrt_term, mphi_local
   real(8) :: s1, s_1, r_h
   real(8), dimension(MDIV) :: scal, acoup, vphi, vel_safe
   real(8), dimension(MDIV,5) :: mu_integrand_buffer
@@ -14,31 +16,29 @@ subroutine mass_radius
   real(8), dimension(SDIV) :: d_m, d_m0, d_mp, d_j, d_t
   real(8), dimension(SDIV) :: d_r_e, d_g_e, d_o_e, d_v_e
   real(8), dimension(SDIV) :: dd_r_e, dd_g_e, dd_o_e
-  real(8), dimension(SDIV) :: gama_mu_0, rho_mu_0, ww_mu_0, gama_mu_1, rho_mu_1, sphi_mu_0, sound_speed
+  real(8), dimension(SDIV) :: gama_mu_0, rho_mu_0, ww_mu_0, gama_mu_1, rho_mu_1, sphi_mu_0
+  real(8), dimension(SDIV) :: sound_speed, sound_slope
   real(8), dimension(SDIV,MDIV) :: rho_0
   real(8), dimension(SDIV,5) :: integrand_buffer
   real(8), dimension(5) :: integral_results, mu_results
   real(8) :: l_minus, e_minus
+  character(64) :: profile_file, mphi_str, B_str
   real(8) :: j_local
   logical :: use_scalar ! local snapshot of the flag
   real(8), external :: n0_at_e
+  type(dual) :: energy_dual, pressure_dual
+
+  interface
+    function p_at_e_dual(ee) result(res)
+      import :: dual
+      implicit none
+      type(dual), intent(in) :: ee
+      type(dual) :: res
+    end function p_at_e_dual
+  end interface
 
   use_scalar = has_scalar
   s_p = r_ratio**(1.d0/dble(s_pwr)) / (1.d0 + r_ratio**(1.d0/dble(s_pwr)))
-
-  if (output) then
-    do s = 1, SDIV
-      de_eq = deriv_s(energy, s, 1)
-      dp_eq = deriv_s(pressure, s, 1)
-      if (abs(de_eq) > 1.d-12) then
-        sound_speed(s) = dp_eq / de_eq
-      else
-        sound_speed(s) = 0.d0
-      end if
-    end do
-    call write_eq_profile("./Cont/1dprofile.dat", 2*SDIV/3, &
-         omg(:,1)/(2.d0*pi)*(C/sqrt(kappa)), enthalpy(:,1), sound_speed, F_j(:,1))
-  end if
 
   do s = 1, SDIV
     gama_mu_1(s) = gama(s,MDIV)
@@ -49,7 +49,7 @@ subroutine mass_radius
     if (use_scalar) sphi_mu_0(s) = sphi(s,1)
     do m = 1, MDIV
       if (energy(s,m) > e_surface) then
-        rho_0(s,m) = n0_at_e(energy(s,m)) * MB * KSCALE * C**2
+        rho_0(s,m) = n0_at_e(energy(s,m)) * MB * KSCALE*C**2 ! * KSCALE*C**2 is necessary here to compute Mb
       else
         rho_0(s,m) = 0.d0
       end if
@@ -57,9 +57,33 @@ subroutine mass_radius
   end do
 
   call interp(s_gp, gama_mu_1, SDIV, s_p, gama_pole)
-  call interp(s_gp, rho_mu_1,  SDIV, s_p, rho_pole)
+  call interp(s_gp,  rho_mu_1,  SDIV, s_p, rho_pole)
   call interp(s_gp, gama_mu_0, SDIV, s_e, gama_equator)
-  call interp(s_gp, rho_mu_0,  SDIV, s_e, rho_equator)
+  call interp(s_gp,  rho_mu_0,  SDIV, s_e, rho_equator)
+  call interp(s_gp, sphi(:,1),  SDIV, s_e, sphi_equator)
+
+  if (output) then
+    do s = 1, SDIV
+      if (energy(s,1) > 0.d0) then
+        energy_dual = dual_var(energy(s,1))
+        pressure_dual = p_at_e_dual(energy_dual)
+        sound_speed(s) = pressure_dual%der
+      else
+        sound_speed(s) = 0.d0
+      end if
+    end do
+    do s = 1, SDIV 
+      sound_slope(s) = deriv_s_1d(sound_speed, s)
+    enddo
+
+    write(mphi_str,"(f10.0)") mphi_goal
+    write(B_str,"(f10.0)") B_goal
+    profile_file = "./Cont/1dprofile_"//trim(adjustl(B_str))//"dat"
+    call write_eq_profile(profile_file, 2*SDIV/3, &
+         omg(:,1)/(2.d0*pi)*(C/sqrt(kappa)), F_j(:,1), &
+         enthalpy(:,1), rho_0(:,1)/(KSCALE*C**2)/ n_sat, sound_speed, sound_slope, &
+         sphi(:,1) )
+  end if
 
   Mass   = 0.d0
   mass_0 = 0.d0
@@ -83,7 +107,8 @@ subroutine mass_radius
       mu_integrand_buffer(:,1) = exp(2.d0*alpha(s,:)+gama(s,:)) * &
                                  ( ((energy(s,:)+pressure(s,:))*acoup**4/(1.d0-vel_safe)) * &
                                    (1.d0 + vel_safe + 2.d0*s_gp(s)*sqrt(vel_safe)/(1.d0-s_gp(s)) * &
-                                    sqrt(1.d0-mu(:)**2) * r_e * ww(s,:) * exp(-rho(s,:))) + 2.d0*pressure(s,:)*acoup**4 - vphi/(2.d0*pi) )
+                                    sqrt(1.d0-mu(:)**2) * r_e * ww(s,:) * exp(-rho(s,:))) &
+                                    + 2.d0*pressure(s,:)*acoup**4 - vphi/(2.d0*pi) )
       mu_integrand_buffer(:,2) = exp(2.d0*alpha(s,:) + (gama(s,:) - rho(s,:))/2.d0) * rho_0(s,:) * acoup**3 / sqrt(1.d0-vel_safe)
       mu_integrand_buffer(:,3) = exp(2.d0*alpha(s,:) + (gama(s,:) - rho(s,:))/2.d0) * energy(s,:)*acoup**4 / sqrt(1.d0-vel_safe)
       mu_integrand_buffer(:,4) = sqrt(1.d0-mu(:)**2) * exp(2.d0*alpha(s,:)+gama(s,:)-rho(s,:)) * &

@@ -117,86 +117,33 @@ contains
 
   end subroutine interp_pt
 
-  subroutine write_eq_profile(file_name, s_max, column1, column2, column3, column4, column5)
-    use para_mod, only : s_gp, s_pwr, SDIV
+  subroutine interp_dual(xp, yp, np, xb, yb)
+    use ad_mod
     implicit none
-    character(*), intent(in) :: file_name
-    integer, intent(in) :: s_max
-    real(8), intent(in) :: column1(:)
-    real(8), intent(in), optional :: column2(:), column3(:), column4(:), column5(:)
-    integer :: s, unit, ios, nvals, n_points
-    real(8) :: row_values(6)
+    integer, intent(in) :: np
+    real(8), intent(in) :: xp(np), yp(np)
+    type(dual), intent(in) :: xb
+    type(dual), intent(out) :: yb
+    integer :: n_nearest_pt, ii, kk, ir
+    integer, parameter :: n_order = 4
+    type(dual) :: fr
 
-    if (s_max < 1) return
-    if (s_max > SDIV) then
-      write(*,*) "write_eq_profile: s_max truncated for file ", trim(file_name)
-    end if
-    n_points = min(s_max, SDIV)
+    n_nearest_pt = minloc(abs(xb%val - xp),1)
+    ir = min(np - n_order, max(1 + n_order, n_nearest_pt - 1))
 
-    if (size(column1) < n_points) then
-      write(*,*) "write_eq_profile: column1 too short for file ", trim(file_name)
-      return
-    end if
-    if (present(column2)) then
-      if (size(column2) < n_points) then
-        write(*,*) "write_eq_profile: column2 too short for file ", trim(file_name)
-        return
-      end if
-    end if
-    if (present(column3)) then
-      if (size(column3) < n_points) then
-        write(*,*) "write_eq_profile: column3 too short for file ", trim(file_name)
-        return
-      end if
-    end if
-    if (present(column4)) then
-      if (size(column4) < n_points) then
-        write(*,*) "write_eq_profile: column4 too short for file ", trim(file_name)
-        return
-      end if
-    end if
-    if (present(column5)) then
-      if (size(column5) < n_points) then
-        write(*,*) "write_eq_profile: column5 too short for file ", trim(file_name)
-        return
-      end if
-    end if
-
-    open(newunit=unit, file=file_name, status="replace", action="write", iostat=ios)
-    if (ios /= 0) then
-      write(*,*) "write_eq_profile: failed to open file ", trim(file_name)
-      return
-    end if
-
-    do s = 1, n_points
-      row_values = 0.d0
-      nvals = 1
-      row_values(1) = (s_gp(s) / (1.d0 - s_gp(s)))**s_pwr
-      nvals = nvals + 1
-      row_values(nvals) = column1(s)
-      if (present(column2)) then
-        nvals = nvals + 1
-        row_values(nvals) = column2(s)
-      end if
-      if (present(column3)) then
-        nvals = nvals + 1
-        row_values(nvals) = column3(s)
-      end if
-      if (present(column4)) then
-        nvals = nvals + 1
-        row_values(nvals) = column4(s)
-      end if
-      if (present(column5)) then
-        nvals = nvals + 1
-        row_values(nvals) = column5(s)
-      end if
-      write(unit,"(99es18.9)") row_values(1:nvals)
+    yb = dual_const(0.d0)
+    do ii = -n_order, n_order
+      fr = dual_const(1.d0)
+      do kk = -n_order, n_order
+        if (ii == kk) cycle
+        fr = fr * (xb - dual_const(xp(ir+kk))) / dual_const(xp(ir+ii) - xp(ir+kk))
+      end do
+      yb = yb + fr * dual_const(yp(ir+ii))
     end do
-
-    close(unit)
-  end subroutine write_eq_profile
+  end subroutine interp_dual
 
   subroutine integrate_profiles(x, values, results, err_estimates, ifails)
+    use nag_compat_mod, only: d01gaf
     implicit none
     real(8), intent(in) :: x(:)
     real(8), intent(in) :: values(:, :)
@@ -206,7 +153,6 @@ contains
     integer :: n_points, n_cols, i
     real(8) :: err_local
     integer :: ifail_local
-    external :: d01gaf
 
     n_points = size(x)
     if (size(values, 1) /= n_points) then
@@ -240,6 +186,16 @@ contains
       if (present(ifails)) ifails(i) = ifail_local
     end do
   end subroutine integrate_profiles
+
+  pure function cumsum(x) result(y)
+    real(8), intent(in) :: x(:)
+    real(8) :: y(size(x))
+    integer :: i
+    y(1) = x(1)
+    do i = 2, size(x)
+      y(i) = y(i-1) + x(i)
+    end do
+  end function
 
   !===========================================================
   ! First and second order derivatives in s and m directions

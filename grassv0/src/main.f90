@@ -16,7 +16,7 @@ program rns
   print *, " "
   if (has_scalar) then
     write(*,"(A32,es12.6,A11,f10.2,A2)") &
-    "Theory: Scalar-Tensor  ( mphi = ", mphi_goal*1.33d-10, "eV,  B = ", B_goal, " )"
+    "Theory: Scalar-Tensor  ( mphi = ", mphi_goal*scalarton, "eV,  B = ", B_goal, " )"
   else
     write(*,*) "Theory: General Relativity"
   end if
@@ -24,7 +24,12 @@ program rns
   print *, " "
 
   write(*,'(1X,A)') repeat('-', 36)
-  write(*,'(1X,A)') "Rotation Law: Uniform"
+  select case (trim(adjustl(solver_type)))
+  case ("const_j")
+    write(*,'(1X,A,F8.3,A)') "Rotation Law: Constant-J (A^-1 = ", 1.d0 / A_diff, ")"
+  case default
+    write(*,'(1X,A)') "Rotation Law: Uniform"
+  end select
   write(*,'(1X,A)') repeat('-', 36)
 
   call make_grid
@@ -36,6 +41,7 @@ program rns
   
   !call debug_mod_bessel; stop "debug_mod_bessel output written"
   
+  !call MRcurve
   call shoot_v2
 
 end program rns

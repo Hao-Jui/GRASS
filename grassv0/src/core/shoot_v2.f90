@@ -1,29 +1,36 @@
 subroutine initialize_starting_model(p_at_e, h_at_p)
 #include "option_macro.h"
   use para_mod
+  use rotation_dispatch, only: call_rotation_solver
   implicit none
   real(8), external :: p_at_e, h_at_p
-  external :: sphere, restart_read, refine_read
+  external :: sphere, restart_read, refine_read, regrid_read
+  real(8) :: target_mphi
 
-#if defined(restart)
+#if defined(regrid)
+  call regrid_read(SDIV, MDIV)
+  e_center = e_center * C * C * KSCALE
+  p_center = p_at_e(e_center)
+  h_center = h_at_p(p_center)
+#elif defined(restart)
   call restart_read
   r_ratio  = 0.5d0
   e_center = e_center * C * C * KSCALE
   p_center = p_at_e(e_center)
   h_center = h_at_p(p_center)
-#elif defined(refine)
-  call refine_read
-  e_center = e_center * C * C * KSCALE
-  p_center = p_at_e(e_center)
-  h_center = h_at_p(p_center)
 #else
   r_ratio  = 1.d0
-  e_center = 6.d14
+  e_center = .9d15
     
   e_center = e_center * C * C * KSCALE
   p_center = p_at_e(e_center)
   h_center = h_at_p(p_center)
   call sphere
+
+  if (has_scalar .and. mphi_goal > mphi_burn_threshold) then
+    target_mphi = mphi_goal
+    call perform_scalar_burn(target_mphi)
+  end if
 #endif
 
   if (has_scalar) then
@@ -32,12 +39,53 @@ subroutine initialize_starting_model(p_at_e, h_at_p)
   end if
 end subroutine initialize_starting_model
 
+subroutine perform_scalar_burn(target_mphi)
+#include "option_macro.h"
+  use para_mod
+  use rotation_dispatch, only: call_rotation_solver
+  implicit none
+  real(8), intent(in) :: target_mphi
+  real(8) :: current_mphi
+  integer :: burn_iter
+  character(100) :: string
+
+  if (.not. has_scalar) return
+
+  print *, " ", "scalar burn stage:  (B, mphi, sphi_c, sphi_m)"
+  B_coup = B_burn_init
+  mphi_r = (mphi_burn_seed / l_uni)**2 * KAPPA / 1.d10
+  call call_rotation_solver()
+  current_mphi = sqrt(mphi_r*1.d10/KAPPA) * l_uni
+
+  burn_iter = 0
+  do while (current_mphi < target_mphi .and. burn_iter < scalar_burn_max_iter)
+    call call_rotation_solver()
+    B_coup = B_coup * 1.5d0
+    if ( sphi_m < 0.6d0 ) then
+      mphi_r = mphi_r * 1.1d0
+    else
+      mphi_r = mphi_r * 3.0d0
+    endif
+    current_mphi = sqrt(mphi_r*1.d10/KAPPA) * l_uni
+    if ( mod(burn_iter,10)== 0 ) write(*,"(i3,A,2(es12.3),A,2(1X,ES18.9))") burn_iter+1, ") ",B_coup, current_mphi, "  |", sphi_c, sphi_m
+    burn_iter = burn_iter + 1
+  end do
+  output = .true.; call call_rotation_solver(); output = .false.
+  write(string,"(f12.3)") sphi_m
+  if (burn_iter >= scalar_burn_max_iter .and. current_mphi < target_mphi) &
+  write(unit=*, fmt=*) "scalar burn stage reached iteration limit before hitting target mass."
+  print *, " ", merge("*** initial guess is non-scalarized", &
+                    "*** Starts with sphi max : "//trim(adjustl(string)), &
+                    sphi_m < 1.d-3), " "
+end subroutine perform_scalar_burn
+
 subroutine shoot_v2
 #include "option_macro.h"
   use para_mod
   use shoot_solver_mod
   use shoot_solver_mod_1d
   use rotation_dispatch, only: call_rotation_solver
+  use miscellaneous_mod, only: log_kepler_sequence
   use shoot_newton_helpers, only: evaluate_solution, build_jacobian
   use shoot_newton_helpers_1d, only: evaluate_solution_1d, build_jacobian_1d
   implicit none
@@ -53,15 +101,18 @@ subroutine shoot_v2
 
   call initialize_starting_model(p_at_e, h_at_p)
 
-  write(*,*) " "
+  write(unit=*, fmt=*) " "
 
   iteration_cap = 1
 
   do i_idx = 1, iteration_cap
     it = 1
     er = 1.d99
-    call reset_newton_state(solver_state)
-    call reset_newton_state_1d(solver_state_1d)
+    if (use_shoot_1d) then
+      call reset_newton_state_1d(solver_state_1d)
+    else
+      call reset_newton_state(solver_state)
+    endif
     output = .false.
 
     do
@@ -124,7 +175,7 @@ subroutine shoot_v2
         r_ratio  = r_new
         solver_state%has_jacobian = .true.
       end if
-
+      
       it = it + 1
       if (it == 1000) stop "Iteration may never converge."
     end do
@@ -132,56 +183,16 @@ subroutine shoot_v2
     output = .true.
     call call_rotation_solver
     call mass_radius
-    
+
     rho0 = n0_at_h(h_center)
     ee   = e_at_h(h_center)
-    write(*,*) " "
+    write(unit=*, fmt=*) " "
     call print_converged_block(rho0, ee)
 
-    call log_kepler_sequence()
-  end do
+    !call log_kepler_sequence()
+  end do ! looping models
 
 end subroutine shoot_v2
-
-subroutine log_kepler_sequence()
-#include "option_macro.h"
-  use para_mod
-  implicit none
-  integer :: i
-  real(8) :: min_Vrr
-
-  min_Vrr = 1.d10
-  i_isco_m = 1
-  do i = res, res*5/3
-    if (min_Vrr > abs(V_rr_m(i))) then
-      i_isco_m = i
-      min_Vrr = abs(V_rr_m(i))
-    endif
-  enddo
-
-  min_Vrr = 1.d10
-  i_isco_p = 1
-  do i = res, res*5/3
-    if (min_Vrr > abs(V_rr_p(i))) then
-      i_isco_p = i
-      min_Vrr = abs(V_rr_p(i))
-    endif
-  enddo
-
-  open(771,file="./Cont/Kep_"//trim(adjustl(eos_file))//".log",position='append')
-  write(771,"(99es18.9)") omega_c / 2.d0 / pi * (C/sqrt(kappa)), &
-                          chi, &
-                          s_gp(i_isco_m) / (1.d0-s_gp(i_isco_m)), &
-                          s_gp(i_isco_p) / (1.d0-s_gp(i_isco_p)), &
-                          r_e*sqrt(KAPPA) / 1.d5, &
-                          mass / MSUN, &
-                          (C/sqrt(kappa)) * v_minus(i_isco_m) / r_e, &
-                          (C/sqrt(kappa)) * v_plus(i_isco_p) / r_e, &
-                          ( Omega_e * (C/sqrt(kappa)) ) / Omega_K, Mb_goal, &
-                          sphi_c
-  close(771)
-  Mb_goal = Mb_goal + 0.05d0
-end subroutine log_kepler_sequence
 
 subroutine print_iter_status(it, rho0, ee, er)
   use para_mod
@@ -189,7 +200,7 @@ subroutine print_iter_status(it, rho0, ee, er)
   integer, intent(in) :: it
   real(8), intent(in) :: rho0, ee, er
 
-  write(*,*) " ===================================="
+  write(unit=*, fmt=*) " ===================================="
   write(*,"(A10,I6)")           " iter :", it/10
   if (has_scalar) then
     write(*,"(A10,ES18.9)")     " Bcoup:", B_coup
@@ -212,8 +223,8 @@ subroutine print_iter_status(it, rho0, ee, er)
     write(*,"(A10,2ES18.9)")    "Om_K/e:", Omega_K/(2.d0*pi), Omega_e/(2.d0*pi)*(C/sqrt(kappa))
   end if
   write(*,"(A10,3ES18.9)")      "er    :", er
-  write(*,*) " ===================================="
-  write(*,*) " "
+  write(unit=*, fmt=*) " ===================================="
+  write(unit=*, fmt=*) " "
 end subroutine print_iter_status
 
 subroutine print_converged_block(rho0, ee)
@@ -229,8 +240,8 @@ subroutine print_converged_block(rho0, ee)
     open(221, file="./Cont/properties.dat")
   end if
 
-  write(*,*) " ===================================="
-  write(*,*) "              Converged              "
+  write(unit=*, fmt=*) " ===================================="
+  write(unit=*, fmt=*) "              Converged              "
   do i = 1, 2
      write(6+215*(i-1),"(A18,ES18.9,A8,ES18.9)")  &
           "   Central rho =", rho0*MB,"g/cm^3", rho0*MB*rho_uni
@@ -251,7 +262,7 @@ subroutine print_converged_block(rho0, ee)
        write(6+215*(i-1),"(A18,ES18.9)")          "    Coupling B =", B_coup
        write(6+215*(i-1),"(A18,ES18.9)")          "   Scalar mass =", sqrt(mphi_r*1.d10/KAPPA)*l_uni
         write(6+215*(i-1),"(A18,ES18.9)")         "     varphi(0) =", sphi_c
-        write(6+215*(i-1),"(A18,ES18.9)")         "    varphi_max =", maxval( sphi(:,1) * sqrt(B_coup) )
+        write(6+215*(i-1),"(A18,ES18.9)")         "    varphi_max =", sphi_m
      else
 #ifndef Fishbone
        write(6+215*(i-1),"(A18,F18.9)")           "        M2/M^3 =", M2
@@ -264,12 +275,13 @@ subroutine print_converged_block(rho0, ee)
      write(6+215*(i-1),"(A18,F18.9,A4)")          "       Areal R =", r_circ/1.d5,"km"
   end do
 
-  write(*,*) " "
-  write(*,*) "In code unit:"
+  write(unit=*, fmt=*) " "
+  write(unit=*, fmt=*) "In code unit:"
   write(*,"(A6,ES18.9,2X,A4,ES18.9,2X,A5,ES18.9,2X,A8,ES18.9)")  &
        "h_c", h_center, "r_e", r_e, "Fmax", Fmax_h, "Omega_e", Omega_e*r_e
-  write(*,*) " ===================================="
+  write(unit=*, fmt=*) " ===================================="
   close(221)
-  write(*,*) " "
-  write(*,*) "Completed!"
+  write(unit=*, fmt=*) " "
+  write(unit=*, fmt=*) "Completed!"
+  call flush(6)
 end subroutine print_converged_block
