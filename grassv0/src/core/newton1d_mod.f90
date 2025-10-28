@@ -93,7 +93,7 @@ contains
     rho0 = n0_at_h(h_center)
     ee   = e_at_h (h_center)
 
-    devi = mass/MSUN - M_goal
+    devi = mass_0/MSUN - Mb_goal
 
     F = devi
   end subroutine evaluate_solution_1d
@@ -118,6 +118,7 @@ contains
     state%has_prev     = .false.
 
     call from_solver_coord_1d(x, hc)
+    write(*,*) hc_p, hc
     call evaluate_solution_1d(hc, rep, F, rho0, ee)
   end subroutine build_jacobian_1d
 

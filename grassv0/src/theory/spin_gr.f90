@@ -6,15 +6,19 @@ subroutine spin_gr
 #include "option_macro.h"
   use toolkit_mod
   use simpson_mod
+  use nag_compat_mod, only: d01gaf
   use para_mod
+  use miscellaneous_mod, only: spectral_tail_fit, integrate_column_spline, composite_richardson
   implicit none
   integer :: m, s, n, k, n_of_it, ifail
+  integer :: tail_unit, tail_start, tail_idx
   real(8) :: r_p, s_p, r_e_old, dif
   real(8) :: r_e_new, r_e_new_sq, grgr, term_in_Omega_h
   real(8) :: gama_pole_h, gama_center_h, gama_equator_h
   real(8) :: rho_pole_h, rho_center_h, rho_equator_h, ww_equator_h
   real(8) :: er2, rho_0, r_inf
-  logical :: valid(MDIV), diverg
+  real(8) :: c0, c1
+  logical :: valid(MDIV), diverg, tail_ok
   character(32) :: fil1, fil2, fil3, fil4, fil5, fil6
 
   ! externs used in precompute
@@ -34,7 +38,7 @@ subroutine spin_gr
   real(8), dimension(LMAX+1,SDIV) :: D1_metric_rho, D1_metric_gama, D1_metric_omega, D1_metric_sphi
   real(8), dimension(SDIV,LMAX+1) :: D2_metric_rho, D2_metric_gama, D2_metric_omega, D2_metric_sphi
   real(8), dimension(MDIV,SDIV) :: Int_m
-  real(8), dimension(SDIV,SDIV) :: Int_s
+  real(8), dimension(SDIV) :: Int_s
 
   ! local temps
   real(8) :: sgp, mum, s_1, s1, s2, m1, ea
@@ -238,76 +242,54 @@ subroutine spin_gr
         S_metric_omega(s,:) = row_e_g * row_e_r * ( row_term_l + row_ww * row_term_s )
       enddo
 
-      !--- Angular Integration
-      n = 0
-      do k = 1, SDIV
-        do m = 1, MDIV
-          Int_m(m,k) = P_2n(m,n+1) * S_metric_rho(k,m)
-        enddo
-      enddo
-      D1_metric_rho(n+1,:) = simpson_1d( Int_m, mu(1), mu(MDIV) )
 
-      do n = 1, LMAX
-        do k = 1, SDIV
-          do m = 1, MDIV
-            Int_m(m,k) = P_2n(m,n+1) * S_metric_rho(k,m)
-          enddo
-        enddo
-        D1_metric_rho(n+1,:) = simpson_1d( Int_m, mu(1), mu(MDIV) )
+      ! ---------------------------------------------------------------
+      ! ANGULAR INTEGRATION
+      ! ---------------------------------------------------------------
+      call integrate_mu(S_metric_rho, S_metric_gama, S_metric_omega, &
+                        D1_metric_rho, D1_metric_gama, D1_metric_omega, Int_m)
 
-        do k = 1, SDIV
-          do m = 1, MDIV
-            Int_m(m,k) = sin_2n_1_theta(m,n) * S_metric_gama(k,m)
-          enddo
-        enddo
-        D1_metric_gama(n+1,:) = simpson_1d( Int_m, mu(1), mu(MDIV) )
-        do k = 1, SDIV
-          do m = 1, MDIV
-            Int_m(m,k) = sin_theta(m) * P1_2n_1(m,n+1) * S_metric_omega(k,m)
-          enddo
-        enddo
-        D1_metric_omega(n+1,:) = simpson_1d( Int_m, mu(1), mu(MDIV) )
-      enddo
-
-      !--- RADIAL INTEGRATION
+      ! ---------------------------------------------------------------
+      ! RADIAL INTEGRATION
+      ! ---------------------------------------------------------------
+      ifail = 0
+      er2   = 0.d0
       n = 0
       do s = 1, SDIV
         do k = 1, SDIV
-          Int_s(k,s) = f_rho(s,n+1,k) * D1_metric_rho(n+1,k)
+          Int_s(k) = f_rho(s,n+1,k) * D1_metric_rho(n+1,k)
         enddo
+        call d01gaf(s_gp, Int_s, SDIV, D2_metric_rho(s,n+1), er2, ifail)
       enddo
-      D2_metric_rho(:,n+1)   = simpson_1d( Int_s, s_gp(1), s_gp(MDIV) )
       D2_metric_gama(:,n+1)  = 0.d0
       D2_metric_omega(:,n+1) = 0.d0
 
       do n = 1, LMAX
         do s = 1, SDIV
           do k = 1, SDIV
-            Int_s(k,s) = f_rho(s,n+1,  k) * D1_metric_rho(n+1,  k)
+            Int_s(k) = f_rho(s,n+1,k) * D1_metric_rho(n+1,k)
           enddo
-        enddo
-        D2_metric_rho(:,n+1) = simpson_1d( Int_s, s_gp(1), s_gp(MDIV) )
+          call d01gaf(s_gp, Int_s, SDIV, D2_metric_rho(s,n+1), er2, ifail)
 
-        do s = 1, SDIV
           do k = 1, SDIV
-            Int_s(k,s) = f_gama(s,n+1,  k)*D1_metric_gama(n+1,  k)
+            Int_s(k) = f_gama(s,n+1,k) * D1_metric_gama(n+1,k)
           enddo
-        enddo
-        D2_metric_gama(:,n+1) = simpson_1d( Int_s, s_gp(1), s_gp(MDIV) )
+          call d01gaf(s_gp, Int_s, SDIV, D2_metric_gama(s,n+1), er2, ifail)
 
-        do s = 1, SDIV
           do k = 1, SDIV
-            Int_s(k,s) = merge( f_rho(s,n+1,k)*D1_metric_omega(n+1,k), &
+            Int_s(k) = merge( f_rho(s,n+1,k)*D1_metric_omega(n+1,k), &
                 f_gama(s,n+1,k)*D1_metric_omega(n+1,k), k < s )
           enddo
+          call d01gaf(s_gp, Int_s, SDIV, D2_metric_omega(s,n+1), er2, ifail)
         enddo
-        D2_metric_omega(:,n+1) = simpson_1d( Int_s, s_gp(1), s_gp(MDIV) )
       enddo
       
       sum_rho   = 0.d0
       sum_gama  = 0.d0
       sum_omega = 0.d0
-      ! SUMMATION of COEFFICIENTS
+      ! ---------------------------------------------------------------
+      ! SUMMATION OF COEFFICIENTS & UPDATE
+      ! ---------------------------------------------------------------
       do s = 1, SDIV
         ! Pre-load arrays for D2_metric at s
         D2_rho_row   = D2_metric_rho  (s,1:LMAX+1)
@@ -357,9 +339,14 @@ subroutine spin_gr
 #if defined(Fishbone)
 #else
       if (r_ratio == 1.d0) then
-        rho(s,:) = rho(s,1)
-        gama(s,:)= gama(s,1)
-        ww(s,:)  = 0.d0
+        rho(s,:)       = rho(s,1)
+        gama(s,:)      = gama(s,1)
+        alpha(s,:)     = alpha(s,1)
+        ww(s,:)        = 0.d0
+        pressure(s,:)  = pressure(s,1)
+        energy(s,:)    = energy(s,1)
+        enthalpy(s,:)  = enthalpy(s,1)
+        velocity_sq(s,:)= 0.d0
       endif
 #endif   
     ! --- the fourth equation
@@ -457,12 +444,117 @@ subroutine spin_gr
   r_e      = r_e_new
   rho_0    = n0_at_e( energy(1,1) ) * MB
 
-  if (output) then
+  if (output) call output_helper
+
+contains
+
+  subroutine integrate_mu(src_rho, src_gama, src_omega, dst_rho, dst_gama, dst_omega, scratch)
+    real(8), intent(in)    :: src_rho(SDIV,MDIV), src_gama(SDIV,MDIV), src_omega(SDIV,MDIV)
+    real(8), intent(out)   :: dst_rho(LMAX+1,SDIV), dst_gama(LMAX+1,SDIV), dst_omega(LMAX+1,SDIV)
+    real(8), intent(inout) :: scratch(MDIV,SDIV)
+    integer :: n, k, m
+    real(8) :: rho_base(MDIV,SDIV), gama_base(MDIV,SDIV), omega_base(MDIV,SDIV)
+    real(8) :: weight_vec(MDIV)
+    integer :: status_dummy
+
+    rho_base  = transpose(src_rho)
+    gama_base = transpose(src_gama)
+    omega_base= transpose(src_omega)
+
+    scratch = rho_base
+    weight_vec = P_2n(:,1)
+    do concurrent (m = 1:MDIV)
+      scratch(m,:) = scratch(m,:) * weight_vec(m)
+    end do
+    do k = 1, SDIV
+      call integrate_column_spline(scratch(:,k), mu, dst_rho(1,k), status_dummy)
+    end do
+    dst_gama(1,:)  = 0.d0
+    dst_omega(1,:) = 0.d0
+
+    do n = 1, LMAX
+      scratch = rho_base
+      weight_vec = P_2n(:,n+1)
+      do concurrent (m = 1:MDIV)
+        scratch(m,:) = scratch(m,:) * weight_vec(m)
+      end do
+      do k = 1, SDIV
+        call integrate_column_spline(scratch(:,k), mu, dst_rho(n+1,k), status_dummy)
+      end do
+
+      scratch = gama_base
+      weight_vec = sin_2n_1_theta(:,n)
+      do concurrent (m = 1:MDIV)
+        scratch(m,:) = scratch(m,:) * weight_vec(m)
+      end do
+      do k = 1, SDIV
+        call integrate_column_spline(scratch(:,k), mu, dst_gama(n+1,k), status_dummy)
+      end do
+
+      scratch = omega_base
+      weight_vec = sin_theta(:) * P1_2n_1(:,n+1)
+      do concurrent (m = 1:MDIV)
+        scratch(m,:) = scratch(m,:) * weight_vec(m)
+      end do
+      do k = 1, SDIV
+        call integrate_column_spline(scratch(:,k), mu, dst_omega(n+1,k), status_dummy)
+      end do
+    end do
+  end subroutine integrate_mu
+
+  subroutine output_helper()
     call mass_radius
     r_inf = r_e_new * sqrt(KAPPA) * (s_gp(SDIV - 1) / ( 1.d0 - s_gp(SDIV - 1) ))**s_pwr
-    M2    = - D2_metric_rho  (SDIV-1,1+1 ) / 2.d0 * r_inf**3 * ( C * C / G / Mass )**3
-    S3    = - D2_metric_omega(SDIV-1,2+1 ) / 2.d0 * r_inf**5 * ( C * C / G / Mass )**4 / sqrt(KAPPA)
-    M4    =   D2_metric_rho  (SDIV-1,2+1 ) / 2.d0 * r_inf**5 * ( C * C / G / Mass )**5
+
+    tail_start = max(2, SDIV - 24)
+    open(newunit=tail_unit, file="tail_samples.dat", status='replace', action='write')
+    do tail_idx = tail_start, SDIV
+      write(tail_unit,'(6es25.16)') s_gp(tail_idx), D2_metric_rho(tail_idx,2), D2_metric_omega(tail_idx,3), &
+                                    D2_metric_rho(tail_idx,3), D2_metric_omega(tail_idx,4), D2_metric_rho(tail_idx,4)
+    end do
+    close(tail_unit)
+
+    call spectral_tail_fit(D2_metric_rho(:,1+1), 2, r_e_new, c0, c1, tail_ok)
+    if (tail_ok) then
+      M2 = (-0.5d0 * c0) * ( C * C / G / Mass )**3
+      write(*,'(A)') "Multipole note: spectral tail fit accepted for M2."
+    else
+      call composite_richardson(D2_metric_rho(:,1+1), 2, r_e_new, c0, c1, tail_ok)
+      if (tail_ok) then
+        M2 = (-0.5d0 * c0) * ( C * C / G / Mass )**3
+        write(*,'(A)') "Multipole note: Composite Richardson fallback accepted for M2."
+      else
+        M2 = - D2_metric_rho  (SDIV-1,1+1 ) / 2.d0 * r_inf**3 * ( C * C / G / Mass )**3
+      end if
+    end if
+
+    call spectral_tail_fit(D2_metric_omega(:,2+1), 4, r_e_new, c0, c1, tail_ok)
+    if (tail_ok) then
+      S3 = (-0.5d0 * c0) * ( C * C / G / Mass )**4 / sqrt(KAPPA)
+      write(*,'(A)') "Multipole note: spectral tail fit accepted for S3."
+    else
+      call composite_richardson(D2_metric_omega(:,2+1), 4, r_e_new, c0, c1, tail_ok)
+      if (tail_ok) then
+        S3 = (-0.5d0 * c0) * ( C * C / G / Mass )**4 / sqrt(KAPPA)
+        write(*,'(A)') "Multipole note: Composite Richardson fallback accepted for S3."
+      else
+        S3 = - D2_metric_omega(SDIV-1,2+1 ) / 2.d0 * r_inf**5 * ( C * C / G / Mass )**4 / sqrt(KAPPA)
+      end if
+    end if
+
+    call spectral_tail_fit(D2_metric_rho(:,2+1), 4, r_e_new, c0, c1, tail_ok)
+    if (tail_ok) then
+      M4 = (-0.5d0 * c0) * ( C * C / G / Mass )**5
+      write(*,'(A)') "Multipole note: spectral tail fit accepted for M4."
+    else
+      call composite_richardson(D2_metric_rho(:,2+1), 4, r_e_new, c0, c1, tail_ok)
+      if (tail_ok) then
+        M4 = (-0.5d0 * c0) * ( C * C / G / Mass )**5
+        write(*,'(A)') "Multipole note: Composite Richardson fallback accepted for M4."
+      else
+        M4 =   D2_metric_rho  (SDIV-1,2+1 ) / 2.d0 * r_inf**5 * ( C * C / G / Mass )**5
+      end if
+    end if
 
     !write(fil1,"(f6.2)") ang_mom
     !write(fil2,"(f16.5)") mass_0/MSUN
@@ -490,21 +582,35 @@ subroutine spin_gr
     open(99,file="./Res/res.dat")
     write(99,"(3i5,99es27.17)") SDIV, MDIV, s_pwr, r_e*sqrt(KAPPA)/1.d5, &
       energy(1,1)/(C*C*KSCALE), r_ratio, Omega_e* (C/sqrt(kappa)) , Omega_c* (C/sqrt(kappa))
-    do s = 1, SDIV
-      do m = 1, MDIV
-        ! r, \theta, \apha, \gamma, \rho, \omega, \phi, \varepsilon, \rho_0, p
-        if (enthalpy(s,m) > enthalpy_min) then 
-          rho_0 = n0_at_e( energy(s,m) ) * MB
-        else 
+    if (r_ratio == 1.d0) then
+      do s = 1, SDIV
+        if (enthalpy(s,1) > enthalpy_min) then
+          rho_0 = n0_at_e( energy(s,1) ) * MB
+        else
           rho_0 = 0.d0
-        endif
-        write(99,"(99es27.17)") s_gp(s), mu(m), alpha(s,m), gama(s,m), rho(s,m), ww(s,m) * (C/sqrt(kappa)), & ! 1-6
-          pressure(s,m)/KSCALE, energy(s,m)/(C*C*KSCALE), enthalpy(s,m), rho_0, & ! 7-10
-          velocity_sq(s,m), omg(s,m) * (C/sqrt(kappa)) ! 11-12
+        end if
+        do m = 1, MDIV
+          write(99,"(99es27.17)") s_gp(s), mu(m), alpha(s,1), gama(s,1), rho(s,1), 0.d0, &
+            pressure(s,1)/KSCALE, energy(s,1)/(C*C*KSCALE), enthalpy(s,1), rho_0, &
+            0.d0, omg(s,1) * (C/sqrt(kappa))
+        end do
+      end do
+    else
+      do s = 1, SDIV
+        do m = 1, MDIV
+          if (enthalpy(s,m) > enthalpy_min) then 
+            rho_0 = n0_at_e( energy(s,m) ) * MB
+          else 
+            rho_0 = 0.d0
+          endif
+          write(99,"(99es27.17)") s_gp(s), mu(m), alpha(s,m), gama(s,m), rho(s,m), ww(s,m) * (C/sqrt(kappa)), &
+            pressure(s,m)/KSCALE, energy(s,m)/(C*C*KSCALE), enthalpy(s,m), rho_0, &
+            velocity_sq(s,m), omg(s,m) * (C/sqrt(kappa))
+        enddo
       enddo
-    enddo
+    end if
     close(99)
-  endif
+  end subroutine output_helper
 
 end subroutine spin_gr
 

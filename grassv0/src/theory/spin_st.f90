@@ -7,9 +7,11 @@ subroutine spin_st
   use toolkit_mod
   use para_mod
   use simpson_mod
+  use miscellaneous_mod, only: integrate_column_spline
+  use nag_compat_mod, only : d01gaf
   implicit none
   integer :: m, s, n, k, n_of_it, ifail
-  real(8) :: r_p, s_p, r_e_old, dif, cf_eff
+  real(8) :: r_p, s_p, r_e_old, sphi_max_old, dif
   real(8) :: r_e_new, r_e_new_sq, grgr, term_in_Omega_h
   real(8) :: gama_pole_h, gama_center_h, gama_equator_h
   real(8) :: rho_pole_h, rho_center_h, rho_equator_h, ww_equator_h
@@ -41,7 +43,7 @@ subroutine spin_st
   real(8), dimension(SDIV,MDIV) :: S_metric_rho, S_metric_gama, S_metric_omega, S_metric_sphi
   real(8), dimension(LMAX+1,SDIV) :: D1_metric_rho, D1_metric_gama, D1_metric_omega, D1_metric_sphi
   real(8), dimension(SDIV,LMAX+1) :: D2_metric_rho, D2_metric_gama, D2_metric_omega, D2_metric_sphi
-  real(8), dimension(MDIV,SDIV) :: Int_m
+  real(8), dimension(MDIV) :: Int_m
   real(8), dimension(SDIV) :: Int_s
 
   ! local temps
@@ -50,6 +52,12 @@ subroutine spin_st
   real(8) :: d_rho_s,d_rho_m,d_ww_s,d_ww_m,d_sphi_s,d_sphi_m
   real(8) :: temp1,temp2,temp3,temp4,temp5,temp6,temp7,temp8,temp9
 
+  real(8), allocatable, save :: target_rho(:,:), target_gama(:,:), target_ww(:,:), target_sphi(:,:)
+  real(8), allocatable, save :: secant_last_rho(:,:), secant_last_gama(:,:), secant_last_ww(:,:), secant_last_sphi(:,:)
+  real(8), allocatable, save :: secant_last_res_rho(:,:), secant_last_res_gama(:,:), secant_last_res_ww(:,:), secant_last_res_sphi(:,:)
+  logical, save :: secant_ready = .false.
+  real(8), save :: rho_prev_norm = -1.d0, gama_prev_norm = -1.d0, ww_prev_norm = -1.d0, sphi_prev_norm = -1.d0
+  real(8), save :: rho_weight = 1.d0, gama_weight = 1.d0, ww_weight = 1.d0, sphi_weight = 1.d0
   ! ---------------------------------------------------------------
   dif = 1.d0
   n_of_it = 0
@@ -72,11 +80,16 @@ subroutine spin_st
   if ( maxval(sphi*sqrt(B_coup)) < 1.d-3 ) sphi = sphi*1.d1
   if ( any(isnan(sphi)) ) stop "NaN found in sphi"
 
+  if (allocated(target_rho)) then
+    deallocate(target_rho, target_gama, target_ww, target_sphi)
+  end if
+
   ! ---------------------------------------------------------------
   ! Newton iteration
   ! ---------------------------------------------------------------
-  do while( dif > 1.d-7 .or. n_of_it < 2 )
-
+  call cpu_time(start)
+  do while( dif > 3.d-7 .or. n_of_it < 2 )
+    sphi_max_old = max(sphi(:,1))
     ! --- Rescale metric ---
     do s = 1, SDIV
       do m = 1, MDIV
@@ -114,18 +127,23 @@ subroutine spin_st
     r_e_new_sq = ( 2.d0 * ( h_center - enthalpy_min ) ) / grgr
 
     dif = abs(r_e_old - sqrt(r_e_new_sq)) / sqrt(r_e_new_sq)
+    dif = max( diff, abs(sphi_m-sphi_max_old) )
 
     if ( n_of_it > 300 .and.  mod(n_of_it,50)==0 ) then 
-      write(*,"(A8,i5,A20,20es18.9)") "n_or_it =", n_of_it, &
-        ",     diff, sphi_c =", dif, sphi_center_h*r_e_new*sqrt(B_coup), &
-        gama_center_h, rho_center_h, alpha(1,1)
+      write(*,"(A,i4,A,es14.6,A,2es14.6,A,4es14.6)") "n_or_it = ", n_of_it, &
+        ", diff :", dif, &
+        "  sphi (center/max) :", sphi_center_h*r_e_new*sqrt(B_coup), &
+        maxval( sphi(:,1) ) * r_e_new * sqrt(B_coup), &
+        "  |", gama_center_h, rho_center_h, alpha(1,1)
     endif
     r_e_new = sqrt( r_e_new_sq )
 
     if (r_e_new/r_e_old > 2) stop "r_e changed too much"
     if (r_e_new .ne. r_e_new) stop "nan in r_e_new"
 
-    ! --- Angular velocity (rigid rotation) ---
+    ! ---------------------------------------------------------------
+    ! Angular velocity
+    ! ---------------------------------------------------------------
     if (r_ratio_const == 1.d0) then
       Omega_c = 0.d0
       ww_equator_h = 0.d0
@@ -171,7 +189,7 @@ subroutine spin_st
       sgp = s_gp(s)
       velocity_sq(s,:) = merge(0.d0, ((Omega_c - ww(s,:)) * (sgp / (1.d0 - sgp)) * &
                             sin_theta(:) * exp(-rho(s,:) * r_e_new_sq))**2, r_ratio_const == 1.d0)
-
+                            
       where (velocity_sq(s,:) > 1.d0) velocity_sq(s,:) = 0.d0
 
       enthalpy(s,:) = enthalpy_min + 5.d-1 * ( &
@@ -289,54 +307,49 @@ subroutine spin_st
           + s1 * d_gama_s + m1 * d_gama_mm / 2.d0 + d_gama_m**2 * r_e_new_sq * s2 / 4.d0 - 2.d0 * mum * d_gama_m )
       end do
     end do
+    
+    
     ! ---------------------------------------------------------------
-    ! ANGULAR INTEGRATION (unchanged structure, uses sources)
+    ! ANGULAR INTEGRATION
     ! ---------------------------------------------------------------
     n = 0
     do k = 1, SDIV
-      do m = 1, MDIV
-        Int_m(m,k) = P_2n(m,n+1) * S_metric_rho(k,m)
-      end do
-    end do
-    D1_metric_rho  (n+1,:) =  simpson_1d( Int_m, mu(1), mu(MDIV) )
-    do k = 1, SDIV
-      do m = 1, MDIV
-        Int_m(m,k) = P_2n(m,n+1) * S_metric_sphi(k,m)
-      end do
-    end do
-    D1_metric_sphi (n+1,:) =  simpson_1d( Int_m, mu(1), mu(MDIV) )
-    D1_metric_gama (n+1,:) = 0.d0
-    D1_metric_omega(n+1,:) = 0.d0
+      Int_m(:) = P_2n(:,n+1) * S_metric_rho(k,:)
+      call d01gaf(mu, Int_m, MDIV, sum_rho, er2, ifail)
+
+      Int_m(:) = P_2n(:,n+1) * S_metric_sphi(k,:)
+      call d01gaf(mu, Int_m, MDIV, sum_sphi, er2, ifail)
+
+      D1_metric_rho  (n+1,k) = sum_rho
+      D1_metric_sphi (n+1,k) = sum_sphi
+      D1_metric_gama (n+1,k) = 0.d0
+      D1_metric_omega(n+1,k) = 0.d0
+    enddo
 
     do n = 1, LMAX
-        do k = 1, SDIV
-          do m = 1, MDIV
-            Int_m(m,k) = P_2n(m,n+1) * S_metric_rho(k,m)
-          end do
-        end do
-        D1_metric_rho  (n+1,:) =  simpson_1d( Int_m, mu(1), mu(MDIV) )
+      do k = 1, SDIV
+        Int_m(:) = P_2n(:,n+1) * S_metric_rho(k,:)
+        call d01gaf(mu, Int_m, MDIV, sum_rho, er2, ifail)
 
-        do k = 1, SDIV
-          do m = 1, MDIV
-            Int_m(m,k) = P_2n(m,n+1) * S_metric_sphi(k,m)
-          end do
-        end do
-        D1_metric_sphi (n+1,:) =  simpson_1d( Int_m, mu(1), mu(MDIV) )
+        Int_m(:) = P_2n(:,n+1) * S_metric_sphi(k,:)
+        call d01gaf(mu, Int_m, MDIV, sum_sphi, er2, ifail)
 
-        do k = 1, SDIV
-          do m = 1, MDIV
-            Int_m(m,k) = sin_2n_1_theta(m,n) * S_metric_gama(k,m)
-          end do
-        end do
-        D1_metric_gama (n+1,:) =  simpson_1d( Int_m, mu(1), mu(MDIV) )
+        Int_m(:) = sin_2n_1_theta(:,n) * S_metric_gama(k,:)
+        call d01gaf(mu, Int_m, MDIV, sum_gama, er2, ifail)
 
-        do k = 1, SDIV
-          do m = 1, MDIV
-            Int_m(m,k) = sin_theta(m) * P1_2n_1(m,n+1) * S_metric_omega(k,m)
-          end do
-        end do
-        D1_metric_omega (n+1,:) =  simpson_1d( Int_m, mu(1), mu(MDIV) )
-    end do
+        Int_m(:) = sin_theta(:) * P1_2n_1(:,n+1) * S_metric_omega(k,:)
+        call d01gaf(mu, Int_m, MDIV, sum_omega, er2, ifail)
+
+        D1_metric_rho  (n+1,k) = sum_rho  
+        D1_metric_sphi (n+1,k) = sum_sphi
+        D1_metric_gama (n+1,k) = sum_gama
+        D1_metric_omega(n+1,k) = sum_omega
+        sum_rho   = 0.d0
+        sum_sphi  = 0.d0
+        sum_gama  = 0.d0
+        sum_omega = 0.d0
+      enddo
+    enddo
 
     ! ---------------------------------------------------------------
     ! RADIAL INTEGRATION (uses Bessel/weights caches)
@@ -388,7 +401,6 @@ subroutine spin_st
         end do
         call d01gaf(s_gp, Int_s, SDIV, sum_rho, er2, ifail)
 
-        ! sphi (use caches)
         do k = 1, SDIV
           mr_s = mr_cache(s)
           mr_k = mr_cache(k)
@@ -438,21 +450,24 @@ subroutine spin_st
     ! ---------------------------------------------------------------
     ! SUMMATION OF COEFFICIENTS & UPDATE (same logic; exp cached)
     ! ---------------------------------------------------------------
-    sum_rho   = 0.d0
-    sum_sphi  = 0.d0
-    sum_gama  = 0.d0
-    sum_omega = 0.d0
+    if (.not. allocated(target_rho)) then
+      allocate(target_rho(SDIV,MDIV), target_gama(SDIV,MDIV), target_ww(SDIV,MDIV), target_sphi(SDIV,MDIV))
+    end if
+    target_rho  = 0.d0
+    target_gama = 0.d0
+    target_ww   = 0.d0
+    target_sphi = 0.d0
 
     do s = 1, SDIV
       do m = 1, MDIV
         gsm   = gama(s,m)
         rsm   = rho (s,m)
-        wwsm  = ww  (s,m)
-        ! use cached exponentials
         temp1 = sin_theta(m)
 
-        sum_rho = sum_rho - exp(-0.5d0*gsm) * P_2n(m,1) * D2_metric_rho(s,1)
-        sum_sphi= sum_sphi- exp(-0.5d0*gsm) * P_2n(m,1) * D2_metric_sphi(s,1)
+        sum_rho = -exp(-0.5d0*gsm) * P_2n(m,1) * D2_metric_rho(s,1)
+        sum_sphi= -exp(-0.5d0*gsm) * P_2n(m,1) * D2_metric_sphi(s,1)
+        sum_gama = 0.d0
+        sum_omega = 0.d0
 
         do n = 1, LMAX
           sum_rho = sum_rho - exp(-0.5d0*gsm) * P_2n(m,n+1) * D2_metric_rho(s,n+1)
@@ -466,36 +481,17 @@ subroutine spin_st
           end if
         end do
 
-        if ( dif < 1.d-6 ) then
-          cf_eff = cf / 4.d0
-        else
-          if ( n_of_it < 100 ) then
-            cf_eff = cf
-          elseif ( n_of_it < 300 ) then
-            cf_eff = cf / 2.d0
-          else
-            cf_eff = cf / 6.d0
-          endif
-        endif
-
-        rho (s,m) = rsm       + cf_eff*(sum_rho  - rsm)
-        gama(s,m) = gsm       + cf_eff*(sum_gama - gsm)
-        ww  (s,m) = wwsm      + cf_eff*(sum_omega-wwsm)
-        sphi(s,m) = sphi(s,m) + cf_eff*(sum_sphi - sphi(s,m))
-
-        if ( sphi(s,m) .ne. sphi(s,m) ) sphi(s,m) = 0.d0
-
-        if ( sphi(s,m) < 0.d0 ) then
-          sphi(s,m)= sphi(s-1,m) * &
-            exp( root_mphi_re * (s_gp(s-1) / (1.d0-s_gp(s-1)) - s_gp(s) / (1.d0-s_gp(s)) ) )
-        end if
-
-        sum_omega = 0.d0
-        sum_rho   = 0.d0
-        sum_sphi  = 0.d0
-        sum_gama  = 0.d0
+        target_rho (s,m) = sum_rho
+        target_gama(s,m) = sum_gama
+        target_ww  (s,m) = sum_omega
+        target_sphi(s,m) = sum_sphi
       end do
     end do
+
+    ! ---------------------------------------------------------------
+    ! Upgrading fields
+    ! ---------------------------------------------------------------
+    call relaxation(target_rho, target_gama, target_ww, target_sphi, root_mphi_re)
 
     ! ---------------------------------------------------------------
     ! Divergence check & rigid rotation enforcement
@@ -576,11 +572,10 @@ subroutine spin_st
     end if
 
     do s = 1, SDIV
-      alpha(s,1) = 0.d0
-      do m = 1, MDIV-1
-        alpha(s,m+1) = alpha(s,m) + dm * ( da_dm(s,m+1) + da_dm(s,m) ) / 2.d0
-      end do
-    end do
+      alpha(s,:) = 0.0d0
+      alpha(s,2:MDIV) = dm * 0.5d0 * &
+          cumsum( da_dm(s,1:MDIV-1) + da_dm(s,2:MDIV) )
+    enddo
 
     do s = 1, SDIV
       do m = 1, MDIV
@@ -590,9 +585,11 @@ subroutine spin_st
       end do
     end do
 
-    n_of_it = n_of_it + 1
-    if (n_of_it == 1500 .and. dif > 1.d-6 ) stop "Cannot converge"
-  end do
+    n_of_it = n_of_it + 1  
+    sphi_m   = maxval( sphi(:,1) )
+  enddo
+  call cpu_time(finish)
+  write(*,*) 'Relaxation steps :', n_of_it, ' time consumed :', finish-start
   ! --- End of iteration
 
   r_ratio = r_ratio_const
@@ -603,22 +600,104 @@ subroutine spin_st
   Omega_e  = Omega_c
   r_e      = r_e_new
   sphi_c   = sphi(1,1) * sqrt(B_coup)
+  sphi_m   = maxval( sphi(:,1) * sqrt(B_coup) )
   rho_0    = n0_at_e( energy(1,1) ) * MB
-  !write(*,"(10es15.6)") r_ratio, Omega_c, sphi_c, rho_0
 
-  if (output) then
+  if (output) call output_helper
+  
+  if (allocated(target_rho)) then
+    deallocate(target_rho, target_gama, target_ww, target_sphi)
+  end if
+
+contains
+  subroutine integrate_mu(src_rho, src_gama, src_omega, src_sphi, dst_rho, dst_gama, dst_omega, dst_sphi, scratch)
+    real(8), intent(in)    :: src_rho(SDIV,MDIV), src_gama(SDIV,MDIV), src_omega(SDIV,MDIV), src_sphi(SDIV,MDIV)
+    real(8), intent(out)   :: dst_rho(LMAX+1,SDIV), dst_gama(LMAX+1,SDIV), dst_omega(LMAX+1,SDIV), dst_sphi(LMAX+1,SDIV)
+    real(8), intent(inout) :: scratch(MDIV,SDIV)
+    integer :: n, k, m
+    real(8) :: rho_base(MDIV,SDIV), gama_base(MDIV,SDIV), omega_base(MDIV,SDIV), sphi_base(MDIV,SDIV)
+    real(8) :: weight_vec(MDIV)
+    integer :: status_dummy
+
+    rho_base  = transpose(src_rho)
+    gama_base = transpose(src_gama)
+    omega_base= transpose(src_omega)
+    sphi_base = transpose(src_sphi)
+
+    scratch = rho_base
+    weight_vec = P_2n(:,1)
+    do concurrent (m = 1:MDIV)
+      scratch(m,:) = scratch(m,:) * weight_vec(m)
+    end do
+    do k = 1, SDIV
+      call integrate_column_spline(scratch(:,k), mu, dst_rho(1,k), status_dummy)
+    end do
+
+    scratch = sphi_base
+    weight_vec = P_2n(:,1)
+    do concurrent (m = 1:MDIV)
+      scratch(m,:) = scratch(m,:) * weight_vec(m)
+    end do
+    do k = 1, SDIV
+      call integrate_column_spline(scratch(:,k), mu, dst_sphi(1,k), status_dummy)
+    end do
+
+    dst_gama(1,:)  = 0.d0
+    dst_omega(1,:) = 0.d0
+
+    do n = 1, LMAX
+      scratch = rho_base
+      weight_vec = P_2n(:,n+1)
+      do concurrent (m = 1:MDIV)
+        scratch(m,:) = scratch(m,:) * weight_vec(m)
+      end do
+      do k = 1, SDIV
+        call integrate_column_spline(scratch(:,k), mu, dst_rho(n+1,k), status_dummy)
+      end do
+
+      scratch = sphi_base
+      weight_vec = P_2n(:,n+1)
+      do concurrent (m = 1:MDIV)
+        scratch(m,:) = scratch(m,:) * weight_vec(m)
+      end do
+      do k = 1, SDIV
+        call integrate_column_spline(scratch(:,k), mu, dst_sphi(n+1,k), status_dummy)
+      end do
+
+      scratch = gama_base
+      weight_vec = sin_2n_1_theta(:,n)
+      do concurrent (m = 1:MDIV)
+        scratch(m,:) = scratch(m,:) * weight_vec(m)
+      end do
+      do k = 1, SDIV
+        call integrate_column_spline(scratch(:,k), mu, dst_gama(n+1,k), status_dummy)
+      end do
+
+      scratch = omega_base
+      weight_vec = sin_theta(:) * P1_2n_1(:,n+1)
+      do concurrent (m = 1:MDIV)
+        scratch(m,:) = scratch(m,:) * weight_vec(m)
+      end do
+      do k = 1, SDIV
+        call integrate_column_spline(scratch(:,k), mu, dst_omega(n+1,k), status_dummy)
+      end do
+    end do
+  end subroutine integrate_mu
+
+  subroutine output_helper()
+    ! all the fields are computed and exported as in Einstein frame
     call mass_radius
     write(fil1,"(f6.2)") ang_mom
     write(fil2,"(f16.5)") mass_0/MSUN
     write(fil3,"(es15.2)") B_coup
     write(fil4,"(es15.2)") sqrt(mphi_r*1.d10/KAPPA)*l_uni
     write(fil5,"(es15.3)") rho_0
-    write(fil6,"(f15.3)") sphi_c
+    write(fil6,"(f15.3)") sphi_m
 
     open(98,file="./Cont/"//trim(adjustl(eos_file))//"_J_"//trim(adjustl(fil1))//&
       "_Mb"//trim(adjustl(fil2))//"_B"//trim(adjustl(fil3))//&
-      "_mphi"//trim(adjustl(fil4))//"_rhoc"//trim(adjustl(fil5))//"_sphic"//trim(adjustl(fil6))//".dat")
-    write(98,"(2i5,99es27.17e3)") SDIV, MDIV, r_e*sqrt(KAPPA)/1.d5, &
+      "_mphi"//trim(adjustl(fil4))//"_rhoc"//trim(adjustl(fil5))//"_sphim"//trim(adjustl(fil6))//".dat")
+    write(98,"(3i5,99es27.17e3)") SDIV, MDIV, s_pwr, r_e*sqrt(KAPPA)/1.d5, &
             energy(1,1)/(C*C*KSCALE), r_ratio, Omega_e* (C/sqrt(kappa)) , Omega_c* (C/sqrt(kappa))
     do s = 1, SDIV
       do m = 1, MDIV
@@ -629,13 +708,13 @@ subroutine spin_st
         end if
         write(98,"(99es27.17e3)") s_gp(s), mu(m), alpha(s,m), gama(s,m), rho(s,m), ww(s,m) * (C/sqrt(kappa)), &
           pressure(s,m)/KSCALE, energy(s,m)/(C*C*KSCALE), enthalpy(s,m), rho_0, &
-          velocity_sq(s,m), omg(s,m) * (C/sqrt(kappa)), sphi(s,m)*sqrt(B_coup)
+          velocity_sq(s,m), omg(s,m) * (C/sqrt(kappa)), sphi(s,m)!*sqrt(B_coup)
       end do
     end do
     close(98)
 
     open(99,file="./Res/res.dat")
-    write(99,"(2i5,99es27.17e3)") SDIV, MDIV, r_e*sqrt(KAPPA)/1.d5, &
+    write(99,"(3i5,99es27.17e3)") SDIV, MDIV, s_pwr, r_e*sqrt(KAPPA)/1.d5, &
             energy(1,1)/(C*C*KSCALE), r_ratio, Omega_e* (C/sqrt(kappa)) , Omega_c* (C/sqrt(kappa))
     do s = 1, SDIV
       do m = 1, MDIV
@@ -646,11 +725,97 @@ subroutine spin_st
         end if
         write(99,"(99es27.17e3)") s_gp(s), mu(m), alpha(s,m), gama(s,m), rho(s,m), ww(s,m) * (C/sqrt(kappa)), &
           pressure(s,m)/KSCALE, energy(s,m)/(C*C*KSCALE), enthalpy(s,m), rho_0, &
-          velocity_sq(s,m), omg(s,m) * (C/sqrt(kappa)), sphi(s,m)*sqrt(B_coup)
+          velocity_sq(s,m), omg(s,m) * (C/sqrt(kappa)), sphi(s,m)!*sqrt(B_coup)
       end do
     end do
     close(99)
-  end if
+  end subroutine output_helper
+
+  subroutine relaxation(target_rho, target_gama, target_ww, target_sphi, root_mphi_re)
+    real(8), intent(in) :: target_rho(SDIV,MDIV), target_gama(SDIV,MDIV)
+    real(8), intent(in) :: target_ww(SDIV,MDIV), target_sphi(SDIV,MDIV)
+    real(8), intent(in) :: root_mphi_re
+    real(8) :: cf_eff, weight_rho_loc, weight_gama_loc, weight_ww_loc, weight_sphi_loc
+    integer :: s, m
+
+    call compute_relaxation_weights(target_rho, target_gama, target_ww, target_sphi, &
+         weight_rho_loc, weight_gama_loc, weight_ww_loc, weight_sphi_loc)
+
+    do s = 1, SDIV
+      do m = 1, MDIV
+        cf_eff = effective_relaxation_weight()
+        call relaxation_update_field( rho(s,m), target_rho (s,m), cf_eff * weight_rho_loc)
+        call relaxation_update_field(gama(s,m), target_gama(s,m), cf_eff * weight_gama_loc)
+        call relaxation_update_field(  ww(s,m), target_ww  (s,m), cf_eff * weight_ww_loc)
+        call relaxation_update_field(sphi(s,m), target_sphi(s,m), cf_eff * weight_sphi_loc)
+        if ( sphi(s,m) .ne. sphi(s,m) ) sphi(s,m) = 0.d0
+        if ( sphi(s,m) < 0.d0 ) then
+          if (s == SDIV) then
+            sphi(s,m)= sphi(s-1,m) * &
+              exp( root_mphi_re * (s_gp(s-1) / (1.d0-s_gp(s-1)) - s_gp(s) / (1.d0-s_gp(s)) ) )
+          else
+            sphi(s,m) = 0.d0
+          end if
+        endif
+      end do
+    end do
+  end subroutine relaxation
+
+  subroutine relaxation_update_field(current, target, weight)
+    real(8), intent(inout) :: current
+    real(8), intent(in)    :: target, weight
+    current = current + weight * (target - current)
+  end subroutine relaxation_update_field
+
+  real(8) function effective_relaxation_weight()
+    if (dif > 1.d-4) then
+      effective_relaxation_weight = cf
+    else
+      effective_relaxation_weight = cf * 2.d0
+    end if
+  end function effective_relaxation_weight
+
+  subroutine compute_relaxation_weights(target_rho, target_gama, target_ww, target_sphi, &
+      weight_rho_loc, weight_gama_loc, weight_ww_loc, weight_sphi_loc)
+    real(8), intent(in) :: target_rho(SDIV,MDIV), target_gama(SDIV,MDIV)
+    real(8), intent(in) :: target_ww(SDIV,MDIV), target_sphi(SDIV,MDIV)
+    real(8), intent(out) :: weight_rho_loc, weight_gama_loc, weight_ww_loc, weight_sphi_loc
+
+    call update_field_weight(target_rho, rho, rho_prev_norm, rho_weight)
+    call update_field_weight(target_gama, gama, gama_prev_norm, gama_weight)
+    call update_field_weight(target_ww, ww, ww_prev_norm, ww_weight)
+    call update_field_weight(target_sphi, sphi, sphi_prev_norm, sphi_weight)
+
+    weight_rho_loc  = rho_weight
+    weight_gama_loc = gama_weight
+    weight_ww_loc   = ww_weight
+    weight_sphi_loc = sphi_weight
+  end subroutine compute_relaxation_weights
+
+  subroutine update_field_weight(target_field, current_field, prev_norm, weight_store)
+    real(8), intent(in)    :: target_field(SDIV,MDIV)
+    real(8), intent(in)    :: current_field(SDIV,MDIV)
+    real(8), intent(inout) :: prev_norm, weight_store
+    real(8), parameter :: min_w = 0.3d0, max_w = 1.5d0
+    real(8), parameter :: grow_ratio = 0.7d0, shrink_ratio = 1.05d0
+    real(8), parameter :: tiny_norm = 1.d-12
+    real(8) :: norm_val, ratio
+
+    norm_val = max(tiny_norm, maxval(abs(target_field - current_field)))
+
+    if (prev_norm > 0.d0) then
+      ratio = norm_val / max(prev_norm, tiny_norm)
+      if (ratio < grow_ratio) then
+        weight_store = min(max_w, weight_store * 1.5d0)
+      else if (ratio > shrink_ratio) then
+        weight_store = max(min_w, weight_store * 0.7d0)
+      end if
+    else
+      weight_store = 1.d0
+    end if
+
+    prev_norm = norm_val
+  end subroutine update_field_weight
 
 end subroutine spin_st
 

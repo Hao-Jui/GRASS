@@ -1,6 +1,5 @@
 module para_mod
   implicit none
-
   ! -- Theory selection ------------------------------------------------------
   integer, parameter :: THEORY_GR = 0
   integer, parameter :: THEORY_ST = 1
@@ -11,16 +10,26 @@ module para_mod
   ! -- Rotation configuration ------------------------------------------------
   character(len=20) :: solver_type = "uniform"
 
+  ! -- Solver state ----------------------------------------------------------
+  logical :: output = .false.
+  logical :: use_shoot_1d = .true.      ! adjust hc while keeping rep constant
+
+  ! -- Resolutions -----------------------------------------------------------
+  integer, parameter :: res  = 400
+  integer, parameter :: s_pwr = 1
+  integer :: SDIV = 2 * res + 1
+  integer :: MDIV = 2 * res + 1
+
   ! -- Target quantities -----------------------------------------------------
-  character(len=128) :: eos_file = "H4"
-  real(8) :: M_goal   = 1.2d0
-  real(8) :: Mb_goal  = 1.6d0
+  character(len=128) :: eos_file = "MPA1"
+  real(8) :: M_goal   = 1.8d0
+  real(8) :: Mb_goal  = 1.8d0
   real(8) :: J_goal   = 0.d0
   real(8) :: chi_goal = 0.63d0
   real(8) :: omc_goal = 30.d0
 
-  real(8) :: B_goal   = 20.d0
-  real(8) :: mphi_goal= 0.01d0
+  real(8) :: B_goal   = 12.d0
+  real(8) :: mphi_goal = 0.d-8
 
   ! -- Rotation-law parameters (advanced modes currently disabled) ----------
   real(8) :: A_diff  = 10.d0
@@ -47,18 +56,14 @@ module para_mod
   real(8) :: enthalpy_min = 0.d0
 
   ! -- Grid configuration ----------------------------------------------------
-  integer :: LMAX = 10
-  integer :: res  = 300
-  integer :: s_pwr = 1
-  real(8) :: SMAX = 1.d0 - (1.d-1)**9
-  integer :: SDIV = 0
-  integer :: MDIV = 0
-  integer :: RDIV = 1800
+  integer, parameter :: LMAX = 10
+  real(8) :: SMAX  = 1.d0 - (1.d-1)**(9.d0 / dble(s_pwr))
+  integer, parameter :: RDIV = 1800
 
   real(8) :: DS = 0.d0
   real(8) :: DM = 0.d0
-  real(8) :: s_e = 0.5d0
   real(8) :: cf  = 1.d0
+  real(8), parameter :: s_e = 0.5d0
 
   real(8), allocatable :: s_gp(:), mu(:), sin_theta(:)
 
@@ -71,13 +76,9 @@ module para_mod
   integer :: i_isco_p = 1
   integer :: i_isco_m = 1
 
-  ! -- Solver state ----------------------------------------------------------
-  logical :: output = .false.
-  logical :: use_shoot_1d = .true. ! adjust hc while keeping rep constant
-
   ! Fluid
   real(8), allocatable :: pressure(:,:), enthalpy(:,:), velocity_sq(:,:), &
-                          energy(:,:),   omg(:,:),     F_j(:,:)
+                          energy(:,:), omg(:,:), F_j(:,:)
   real(8), allocatable :: v_plus(:), v_minus(:), V_rr_p(:), V_rr_m(:)
 
   ! Metric
@@ -87,6 +88,12 @@ module para_mod
   real(8) :: B_coup = 0.d0
   real(8) :: mphi_r = 0.d0
   real(8) :: sphi_c = 0.d0
+  real(8) :: sphi_m = 0.d0
+
+  real(8) :: B_burn_init = 15.d0
+  real(8) :: mphi_burn_seed = 0.01d0
+  integer, parameter :: scalar_burn_max_iter = 200
+  real(8), parameter :: mphi_burn_threshold = 0.05d0
 
   ! Bulk properties
   real(8) :: Omega_c = 0.d0
@@ -124,7 +131,7 @@ module para_mod
   real(8), parameter :: MB   = 1.6749286d-24
   real(8), parameter :: pi   = acos(-1.d0)
 
-  real(8), parameter :: accuracy  = 1.d-5
+  real(8), parameter :: accuracy  = 1.d-6
   real(8), parameter :: tov_rmin  = 1.d-15
   real(8), parameter :: KAPPA     = 1.d-15 * C**2 / G
   real(8), parameter :: KSCALE    = KAPPA * G / C**4
@@ -134,7 +141,8 @@ module para_mod
   real(8), parameter :: f_uni     = 2.029739818539300d5
   real(8), parameter :: hbar      = 6.582119569d-16
   real(8), parameter :: l_uni     = 1.4769994423016508d0
-
+  real(8), parameter :: n_sat     = 2.7d14
+  real(8), parameter :: scalarton = hbar * C / l_uni / 1.d5
 contains
 
   pure function to_lower_str(str) result(out)
@@ -190,8 +198,8 @@ contains
       stop "initialize_theory: unknown theory mode"
     end select
 
-    SDIV = 2 * res + 1
-    MDIV = 2 * res + 1
+    solver_type = trim(to_lower_str(adjustl(solver_type)))
+
     DS   = SMAX / (dble(SDIV) - 1.d0)
     DM   = 1.d0  / (dble(MDIV) - 1.d0)
     s_inner = edge_in**(1.d0 / dble(s_pwr)) / (edge_in**(1.d0 / dble(s_pwr)) + 1.d0)
@@ -200,31 +208,18 @@ contains
   end subroutine initialize_theory
 
   subroutine apply_gr_defaults()
-
-    res   = 300
-    s_pwr = 1
-    SMAX  = 1.d0 - (1.d-1)**(9.d0 / dble(s_pwr))
-    RDIV  = 1800
-    s_e   = 0.5d0
     cf    = 1.d0
-
     has_scalar = .false.
     B_goal  = 0.d0
     mphi_goal = 0.d0
     B_coup = 0.d0
     mphi_r = 0.d0
     sphi_c = 0.d0
+    sphi_m = 0.d0
   end subroutine apply_gr_defaults
 
   subroutine apply_st_defaults()
-
-    res   = 100
-    s_pwr = 1
-    SMAX  = 1.d0 - 1.d-9
-    RDIV  = 1800
-    s_e   = 0.5d0
     cf    = 0.3d0
-
     has_scalar = .true.
   end subroutine apply_st_defaults
 

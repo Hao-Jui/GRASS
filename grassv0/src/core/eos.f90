@@ -65,6 +65,19 @@ subroutine loadEos
     p_at_e = exp(pwr)
   end function p_at_e
 
+  type(dual) function p_at_e_dual(ee)
+#include "option_macro.h"
+    use toolkit_mod, only: interp_dual
+    use ad_mod, only: dual, log, exp
+    use para_mod, only : log_p, log_e, num_tab
+    implicit none
+    type(dual), intent(in) :: ee
+    type(dual) :: pwr
+
+    call interp_dual(log_e, log_p, num_tab, log(ee), pwr)
+    p_at_e_dual = exp(pwr)
+  end function p_at_e_dual
+
   real(8) function n0_at_e(ee)
 #include "option_macro.h"
     use toolkit_mod, only: interp, interp_pt

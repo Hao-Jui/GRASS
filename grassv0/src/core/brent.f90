@@ -1,271 +1,348 @@
-subroutine zbrent_diff(x_guess, re, rho_h, g_h, w_h, rho_p, g_p, dh, tol, return_value,f)
-! Solve for Omega_e
+subroutine zbrent_diff(x_guess, re, rho_h, g_h, w_h, rho_p, g_p, dh, tol, return_value, f)
+  ! Brent-style root finder with adaptive bracketing for the differential rotation solver.
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_nan, ieee_is_finite
   implicit none
   real(8), intent(in) :: x_guess, re, rho_h, g_h, w_h, rho_p, g_p, dh, tol
-  real(8), intent(out):: return_value
-  integer :: iter, n
-  real(8), parameter :: ZEPS  = 1.d-8
-  real(8) :: a,b,c,d,e, fa, fb, fc, p,q,r,s, xm, tol1
-  real(8) :: ax, bx, cx, cx1
-  integer :: i_max = 200
-  
-  external f
+  real(8), intent(out) :: return_value
+  real(8), parameter :: bracket_growth = 1.6d0
+  real(8), parameter :: min_step       = 1.d-8
+  real(8), parameter :: max_step       = 1.d6
+  integer, parameter :: max_bracket_iter = 200
+  integer, parameter :: max_iter         = 150
+  real(8), parameter :: zero_eps = 10.d0 * epsilon(1.d0)
+  real(8) :: a, b, c, d, e, fa, fb, fc, p, q, r, s, tol1, xm
+  real(8) :: left, right, f_left, f_right, step, fx
+  integer :: iter
+  logical :: bracketed, ok_left, ok_right, ok_new
+  external :: f
 
-  ax   = x_guess 
-  bx   = x_guess 
-#if 1
-  do iter = 1, i_max
-    ax = ax * 1.2d0
-    bx = bx / 1.1d0
-    call f(ax, fa, re, rho_h, g_h, w_h, rho_p, g_p, dh)
-    call f(bx, fb, re, rho_h, g_h, w_h, rho_p, g_p, dh)
-    if ( fa.ne.fa ) then 
-      ax = ax / 1.2d0
-      call f(ax, fa, re, rho_h, g_h, w_h, rho_p, g_p, dh)
-    endif
-    if ( fb.ne.fb ) then 
-      bx = bx * 1.1d0
-      call f(bx, fb, re, rho_h, g_h, w_h, rho_p, g_p, dh)
-    endif
-    if ( fa*fb <= 0.d0 ) then
+  call evaluate(x_guess, fx, ok_new)
+  if (abs(fx) <= tol) then
+    return_value = x_guess
+    return
+  end if
+
+  left  = x_guess
+  right = x_guess
+  f_left  = fx
+  f_right = fx
+  step = max(min_step, abs(x_guess)*0.1d0)
+  bracketed = .false.
+
+  do iter = 1, max_bracket_iter
+    if (step > max_step) exit
+
+    left = x_guess - step
+    call evaluate(left, f_left, ok_left)
+    if (.not. ok_left) then
+      step = step * bracket_growth
+      cycle
+    end if
+    if (abs(f_left) <= tol) then
+      return_value = left
+      return
+    end if
+
+    right = x_guess + step
+    call evaluate(right, f_right, ok_right)
+    if (.not. ok_right) then
+      step = step * bracket_growth
+      cycle
+    end if
+    if (abs(f_right) <= tol) then
+      return_value = right
+      return
+    end if
+
+    if (f_left * f_right <= 0.d0) then
+      bracketed = .true.
       exit
-    endif
-    !write(*,"(21es18.9)") ax, fa, bx, fb
-    
-    if ( iter == i_max ) then 
-      open(43,file="./Cont/diff_rotation.dat")
-      do n = 1, i_max
-        ax = x_guess * 8.d-3 * n
-        call f(ax, fa, re, rho_h, g_h, w_h, rho_p, g_p, dh)
-        cx = fa
-        !write(*,"(2es18.9)") ax, fa
-        if ( n > 1 .and. cx * cx1 <= 0.d0 ) then
-            bx = x_guess * 8.d-3 * n
-            ax = x_guess * 8.d-3 * (n-1)
-            exit
-        endif
-        cx1 = cx
-        write(43,"(2es15.6)") x_guess* 8.d-3 * n, fa
-      enddo
-      close(43)
-      stop "check ./Cont/diff_rotation.dat, L40"
-    endif
-  enddo
-#endif  
-#if 0
-  do n = 1, i_max
-    ax = x_guess * 8.d-3 * n
-    call f(ax, fa, re, rho_h, g_h, w_h, rho_p, g_p, dh)
-    cx = fa
-   !write(*,"(2es18.9)") ax, fa
-    if ( n > 1 .and. cx * cx1 <= 0.d0 ) then
-        bx = x_guess * 8.d-3 * n
-        ax = x_guess * 8.d-3 * (n-1)
-        exit
-    endif
-    cx1 = cx
-  enddo
-#endif
-  !write(*,"(2es18.9)") ax, bx
-  !stop
-  
-  a = ax
-  b = bx
+    end if
 
-  c = b
-  fc= fb
-  e = 0.d0 
-  d = 0.d0
+    step = step * bracket_growth
+  end do
 
-  do iter = 1, 100
-    if ( fb*fc > 0.d0) then ! Rename a, b, c and adjust bounding interval d
-      c = a
-      fc= fa
-      d = b-a
-      e = d
-    endif
-    if ( abs(fc) < abs(fb) ) then
-      a = b
-      b = c
-      c = a
-      fa= fb
-      fb= fc
-      fc= fa
-    endif
+  if (.not. bracketed) then
+    stop "zbrent_diff: failed to bracket root"
+  end if
 
-    tol1 = 2.d0 * zeps *abs(b) + 0.5d0 * tol ! convergence check
-    xm = (c-b) / 2.d0
-    if ( abs(xm) <= tol1 .or. fb == 0.d0 ) then
+  a = left
+  b = right
+  fa = f_left
+  fb = f_right
+
+  if (abs(fa) < abs(fb)) then
+    call swap(a, b)
+    call swap(fa, fb)
+  end if
+
+  c = a
+  fc = fa
+  d = b - a
+  e = d
+
+  do iter = 1, max_iter
+    if (abs(fc) < abs(fb)) then
+      call cycle_points(a, b, c, fa, fb, fc)
+    end if
+
+    tol1 = 2.d0 * zero_eps * abs(b) + 0.5d0 * tol
+    xm = 0.5d0 * (c - b)
+
+    if (abs(xm) <= tol1 .or. fb == 0.d0) then
       return_value = b
       return
-    endif
-    if ( abs(e) >= tol1 .and. abs(fa) > abs(fb) ) then ! Attempt inverse quadratic interpolation
-      s = fb/fa
-      if (a==c) then
+    end if
+
+    if (abs(e) >= tol1 .and. abs(fa) > abs(fb)) then
+      s = fb / fa
+      if (a == c) then
         p = 2.d0 * xm * s
         q = 1.d0 - s
       else
-        q = fa/fc
-        r = fb/fc
-        p = s * (2.d0 * xm * q * (q-r) - (b-a) * (r-1.d0))
-        q = (q-1.d0) * (r-1.d0) * (s-1.d0)
-      endif
-      if ( p > 0.d0 ) q = -q ! Check whether in bounds
+        q = fa / fc
+        r = fb / fc
+        p = s * (2.d0 * xm * q * (q - r) - (b - a) * (r - 1.d0))
+        q = (q - 1.d0) * (r - 1.d0) * (s - 1.d0)
+      end if
+      if (p > 0.d0) q = -q
       p = abs(p)
-      if( 2.d0*p < min( 3.d0*xm*q - abs(tol1*q), abs(e*q) ) ) then
-        e=d ! Accept interpolation
-        d=p/q
+
+      if (2.d0 * p < min(3.d0 * xm * q - abs(tol1 * q), abs(e * q))) then
+        e = d
+        d = p / q
       else
-        d=xm ! Interpolation failed, use bisection
-        e=d
-      endif
-    else ! Bounds decreasing too slowly, use bisection
+        d = xm
+        e = d
+      end if
+    else
       d = xm
       e = d
-    endif
-    a = b ! Move last best guess to a
-    fa= fb
-    if( abs(d) > tol1 ) then ! Evaluate new trial root
-      b = b+d
+    end if
+
+    a = b
+    fa = fb
+
+    if (abs(d) > tol1) then
+      b = b + d
     else
-      b = b + sign(tol1,xm)
-    endif
+      b = b + sign(tol1, xm)
+    end if
 
-    call f(b, fb, re, rho_h, g_h, w_h, rho_p, g_p, dh)
-  enddo
+    call evaluate(b, fb, ok_new)
+    if (.not. ok_new) then
+      b = b - d * 0.5d0
+      call evaluate(b, fb, ok_new)
+      if (.not. ok_new) stop "zbrent_diff: invalid function evaluation"
+      e = c - b
+      d = e
+    end if
+  end do
 
-  stop "zbrent exceeding maximum iterations, L107"
+  stop "zbrent_diff: exceeded maximum iterations"
+
+contains
+
+  subroutine evaluate(x, fx, ok)
+    real(8), intent(in) :: x
+    real(8), intent(out) :: fx
+    logical, intent(out) :: ok
+    call f(x, fx, re, rho_h, g_h, w_h, rho_p, g_p, dh)
+    ok = .true.
+    if (ieee_is_nan(fx)) ok = .false.
+    if (ok) ok = ieee_is_finite(fx)
+    if (.not. ok) fx = huge(1.d0)
+  end subroutine evaluate
+
+  subroutine swap(x, y)
+    real(8), intent(inout) :: x, y
+    real(8) :: tmp
+    tmp = x
+    x = y
+    y = tmp
+  end subroutine swap
+
+  subroutine cycle_points(a_in, b_in, c_in, fa_in, fb_in, fc_in)
+    real(8), intent(inout) :: a_in, b_in, c_in, fa_in, fb_in, fc_in
+    call swap(a_in, b_in)
+    call swap(fa_in, fb_in)
+    call swap(a_in, c_in)
+    call swap(fa_in, fc_in)
+  end subroutine cycle_points
 
 end subroutine zbrent_diff
 
 subroutine zbrent_rot(x_guess, re, rho_p, ww_p, sgp, mugp, tol, return_value, f)
-! Point-wisely solve for Omega profile
+  ! Brent-style root finder with adaptive bracketing for the local rotation solver.
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_nan, ieee_is_finite
   implicit none
   real(8), intent(in) :: x_guess, re, rho_p, ww_p, sgp, mugp, tol
-  real(8), intent(out):: return_value
-  integer :: iter, n
-  real(8), parameter :: ZEPS  = 1.d-8
-  real(8) :: a, b, c, d, e, fa, fb, fc, p, q, r, s, xm, tol1
-  real(8) :: ax, bx, cx, cx1
-  integer :: i_max = 200
-  
-  external f
+  real(8), intent(out) :: return_value
+  real(8), parameter :: bracket_growth = 1.6d0
+  real(8), parameter :: min_step       = 1.d-8
+  real(8), parameter :: max_step       = 1.d6
+  integer, parameter :: max_bracket_iter = 200
+  integer, parameter :: max_iter         = 150
+  real(8), parameter :: zero_eps = 10.d0 * epsilon(1.d0)
+  real(8) :: a, b, c, d, e, fa, fb, fc, p, q, r, s, tol1, xm
+  real(8) :: left, right, f_left, f_right, step, fx
+  integer :: iter
+  logical :: bracketed, ok_left, ok_right, ok_new
+  external :: f
 
-  if ( x_guess == 0 ) then
-    ax = 1.d-3
-    bx = ax
-  else
-    ax   = x_guess
-    bx   = x_guess
-  endif
-#if 1
-  do iter = 1, i_max
-    ax = ax * 1.1d0
-    bx = bx / 1.1d0
-    call f(ax, fa, re, rho_p, ww_p, sgp, mugp)
-    call f(bx, fb, re, rho_p, ww_p, sgp, mugp)
-    if ( fa.ne.fa ) then 
-      ax = ax / 1.1d0
-      call f(ax, fa, re, rho_p, ww_p, sgp, mugp)
-    endif
-    if ( fb.ne.fb ) then 
-      bx = bx * 1.1d0
-      call f(bx, fb, re, rho_p, ww_p, sgp, mugp)
-    endif
-    if ( fa*fb <= 0.d0 ) then
+  call evaluate(x_guess, fx, ok_new)
+  if (abs(fx) <= tol) then
+    return_value = x_guess
+    return
+  end if
+
+  left  = x_guess
+  right = x_guess
+  f_left  = fx
+  f_right = fx
+  step = max(min_step, abs(x_guess)*0.1d0)
+  bracketed = .false.
+
+  do iter = 1, max_bracket_iter
+    if (step > max_step) exit
+
+    left = x_guess - step
+    call evaluate(left, f_left, ok_left)
+    if (.not. ok_left) then
+      step = step * bracket_growth
+      cycle
+    end if
+    if (abs(f_left) <= tol) then
+      return_value = left
+      return
+    end if
+
+    right = x_guess + step
+    call evaluate(right, f_right, ok_right)
+    if (.not. ok_right) then
+      step = step * bracket_growth
+      cycle
+    end if
+    if (abs(f_right) <= tol) then
+      return_value = right
+      return
+    end if
+
+    if (f_left * f_right <= 0.d0) then
+      bracketed = .true.
       exit
-    endif
-    if ( iter == i_max ) then 
-      open(43, file="./Cont/rotation_law.dat")
-      do n = 1, i_max
-        ax = x_guess * 1.d-3 * n
-        call f(ax, fa, re, rho_p, ww_p, sgp, mugp)
-        write(43,"(2es15.6)") x_guess* 8.d-3 * n, fa
-      enddo
-      close(43)
-      stop "check ./Cont/rotation_law.dat, L122"
-    endif
-  enddo
-#endif
-#if 0
-  do n = 1, i_max
-    ax = x_guess * 8.d-3 * n
-    call f(ax, fa, re, rho_p, ww_p, sgp, mugp)
-    cx = fa
-    !write(*,"(A5,2es18.9)") "",ax, fa
-    if ( n > 1 .and. cx * cx1 <= 0.d0 ) then
-        bx = x_guess * 8.d-3 * n
-        ax = x_guess * 8.d-3 * (n-1)
-        exit
-    endif
-    cx1 = cx
-  enddo!; stop
-#endif  
-  a = ax
-  b = bx
+    end if
 
-  c = b
-  fc= fb
-  e = 0.d0 
-  d = 0.d0
+    step = step * bracket_growth
+  end do
 
-  do iter = 1, 100
-    if ( fb*fc > 0.d0) then ! Rename a, b, c and adjust bounding interval d
-      c = a
-      fc= fa
-      d = b-a
-      e = d
-    endif
-    if ( abs(fc) < abs(fb) ) then
-      a = b
-      b = c
-      c = a
-      fa= fb
-      fb= fc
-      fc= fa
-    endif
+  if (.not. bracketed) then
+    stop "zbrent_rot: failed to bracket root"
+  end if
 
-    tol1 = 2.d0 * zeps *abs(b) + 0.5d0 * tol ! convergence check
-    xm = (c-b)/2.d0
-    if ( abs(xm) <= tol1 .or. fb==0.d0 ) then
-      return_value = b; return
-    endif
-    if ( abs(e) >= tol1 .and. abs(fa) > abs(fb) ) then ! Attempt inverse quadratic interpolation
-      s = fb/fa
-      if (a==c) then
+  a = left
+  b = right
+  fa = f_left
+  fb = f_right
+
+  if (abs(fa) < abs(fb)) then
+    call swap(a, b)
+    call swap(fa, fb)
+  end if
+
+  c = a
+  fc = fa
+  d = b - a
+  e = d
+
+  do iter = 1, max_iter
+    if (abs(fc) < abs(fb)) then
+      call cycle_points(a, b, c, fa, fb, fc)
+    end if
+
+    tol1 = 2.d0 * zero_eps * abs(b) + 0.5d0 * tol
+    xm = 0.5d0 * (c - b)
+
+    if (abs(xm) <= tol1 .or. fb == 0.d0) then
+      return_value = b
+      return
+    end if
+
+    if (abs(e) >= tol1 .and. abs(fa) > abs(fb)) then
+      s = fb / fa
+      if (a == c) then
         p = 2.d0 * xm * s
         q = 1.d0 - s
       else
-        q = fa/fc
-        r = fb/fc
-        p = s * (2.d0 * xm * q * (q-r) - (b-a) * (r-1.d0))
-        q = (q-1.d0) * (r-1.d0) * (s-1.d0)
-      endif
-      if (p>0.d0) q = -q ! Check whether in bounds
+        q = fa / fc
+        r = fb / fc
+        p = s * (2.d0 * xm * q * (q - r) - (b - a) * (r - 1.d0))
+        q = (q - 1.d0) * (r - 1.d0) * (s - 1.d0)
+      end if
+      if (p > 0.d0) q = -q
       p = abs(p)
-      if( 2.d0*p < min( 3.d0*xm*q - abs(tol1*q), abs(e*q) ) ) then
-        e=d ! Accept interpolation
-        d=p/q
+
+      if (2.d0 * p < min(3.d0 * xm * q - abs(tol1 * q), abs(e * q))) then
+        e = d
+        d = p / q
       else
-        d=xm ! Interpolation failed, use bisection
-        e=d
-      endif
-    else ! Bounds decreasing too slowly, use bisection
+        d = xm
+        e = d
+      end if
+    else
       d = xm
       e = d
-    endif
-    a = b ! Move last best guess to a
-    fa= fb
-    if( abs(d) > tol1 ) then ! Evaluate new trial root
-      b = b+d
-    else
-      b = b + sign(tol1,xm)
-    endif
-    call f(b, fb, re, rho_p, ww_p, sgp, mugp)
-    !write(*,"(2es18.9)") b,fb
-  enddo
+    end if
 
-  stop "zbrent exceeding maximum iterations, L188"
+    a = b
+    fa = fb
+
+    if (abs(d) > tol1) then
+      b = b + d
+    else
+      b = b + sign(tol1, xm)
+    end if
+
+    call evaluate(b, fb, ok_new)
+    if (.not. ok_new) then
+      b = b - d * 0.5d0
+      call evaluate(b, fb, ok_new)
+      if (.not. ok_new) stop "zbrent_rot: invalid function evaluation"
+      e = c - b
+      d = e
+    end if
+  end do
+
+  stop "zbrent_rot: exceeded maximum iterations"
+
+contains
+
+  subroutine evaluate(x, fx, ok)
+    real(8), intent(in) :: x
+    real(8), intent(out) :: fx
+    logical, intent(out) :: ok
+    call f(x, fx, re, rho_p, ww_p, sgp, mugp)
+    ok = .true.
+    if (ieee_is_nan(fx)) ok = .false.
+    if (ok) ok = ieee_is_finite(fx)
+    if (.not. ok) fx = huge(1.d0)
+  end subroutine evaluate
+
+  subroutine swap(x, y)
+    real(8), intent(inout) :: x, y
+    real(8) :: tmp
+    tmp = x
+    x = y
+    y = tmp
+  end subroutine swap
+
+  subroutine cycle_points(a_in, b_in, c_in, fa_in, fb_in, fc_in)
+    real(8), intent(inout) :: a_in, b_in, c_in, fa_in, fb_in, fc_in
+    call swap(a_in, b_in)
+    call swap(fa_in, fb_in)
+    call swap(a_in, c_in)
+    call swap(fa_in, fc_in)
+  end subroutine cycle_points
 
 end subroutine zbrent_rot
 
