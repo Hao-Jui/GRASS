@@ -16,8 +16,8 @@ subroutine MRcurve
   rho0    = n0_at_h(h_center)
   
   it = 1
-  output = .true.
-  do while ( rho0*MB > 1.d14 )
+  output = .true. ! just to restart the first solution
+  do while ( rho0*MB > .5d14 )
     call call_rotation_solver()
     output = .false.
     call mass_radius
@@ -28,22 +28,27 @@ subroutine MRcurve
     
     if ( mod(it,10) == 0 ) call check_point()
 
-    write(fil1,"(f10.1)") mphi_goal
-    write(fil2,"(f12.0)") B_goal
-    open(newunit=unit,file="/Users/horay/Data4Projects/crazy/Seq/"//trim(adjustl(eos_file))// &
-            "/1d_mphi"//trim(adjustl(fil1))//"_B"//trim(adjustl(fil2))//"dat",access='append')
-    write(unit,"(99es18.9e3)") ee/(C * C * KSCALE), rho0*MB, h_center, &
-        Mass/MSUN, r_circ/1e5, Mass_0/MSUN, &
-        sphi_c, sphi_max, T_kin/abs(Mass_p - Mass + T_kin)
-    close(unit)
+    call output_seq()
     it = it + 1
-    h_center = h_center - 5.d-3
+    h_center = log( exp(h_center) + 0.01d0 )
   enddo 
 
   write(*,*) " "
   write(*,*) "Completed!"
 
 contains
+  subroutine output_seq()
+    write(fil1,"(f10.1)") mphi_goal
+    write(fil2,"(es12.1)") B_goal
+    open(newunit=unit,file="/Users/horay/Data4Projects/crazy/Seq/"//trim(adjustl(eos_file))// &
+            "/mphi"//trim(adjustl(fil1))//"_B"//trim(adjustl(fil2))//".dat",access='append')
+    write(unit,"(99es18.9e3)") ee/(C * C * KSCALE), rho0*MB/n_sat, h_center, sound_speed(1), &
+            Mass/MSUN, Mass_0/MSUN, r_circ/1e5, &
+            sphi_c, sphi_max, &
+            T_kin/abs(Mass_p - Mass + T_kin)
+    close(unit)
+  end subroutine output_seq
+
   subroutine check_point
     write(*,*) " ===================================="
     write(*,"(A10,i6)")         " iter :", it

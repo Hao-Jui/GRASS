@@ -1,5 +1,14 @@
 module rotation_massless
   implicit none
+
+  interface
+    subroutine DGESV(N, NRHS, A, LDA, IPIV, B, LDB, INFO)
+      integer, intent(in) :: N, NRHS, LDA, LDB
+      integer, intent(out) :: INFO
+      integer, intent(out) :: IPIV(N)
+      real(8), intent(inout) :: A(LDA,N), B(LDB,NRHS)
+    end subroutine DGESV
+  end interface
 contains
 
 subroutine spin_massless
@@ -36,6 +45,7 @@ subroutine spin_massless
   real(8), dimension(SDIV,MDIV) :: S_metric_rho, S_metric_gama, S_metric_omega, S_metric_sphi
   real(8), dimension(LMAX+1,SDIV) :: D1_metric_rho, D1_metric_gama, D1_metric_omega, D1_metric_sphi
   real(8), dimension(SDIV,LMAX+1) :: D2_metric_rho, D2_metric_gama, D2_metric_omega, D2_metric_sphi
+  real(8), allocatable :: target_rho(:,:), target_gama(:,:), target_ww(:,:), target_sphi(:,:)
   real(8), dimension(MDIV) :: Int_m
   real(8), dimension(SDIV) :: Int_s
 
@@ -45,12 +55,6 @@ subroutine spin_massless
   real(8) :: d_rho_s, d_rho_m, d_ww_s, d_ww_m, d_sphi_s, d_sphi_m
   real(8) :: temp1,temp2,temp3,temp4,temp5,temp6,temp7,temp8,temp9
   real(8) :: ea, start_local, finish_local
-  real(8) :: weight_rho_loc, weight_gama_loc, weight_ww_loc, weight_sphi_loc
-
-  ! --- Saved iteration helpers ---------------------------------------------
-  real(8), allocatable, save :: target_rho(:,:), target_gama(:,:), target_ww(:,:), target_sphi(:,:)
-  real(8), save :: rho_prev_norm = -1.d0, gama_prev_norm = -1.d0, ww_prev_norm = -1.d0, sphi_prev_norm = -1.d0
-  real(8), save :: rho_weight = 1.d0, gama_weight = 1.d0, ww_weight = 1.d0, sphi_weight = 1.d0
 
   real(8) :: r_ratio_const
 
@@ -71,10 +75,6 @@ subroutine spin_massless
   if ( maxval(sphi*sqrt(B_coup)) < 1.d-3 ) sphi = sphi * 10.d0
   if ( any(isnan(sphi)) ) stop "spin_massless: NaN found in sphi"
 
-  if (allocated(target_rho)) then
-    deallocate(target_rho, target_gama, target_ww, target_sphi)
-  end if
-
   call cpu_time(start_local)
   do while( dif > 1.d-7 .or. n_of_it < 2 )
 
@@ -93,7 +93,7 @@ subroutine spin_massless
       rho_mu_1 (s) = rho (s,MDIV)
       gama_mu_1(s) = gama(s,MDIV)
     end do
-
+    
     ! --- Equatorial radius update ----------------------------------------
     r_e_old = r_e_new
     r_p     = r_ratio_const * r_e_new
@@ -132,7 +132,8 @@ subroutine spin_massless
       if (term_in_Omega_h >= 0.d0) then
         Omega_c = ww_equator_h + exp(r_e_new_sq*rho_equator_h) * sqrt(term_in_Omega_h)
       else
-        stop "spin_massless: cannot determine Omega"
+        ! Unphysical state. Set Omega_c to a reasonable value and let the solver try to recover.
+        Omega_c = ww_equator_h
       end if
     end if
 
@@ -348,10 +349,6 @@ subroutine spin_massless
     if (.not. allocated(target_rho)) then
       allocate(target_rho(SDIV,MDIV), target_gama(SDIV,MDIV), target_ww(SDIV,MDIV), target_sphi(SDIV,MDIV))
     end if
-    target_rho  = 0.d0
-    target_gama = 0.d0
-    target_ww   = 0.d0
-    target_sphi = 0.d0
 
     do s = 1, SDIV
       do m = 1, MDIV
@@ -382,12 +379,12 @@ subroutine spin_massless
       end do
     end do
 
-    call relaxation(target_rho, target_gama, target_ww, target_sphi)
+    call relaxation(target_rho, target_gama, target_ww, target_sphi, n_of_it)
 
     ! --- Divergence check & rigid rotation ---------------------------------
     if (abs(rho(2,1))>100.d0 .or. abs(gama(2,1))>300.d0 .or. abs(ww(2,1))>100.d0 &
         .or. abs(sphi(2,1))>10.d0) then
-      write(*,"(30es18.9)") rho(2,1), gama(2,1), ww(2,1), sphi(2,1)
+      write(*,"(i5,4es18.9)") n_of_it, rho(2,1), gama(2,1), ww(2,1), sphi(2,1)
       stop "spin_massless: divergence detected"
     end if
 
@@ -467,7 +464,8 @@ subroutine spin_massless
   end do
 
   call cpu_time(finish_local)
-  write(*,*) 'spin_massless: Relaxation steps =', n_of_it, ' time =', finish_local-start_local
+  n_of_relaxation_steps = n_of_relaxation_steps + n_of_it
+  !write(*,*) 'spin_massless: Relaxation steps =', n_of_it, ' time =', finish_local-start_local
 
   ! --- Final bookkeeping ---------------------------------------------------
   r_ratio = r_ratio_const
@@ -478,90 +476,81 @@ subroutine spin_massless
   sphi_c   = sphi(1,1) * sqrt(B_coup)
   sphi_m   = maxval( sphi(:,1) * sqrt(B_coup) )
   rho_0    = n0_at_e( energy(1,1) ) * MB
-
+  
   if (output) call output_helper
-
+  
   if (allocated(target_rho)) then
-    deallocate(target_rho, target_gama, target_ww, target_sphi)
   end if
 
 contains
 
-  subroutine relaxation(target_rho_in, target_gama_in, target_ww_in, target_sphi_in)
-    real(8), intent(in) :: target_rho_in(SDIV,MDIV), target_gama_in(SDIV,MDIV)
-    real(8), intent(in) :: target_ww_in(SDIV,MDIV), target_sphi_in(SDIV,MDIV)
-    real(8) :: cf_eff
+  subroutine anderson_acceleration(current_field, target_field, history_f, history_g, iter, m_hist)
+    real(8), dimension(SDIV,MDIV), intent(inout) :: current_field
+    real(8), dimension(SDIV,MDIV), intent(in)    :: target_field
+    real(8), dimension(SDIV,MDIV,m_hist), intent(inout) :: history_f, history_g
+    integer, intent(in) :: iter, m_hist
+    real(8), dimension(m_hist) :: gamma
+    real(8), dimension(m_hist, m_hist) :: F_mat
+    real(8) :: residual(SDIV,MDIV)
+    integer :: k, i, j, info
+    integer, dimension(m_hist) :: ipiv
+    integer, parameter :: conservative_steps = 5
 
-    call compute_relaxation_weights(target_rho_in, target_gama_in, target_ww_in, target_sphi_in, &
-         weight_rho_loc, weight_gama_loc, weight_ww_loc, weight_sphi_loc)
+    residual = current_field - target_field
+    history_f(:,:,modulo(iter, m_hist)+1) = residual
+    history_g(:,:,modulo(iter, m_hist)+1) = target_field
+    k = min(iter, m_hist)
 
-    do s = 1, SDIV
-      do m = 1, MDIV
-        cf_eff = effective_relaxation_weight()
-        call relaxation_update_field( rho(s,m), target_rho_in (s,m), cf_eff * weight_rho_loc)
-        call relaxation_update_field(gama(s,m), target_gama_in(s,m), cf_eff * weight_gama_loc)
-        call relaxation_update_field(  ww(s,m), target_ww_in  (s,m), cf_eff * weight_ww_loc)
-        call relaxation_update_field(sphi(s,m), target_sphi_in(s,m), cf_eff * weight_sphi_loc)
-        if ( sphi(s,m) .ne. sphi(s,m) ) sphi(s,m) = 0.d0
+    if (iter < conservative_steps) then
+      current_field = 0.9d0 * current_field + 0.1d0 * target_field
+    else
+      do i = 1, k
+        do j = 1, k
+          F_mat(i,j) = sum( (history_f(:,:,modulo(iter, m_hist)+1) - history_f(:,:,modulo(iter-i, m_hist)+1)) * &
+                            (history_f(:,:,modulo(iter, m_hist)+1) - history_f(:,:,modulo(iter-j, m_hist)+1)) )
+        end do
       end do
-    end do
-  end subroutine relaxation
 
-  subroutine relaxation_update_field(current, target, weight)
-    real(8), intent(inout) :: current
-    real(8), intent(in)    :: target, weight
-    current = current + weight * (target - current)
-  end subroutine relaxation_update_field
+      gamma(1:k) = 1.d0
+      call DGESV(k, 1, F_mat, m_hist, ipiv, gamma, m_hist, info)
 
-  real(8) function effective_relaxation_weight()
-    if (dif > 1.d-4) then
-      effective_relaxation_weight = cf
-    else
-      effective_relaxation_weight = cf * 2.d0
-    end if
-  end function effective_relaxation_weight
-
-  subroutine compute_relaxation_weights(target_rho_in, target_gama_in, target_ww_in, target_sphi_in, &
-      weight_rho_out, weight_gama_out, weight_ww_out, weight_sphi_out)
-    real(8), intent(in)  :: target_rho_in(SDIV,MDIV), target_gama_in(SDIV,MDIV)
-    real(8), intent(in)  :: target_ww_in(SDIV,MDIV), target_sphi_in(SDIV,MDIV)
-    real(8), intent(out) :: weight_rho_out, weight_gama_out, weight_ww_out, weight_sphi_out
-
-    call update_field_weight(target_rho_in,  rho,  rho_prev_norm,  rho_weight)
-    call update_field_weight(target_gama_in, gama, gama_prev_norm, gama_weight)
-    call update_field_weight(target_ww_in,   ww,   ww_prev_norm,   ww_weight)
-    call update_field_weight(target_sphi_in, sphi, sphi_prev_norm, sphi_weight)
-
-    weight_rho_out  = rho_weight
-    weight_gama_out = gama_weight
-    weight_ww_out   = ww_weight
-    weight_sphi_out = sphi_weight
-  end subroutine compute_relaxation_weights
-
-  subroutine update_field_weight(target_field, current_field, prev_norm, weight_store)
-    real(8), intent(in)    :: target_field(SDIV,MDIV)
-    real(8), intent(in)    :: current_field(SDIV,MDIV)
-    real(8), intent(inout) :: prev_norm, weight_store
-    real(8), parameter :: min_w = 0.3d0, max_w = 1.5d0
-    real(8), parameter :: grow_ratio = 0.7d0, shrink_ratio = 1.05d0
-    real(8), parameter :: tiny_norm = 1.d-12
-    real(8) :: norm_val, ratio
-
-    norm_val = max(tiny_norm, maxval(abs(target_field - current_field)))
-
-    if (prev_norm > 0.d0) then
-      ratio = norm_val / max(prev_norm, tiny_norm)
-      if (ratio < grow_ratio) then
-        weight_store = min(max_w, weight_store * 1.5d0)
-      else if (ratio > shrink_ratio) then
-        weight_store = max(min_w, weight_store * 0.7d0)
+      if (info == 0) then
+        current_field = (1.d0 - sum(gamma(1:k))) * target_field
+        do i=1,k
+          current_field = current_field + gamma(i)*history_g(:,:,modulo(iter-i,m_hist)+1)
+        end do
+      else
+        current_field = 0.5d0 * current_field + 0.5d0 * target_field
       end if
-    else
-      weight_store = 1.d0
+    end if
+  end subroutine anderson_acceleration
+
+  subroutine relaxation(target_rho, target_gama, target_ww, target_sphi, n_of_it)
+    real(8), intent(in) :: target_rho(SDIV,MDIV), target_gama(SDIV,MDIV)
+    real(8), intent(in) :: target_ww(SDIV,MDIV), target_sphi(SDIV,MDIV)
+    integer, intent(in) :: n_of_it
+    integer :: s, m
+
+    integer, parameter :: m_hist = 5
+    real(8), allocatable, save :: hist_f_rho(:,:,:), hist_g_rho(:,:,:)
+    real(8), allocatable, save :: hist_f_gama(:,:,:), hist_g_gama(:,:,:)
+    real(8), allocatable, save :: hist_f_ww(:,:,:), hist_g_ww(:,:,:)
+    real(8), allocatable, save :: hist_f_sphi(:,:,:), hist_g_sphi(:,:,:)
+
+    if (.not. allocated(hist_f_rho)) then
+      allocate(hist_f_rho(SDIV,MDIV,m_hist), hist_g_rho(SDIV,MDIV,m_hist))
+      allocate(hist_f_gama(SDIV,MDIV,m_hist), hist_g_gama(SDIV,MDIV,m_hist))
+      allocate(hist_f_ww(SDIV,MDIV,m_hist), hist_g_ww(SDIV,MDIV,m_hist))
+      allocate(hist_f_sphi(SDIV,MDIV,m_hist), hist_g_sphi(SDIV,MDIV,m_hist))
     end if
 
-    prev_norm = norm_val
-  end subroutine update_field_weight
+    call anderson_acceleration(rho, target_rho, hist_f_rho, hist_g_rho, n_of_it, m_hist)
+    call anderson_acceleration(gama, target_gama, hist_f_gama, hist_g_gama, n_of_it, m_hist)
+    call anderson_acceleration(ww, target_ww, hist_f_ww, hist_g_ww, n_of_it, m_hist)
+    call anderson_acceleration(sphi, target_sphi, hist_f_sphi, hist_g_sphi, n_of_it, m_hist)
+
+    where(sphi .ne. sphi) sphi = 0.d0
+  end subroutine relaxation
 
   subroutine output_helper()
     call mass_radius

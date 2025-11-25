@@ -1,26 +1,47 @@
+! uses the Newton-Raphson method (exact Jacobian via finite difference) 
+! to get started and then switches to the more computationally efficient 
+! Broyden's method (Jacobian updated algebraically) for subsequent steps, 
+! which is common when function evaluation is expensive.
 module shoot_solver_mod
   implicit none
   real(8), parameter :: r_eps = 1.d-8
+  real(8), parameter :: r_min_ratio = 0.4d0
   real(8), parameter :: max_step = 0.5d0
 
-  type :: newton_state
+  type, public :: newton_state
     logical :: has_jacobian = .false.
     logical :: has_prev     = .false.
-    real(8) :: J(2,2)       = 0.d0
-    real(8) :: x_prev(2)    = 0.d0
-    real(8) :: F_prev(2)    = 0.d0
+    real(8), allocatable :: J(:,:)
+    real(8), allocatable :: x_prev(:)
+    real(8), allocatable :: F_prev(:)
   end type newton_state
 
+  abstract interface
+    subroutine evaluation_function(hc, rep, F, rho0, ee, er)
+      real(8), intent(in)  :: hc, rep
+      real(8), intent(out) :: F(2), rho0, ee, er
+    end subroutine evaluation_function
+  end interface
+
 contains
+  subroutine init_newton_state(state, n_dim)
+    type(newton_state), intent(inout) :: state
+    integer, intent(in) :: n_dim
+    if (allocated(state%J)) deallocate(state%J, state%x_prev, state%F_prev)
+    allocate(state%J(n_dim, n_dim), state%x_prev(n_dim), state%F_prev(n_dim))
+    call reset_newton_state(state)
+  end subroutine init_newton_state
 
   subroutine reset_newton_state(state)
     type(newton_state), intent(inout) :: state
+    if (.not. allocated(state%J)) return
     state%has_jacobian = .false.
     state%has_prev     = .false.
     state%J            = 0.d0
     state%x_prev       = 0.d0
     state%F_prev       = 0.d0
   end subroutine reset_newton_state
+
   subroutine to_solver_coords(hc, rep, x)
     real(8), intent(in)  :: hc, rep
     real(8), intent(out) :: x(2)
@@ -28,38 +49,60 @@ contains
 
     rep_clip = min(max(rep, r_eps), 1.d0 - r_eps)
     x(1) = log(max(hc, 1.d-12))
-    x(2) = log(rep_clip / (1.d0 - rep_clip))
+    x(2) = log( (1.d0 - rep_clip) / ( rep_clip - r_min_ratio ) ) / 4.d0
   end subroutine to_solver_coords
+
   subroutine from_solver_coords(x, hc, rep)
     real(8), intent(in)  :: x(2)
     real(8), intent(out) :: hc, rep
     real(8) :: exp_arg
 
     hc = exp(x(1))
-    exp_arg = exp(-x(2))
-    rep = 1.d0 / (1.d0 + exp_arg)
-    rep = min(max(rep, r_eps), 1.d0 - r_eps)
+    exp_arg = exp( 4.d0 * x(2) )
+    rep = ( exp_arg * r_min_ratio + 1.d0 ) / ( exp_arg + 1.d0 )
   end subroutine from_solver_coords
+
   subroutine clamp_step(delta)
-    real(8), intent(inout) :: delta(2)
-    delta = max(-max_step, min(delta, max_step))
+    real(8), intent(inout) :: delta(:)
+    ! Only clamp the physical variables, not the path parameter
+    integer :: n_clamp
+    n_clamp = min(size(delta), 2)
+    delta(1:n_clamp) = max(-max_step, min(delta(1:n_clamp), max_step))
   end subroutine clamp_step
 
   logical function solve_linear(J, rhs, delta)
-    real(8), intent(in)  :: J(2,2), rhs(2)
-    real(8), intent(out) :: delta(2)
-    real(8) :: det
+    real(8), intent(in)  :: J(:,:), rhs(:)
+    real(8), intent(out) :: delta(:)
+    integer :: n, info
+    real(8) :: a, b, c, d, det
 
-    det = J(1,1) * J(2,2) - J(1,2) * J(2,1)
-    if (abs(det) < 1.d-12) then
-      delta = 0.d0
-      solve_linear = .false.
-    else
-      delta(1) = ( rhs(1) * J(2,2) - J(1,2) * rhs(2) ) / det
-      delta(2) = ( J(1,1) * rhs(2) - rhs(1) * J(2,1) ) / det
+    n = size(rhs)
+    ! Fast path for the fixed 2x2 systems we solve in the shooting method
+    if (n == 2 .and. size(J, 1) == 2 .and. size(J, 2) == 2) then
+      a = J(1,1); b = J(1,2)
+      c = J(2,1); d = J(2,2)
+      det = a * d - b * c
+      if (abs(det) < 1.d-24) then
+        solve_linear = .false.
+        return
+      end if
+      delta(1) = ( rhs(1) * d - b * rhs(2) ) / det
+      delta(2) = ( a * rhs(2) - c * rhs(1) ) / det
       solve_linear = .true.
-    endif
+      return
+    end if
+
+    ! Generic fallback keeps allocation on the stack to avoid heap churn
+    block
+      real(8) :: J_copy(size(J,1), size(J,2))
+      integer :: ipiv(max(1, size(rhs)))
+      J_copy = J
+      delta = rhs
+      call dgesv(n, 1, J_copy, n, ipiv, delta, n, info)
+      solve_linear = (info == 0)
+    end block
   end function solve_linear
+
   subroutine broyden_update(state, x, F)
     type(newton_state), intent(inout) :: state
     real(8), intent(in) :: x(2), F(2)
@@ -77,21 +120,67 @@ contains
 
     state%J = state%J + matmul(reshape(dF - Jdx, (/2,1/)), reshape(dx, (/1,2/))) / denom
   end subroutine broyden_update
+
   subroutine commit_state(state, x, F)
     type(newton_state), intent(inout) :: state
-    real(8), intent(in) :: x(2), F(2)
+    real(8), intent(in) :: x(:), F(:)
 
     state%x_prev = x
     state%F_prev = F
     state%has_prev = .true.
   end subroutine commit_state
 
+  subroutine line_search(x_current, F_current, delta_x, evaluate_func, final_delta, J_est, success)
+    ! Armijo backtracking on phi = 0.5*|F|^2; uses Jacobian estimate when supplied for slope
+    procedure(evaluation_function) :: evaluate_func
+    real(8), intent(in)    :: x_current(2), F_current(2), delta_x(2)
+    real(8), intent(out)   :: final_delta(2)
+    real(8), intent(in), optional :: J_est(2,2)
+    logical, intent(out), optional :: success
+    
+    integer, parameter :: max_iter = 10
+    real(8), parameter :: tau = 0.5d0
+    real(8), parameter :: c1 = 1.d-4
+    real(8)             :: alpha
+    real(8)             :: x_trial(2), F_trial(2), hc_trial, rep_trial
+    real(8)             :: rho0_tmp, ee_tmp, er_tmp
+    real(8)             :: phi_old, phi_new, slope0
+    integer             :: i
+    logical             :: ok
+
+    alpha = 1.d0
+    final_delta = delta_x
+    phi_old = 0.5d0 * dot_product(F_current, F_current)
+    ok = .false.
+
+    if (present(J_est)) then
+      slope0 = dot_product(F_current, matmul(J_est, delta_x))
+    else
+      slope0 = -phi_old * 2.d0 ! Fallback to a steep descent assumption
+    end if
+    if (slope0 > -1.d-12) slope0 = -phi_old * 2.d0
+
+    do i = 1, max_iter
+      x_trial = x_current + alpha * delta_x
+      call from_solver_coords(x_trial, hc_trial, rep_trial)
+      call evaluate_func(hc_trial, rep_trial, F_trial, rho0_tmp, ee_tmp, er_tmp)
+
+      phi_new = 0.5d0 * dot_product(F_trial, F_trial)
+      if (phi_new <= phi_old + c1 * alpha * slope0) then
+        ok = .true.
+        exit
+      end if
+      alpha = alpha * tau
+    end do
+    final_delta = alpha * delta_x
+    if (present(success)) success = ok
+  end subroutine line_search
 end module shoot_solver_mod
 
 module shoot_newton_helpers
   use para_mod
-  use rotation_dispatch, only: call_rotation_solver
   use shoot_solver_mod
+  use rotation_dispatch, only: call_rotation_solver
   implicit none
 contains
   subroutine evaluate_solution(hc, rep, F, rho0, ee, er)
@@ -105,37 +194,49 @@ contains
     r_ratio  = rep
     h_center = hc
 
-    write(*,"(A40,2es18.9)") "(rep, hc) to evaluate_solution :", rep, hc
     call call_rotation_solver
     call mass_radius
-    
+
     rho0 = n0_at_h(h_center)
     ee   = e_at_h (h_center)
-    
-    if (has_scalar) then
-      deviA = mass/MSUN - M_goal
-      deviB = ang_mom - J_goal
-    else
-      deviA = mass_0/MSUN/Mb_goal - 1.d0
-      deviB = ( Omega_e - Omega_K / (C/sqrt(kappa)) ) / 5.d0
-    end if
-  
+
+    select case (trim(FIX1))
+    case ('M_goal')
+      deviA = Mass/MSUN/M_goal - 1.d0
+    case ('Mb_goal')
+      deviA = Mass_0/MSUN/Mb_goal - 1.d0
+    case default
+      stop "evaluate_solution: unknown FIX1"
+    end select
+
+    select case (trim(FIX2))
+    case ('J_goal')
+      deviB = J_goal / ang_mom - 1.d0
+    case ('chi_goal')
+      deviB = chi / chi_goal - 1.d0
+    case ('omc_goal')
+      deviB = Omega_c / omc_goal - 1.d0
+    case default
+      deviB = (Omega_K / (C/sqrt(kappa))) / Omega_e - 1.d0
+    end select
+
     F(1) = deviA
     F(2) = deviB
     er   = abs(deviA) + abs(deviB)
   end subroutine evaluate_solution
 
-  subroutine build_jacobian(state, x, F, hc, rep, rho0, ee, er)
+  subroutine build_jacobian(state, x, F, hc, rep, rho0, ee, er, reuse_base)
     type(newton_state), intent(inout) :: state
     real(8), intent(in)    :: x(2)
     real(8), intent(inout) :: F(2)
     real(8), intent(inout) :: hc, rep
-    real(8), intent(out)   :: rho0, ee, er
+    real(8), intent(inout) :: rho0, ee, er
+    logical, intent(in), optional :: reuse_base
     real(8) :: delta(2), xp(2), Fp(2), rho_tmp, ee_tmp, er_tmp
     real(8) :: hc_p, rep_p
     integer :: i
 
-    delta = max(0.05d0, 0.2d0*abs(x))
+    delta = max(abs(x), 1.d0) * epsilon(x(1))**(1.d0/3.d0)
     do i = 1, 2
       xp = x
       xp(i) = xp(i) + delta(i)
@@ -148,7 +249,10 @@ contains
     state%has_prev     = .false.
 
     call from_solver_coords(x, hc, rep)
-    call evaluate_solution(hc, rep, F, rho0, ee, er)
+    ! Caller can skip recomputing the base residual if it was just evaluated
+    if (.not. (present(reuse_base) .and. reuse_base)) then
+      call evaluate_solution(hc, rep, F, rho0, ee, er)
+    end if
   end subroutine build_jacobian
 
 end module shoot_newton_helpers
