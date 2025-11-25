@@ -3,12 +3,11 @@ module rotation_gr
 contains
 
 subroutine spin_gr
-#include "option_macro.h"
   use toolkit_mod
   use simpson_mod
   use nag_compat_mod, only: d01gaf
   use para_mod
-  use miscellaneous_mod, only: spectral_tail_fit, integrate_column_spline, composite_richardson
+  use miscellaneous_mod, only: spectral_tail_fit, composite_richardson
   implicit none
   integer :: m, s, n, k, n_of_it, ifail
   integer :: tail_unit, tail_start, tail_idx
@@ -20,6 +19,7 @@ subroutine spin_gr
   real(8) :: c0, c1
   logical :: valid(MDIV), diverg, tail_ok
   character(32) :: fil1, fil2, fil3, fil4, fil5, fil6
+  real(8), parameter :: cf = 1.d0
 
   ! externs used in precompute
   real(8) :: n0_at_e, e_at_p, p_at_h, e_at_h
@@ -34,17 +34,17 @@ subroutine spin_gr
   real(8) :: sum_rho, sum_gama, sum_omega
   real(8), dimension(SDIV) :: gama_mu_1, gama_mu_0, rho_mu_1, rho_mu_0, ww_mu_0
   real(8), dimension(SDIV,MDIV) :: da_dm
-  real(8), dimension(SDIV,MDIV) :: S_metric_rho, S_metric_gama, S_metric_omega, S_metric_sphi
-  real(8), dimension(LMAX+1,SDIV) :: D1_metric_rho, D1_metric_gama, D1_metric_omega, D1_metric_sphi
-  real(8), dimension(SDIV,LMAX+1) :: D2_metric_rho, D2_metric_gama, D2_metric_omega, D2_metric_sphi
+  real(8), dimension(SDIV,MDIV) :: S_metric_rho, S_metric_gama, S_metric_omega
+  real(8), dimension(LMAX+1,SDIV) :: D1_metric_rho, D1_metric_gama, D1_metric_omega
+  real(8), dimension(SDIV,LMAX+1) :: D2_metric_rho, D2_metric_gama, D2_metric_omega
   real(8), dimension(MDIV,SDIV) :: Int_m
   real(8), dimension(SDIV) :: Int_s
 
   ! local temps
   real(8) :: sgp, mum, s_1, s1, s2, m1, ea
   real(8) :: gsm, rsm, wwsm, esm, psm, v2sm, e_gsm, e_rsm
-  real(8) :: d_gama_s,d_gama_m,d_gama_ss,d_gama_mm,d_gama_sm
-  real(8) :: d_rho_s,d_rho_m,d_ww_s,d_ww_m,d_sphi_s,d_sphi_m
+  real(8) :: d_gama_s, d_gama_m, d_gama_ss, d_gama_mm, d_gama_sm
+  real(8) :: d_rho_s, d_rho_m, d_ww_s, d_ww_m
   real(8) :: temp1,temp2,temp3,temp4,temp5,temp6,temp7,temp8
   real(8), dimension(MDIV) :: row_rho, row_gama, row_ww, row_energy, row_pressure
   real(8), dimension(MDIV) :: row_v2, row_e_g, row_e_r, row_ea, row_mum, row_m1
@@ -67,7 +67,7 @@ subroutine spin_gr
   n_of_it =0
   r_e_new = r_e
   r_e_new_sq = r_e_new**2
-
+  sphi = 0.d0
   s_p = r_ratio**(1.d0/dble(s_pwr)) / ( 1.d0 + r_ratio**(1.d0/dble(s_pwr)) )
 
   if (.not. allocated(e_g_half_cache)) then
@@ -154,9 +154,8 @@ subroutine spin_gr
       gama = gama * r_e_new_sq
       alpha=alpha * r_e_new_sq
       
-#if defined(Fishbone)
-      call set_disk(r_e_new)
-#endif
+      if ( disk_present ) call set_disk(r_e_new)
+
       !------------------------------------------------------------
       ! PRECOMPUTE derivatives, exponentials, and s-factors (on rescaled fields)
       !------------------------------------------------------------
@@ -191,55 +190,44 @@ subroutine spin_gr
       S_metric_gama  = 0.d0
       S_metric_omega = 0.d0
 
-      do s = 1, SDIV
+      do s = 1, SDIV-1
         sgp = s_gp(s)
         s1  = s1_cache(s)
         s2  = s2_cache(s)
-        row_rho     = rho(s,:)
-        row_gama    = gama(s,:)
-        row_ww      = ww(s,:)
-        row_energy  = energy(s,:)
-        row_pressure= pressure(s,:)
-        row_v2      = velocity_sq(s,:)
-        row_e_g     = e_g_half_cache(s,:)
-        row_e_r     = e_mrho_cache(s,:)
-        row_ea      = 16.d0 * pi * e2alpha_r2_cache(s,:)
-        row_dg_s    = dg_s_cache(s,:)
-        row_dg_m    = dg_m_cache(s,:)
-        row_dr_s    = dr_s_cache(s,:)
-        row_dr_m    = dr_m_cache(s,:)
-        row_dww_s   = dww_s_cache(s,:)
-        row_dww_m   = dww_m_cache(s,:)
-        row_mum     = mu(:)
-        row_m1      = 1.d0 - row_mum**2
-        row_diff    = 1.d0 / max(1.d-14, 1.d0 - row_v2)
+        do m = 1, MDIV
+          mum = mu(m)
+          m1  = 1.d0 - mum**2
+          
+          temp1 = 1.d0 / max(1.d-14, 1.d0 - velocity_sq(s,m))
+          temp2 = energy(s,m) + pressure(s,m)
+          temp3 = (s1 * dww_s_cache(s,m))**2 + m1 * dww_m_cache(s,m)**2
+          temp4 = s1 * dg_s_cache(s,m) - mum * dg_m_cache(s,m)
+          temp5 = 16.d0 * pi * e2alpha_r2_cache(s,m) * pressure(s,m) * s2
+          temp6 = s1 * dg_s_cache(s,m)
+          temp7 = m1 * 0.5d0 * dg_m_cache(s,m) - mum
+          temp8 = rho(s,m) * 0.5d0 * ( temp5 - temp6 * (0.5d0 * temp6 + 1.d0) - dg_m_cache(s,m) * temp7 )
+          
+          S_metric_rho(s,m) = e_g_half_cache(s,m) * ( &
+               16.d0 * pi * e2alpha_r2_cache(s,m) * 0.5d0 * temp2 * s2 * (1.d0 + velocity_sq(s,m)) * temp1 &
+               + s2 * m1 * e_mrho_cache(s,m)**2 * temp3 &
+               + temp4 + temp8 )
 
-        row_term_a = row_energy + row_pressure
-        row_term_b = (s1 * row_dww_s)**2 + row_m1 * row_dww_m**2
-        row_term_c = s1 * row_dg_s - row_mum * row_dg_m
-        row_term_d = row_ea * row_pressure * s2
-        row_term_e = s1 * row_dg_s
-        row_term_f = row_m1 * 0.5d0 * row_dg_m - row_mum
-        row_term_g = row_rho * 0.5d0 * ( row_term_d - row_term_e * (0.5d0 * row_term_e + 1.d0) - row_dg_m * row_term_f )
-        row_term_h = s2 * row_m1 * row_e_r**2 * row_term_b
-        row_term_i = row_ea * 0.5d0 * row_term_a * s2 * (1.d0 + row_v2) * row_diff
+          temp2 = 0.5d0 * ( (s1 * dg_s_cache(s,m))**2 + m1 * dg_m_cache(s,m)**2 )
+          S_metric_gama(s,m) = e_g_half_cache(s,m) * ( temp5 + gama(s,m) * 0.5d0 * ( temp5 - temp2 ) )
 
-        S_metric_rho(s,:) = row_e_g * ( row_term_i + row_term_h + row_term_c + row_term_g )
-
-        row_term_j = row_ea * row_pressure * s2
-        row_term_k = 0.5d0 * ( (s1 * row_dg_s)**2 + row_m1 * row_dg_m**2 )
-        S_metric_gama(s,:) = row_e_g * ( row_term_j + row_gama * 0.5d0 * ( row_term_j - row_term_k ) )
-
-        row_term_l = -row_ea * (Omega_c - row_ww) * row_term_a * s2 * row_diff
-        row_term_m = -0.5d0 * row_ea * s2 * ( ((1.d0 + row_v2) * row_energy + 2.d0 * row_v2 * row_pressure) * row_diff )
-        row_term_n = - s1 * ( 2.d0 * row_dr_s + 0.5d0 * row_dg_s )
-        row_term_o =   row_mum * ( 2.d0 * row_dr_m + 0.5d0 * row_dg_m )
-        row_term_p = 0.25d0 * s1**2 * ( 4.d0 * row_dr_s**2 - row_dg_s**2 )
-        row_term_q = 0.25d0 * row_m1 * ( 4.d0 * row_dr_m**2 - row_dg_m**2 )
-        row_term_r = - row_m1 * row_e_r**2 * s2 * row_term_b
-        row_term_s = row_term_m + row_term_n + row_term_o + row_term_p + row_term_q + row_term_r
-
-        S_metric_omega(s,:) = row_e_g * row_e_r * ( row_term_l + row_ww * row_term_s )
+          temp2 = energy(s,m) + pressure(s,m)
+          temp3 = -16.d0 * pi * e2alpha_r2_cache(s,m) * (Omega_c - ww(s,m)) * temp2 * s2 * temp1
+          temp4 = -0.5d0 * 16.d0 * pi * e2alpha_r2_cache(s,m) * s2 * ( &
+                  ((1.d0 + velocity_sq(s,m)) * energy(s,m) + 2.d0 * velocity_sq(s,m) * pressure(s,m)) * temp1 )
+          temp5 = - s1 * ( 2.d0 * dr_s_cache(s,m) + 0.5d0 * dg_s_cache(s,m) )
+          temp6 =   mum * ( 2.d0 * dr_m_cache(s,m) + 0.5d0 * dg_m_cache(s,m) )
+          temp7 = 0.25d0 * s1**2 * ( 4.d0 * dr_s_cache(s,m)**2 - dg_s_cache(s,m)**2 )
+          temp8 = 0.25d0 * m1 * ( 4.d0 * dr_m_cache(s,m)**2 - dg_m_cache(s,m)**2 )
+          temp1 = - m1 * e_mrho_cache(s,m)**2 * s2 * ( (s1 * dww_s_cache(s,m))**2 + m1 * dww_m_cache(s,m)**2 )
+          
+          S_metric_omega(s,m) = e_g_half_cache(s,m) * e_mrho_cache(s,m) * ( temp3 + ww(s,m) * &
+                                ( temp4 + temp5 + temp6 + temp7 + temp8 + temp1 ) )
+        enddo
       enddo
 
 
@@ -333,7 +321,7 @@ subroutine spin_gr
       ! check for divergence
       if (abs(rho(2,1))>100.d0 .or. abs(gama(2,1))>300.d0 .or. abs(ww(2,1))>100.d0) then
         write(*,"(3es18.9)") rho(2,1), gama(2,1), ww(2,1)
-        write(*,*) e_at_h (h_center)/(C * C * KSCALE), h_center, r_ratio
+        write(*,"(3es18.9)") e_at_h (h_center)/(C * C * KSCALE), h_center, r_ratio
         stop "Line 300 in spin"
       endif
 #if defined(Fishbone)
@@ -425,7 +413,7 @@ subroutine spin_gr
       enddo
       if (diverg) stop "L428, alpha fails"
       dif = abs(r_e_old-r_e_new) * inv_r
-      n_of_it = n_of_it + 1
+      n_of_it = n_of_it + 1; n_of_relaxation_steps = n_of_relaxation_steps + 1
       if (n_of_it == 100) stop "Cannot converge; L404 in spin"
       !call cpu_time(finish); write(*,*) finish-start; stop
   enddo

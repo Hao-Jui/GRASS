@@ -3,9 +3,15 @@ module para_mod
   ! -- Theory selection ------------------------------------------------------
   integer, parameter :: THEORY_GR = 0
   integer, parameter :: THEORY_ST = 1
-  integer :: active_theory = THEORY_GR
+  integer :: active_theory = THEORY_ST
 
-  logical :: has_scalar = .false.
+  character(len=20) :: relaxation_scheme = "anderson" ! anderson, newton (much slower per iteration)
+
+  ! -- Running option --------------------------------------------------------
+  integer, parameter :: MODE_REGRID  = 1
+  integer, parameter :: MODE_DEFAULT = 2
+
+  integer :: run_mode = MODE_REGRID 
 
   ! -- Rotation configuration ------------------------------------------------
   character(len=20) :: solver_type = "uniform"
@@ -13,9 +19,11 @@ module para_mod
   ! -- Solver state ----------------------------------------------------------
   logical :: output = .false.
   logical :: use_shoot_1d = .true.      ! adjust hc while keeping rep constant
+  character(len=20) :: FIX1 = "Mb_goal"
+  character(len=20) :: FIX2 = "J_goal"
 
   ! -- Resolutions -----------------------------------------------------------
-  integer, parameter :: res  = 400
+  integer, parameter :: res  = 300
   integer, parameter :: s_pwr = 1
   integer :: SDIV = 2 * res + 1
   integer :: MDIV = 2 * res + 1
@@ -23,13 +31,13 @@ module para_mod
   ! -- Target quantities -----------------------------------------------------
   character(len=128) :: eos_file = "MPA1"
   real(8) :: M_goal   = 1.8d0
-  real(8) :: Mb_goal  = 1.8d0
-  real(8) :: J_goal   = 0.d0
+  real(8) :: Mb_goal  = 1.6d0
+  real(8) :: J_goal   = 1.d0
   real(8) :: chi_goal = 0.63d0
   real(8) :: omc_goal = 30.d0
 
-  real(8) :: B_goal   = 12.d0
-  real(8) :: mphi_goal = 0.d-8
+  real(8) :: B_goal   = 1.d1
+  real(8) :: mphi_goal = 0.d-1
 
   ! -- Rotation-law parameters (advanced modes currently disabled) ----------
   real(8) :: A_diff  = 10.d0
@@ -47,6 +55,7 @@ module para_mod
   real(8) :: cofq = 0.9d0
 
   ! -- Equation of state -----------------------------------------------------
+  logical :: phase_transition = .false.
   integer :: num_tab = 0
   integer :: p_at_PT = 0
   real(8), allocatable :: log_p(:), log_e(:), log_h(:), log_n0(:)
@@ -62,12 +71,12 @@ module para_mod
 
   real(8) :: DS = 0.d0
   real(8) :: DM = 0.d0
-  real(8) :: cf  = 1.d0
   real(8), parameter :: s_e = 0.5d0
 
   real(8), allocatable :: s_gp(:), mu(:), sin_theta(:)
 
   ! -- Disk helper quantities (kept for compatibility) ----------------------
+  logical :: disk_present = .false.
   real(8) :: edge_in = 800.d0
   real(8) :: s_inner = 0.5d0
   real(8) :: j_disk  = 4.5d0
@@ -79,7 +88,7 @@ module para_mod
   ! Fluid
   real(8), allocatable :: pressure(:,:), enthalpy(:,:), velocity_sq(:,:), &
                           energy(:,:), omg(:,:), F_j(:,:)
-  real(8), allocatable :: v_plus(:), v_minus(:), V_rr_p(:), V_rr_m(:)
+  real(8), allocatable :: v_plus(:), v_minus(:), V_rr_p(:), V_rr_m(:), sound_speed(:)
 
   ! Metric
   real(8), allocatable :: gama(:,:), rho(:,:), ww(:,:), alpha(:,:), sphi(:,:)
@@ -111,6 +120,7 @@ module para_mod
   real(8) :: Fmax_h  = 0.d0
   real(8) :: F_equator_h = 0.d0
 
+  integer :: n_of_relaxation_steps = 0
   ! Multipole information
   real(8) :: M2 = 0.d0
   real(8) :: M4 = 0.d0
@@ -159,41 +169,11 @@ contains
     end do
   end function to_lower_str
 
-  subroutine initialize_theory_from_string(name, status)
-    character(*), intent(in) :: name
-    integer, intent(out) :: status
-    character(len=len_trim(name)) :: lowered
-
-    if (len_trim(name) == 0) then
-      call initialize_theory(THEORY_GR)
-      status = 0
-      return
-    end if
-
-    lowered = to_lower_str(adjustl(name))
-
-    select case (trim(lowered))
-    case ("gr", "einstein", "general-relativity", "general_relativistic")
-      call initialize_theory(THEORY_GR)
-      status = 0
-    case ("st", "scalar", "scalar-tensor", "scalar_tensor")
-      call initialize_theory(THEORY_ST)
-      status = 0
-    case default
-      status = 1
-    end select
-  end subroutine initialize_theory_from_string
-
-  subroutine initialize_theory(mode)
-    integer, intent(in) :: mode
-
-    active_theory = mode
-
-    select case (mode)
+  subroutine initialize_theory()
+    select case (active_theory)
     case (THEORY_GR)
       call apply_gr_defaults()
     case (THEORY_ST)
-      call apply_st_defaults()
     case default
       stop "initialize_theory: unknown theory mode"
     end select
@@ -208,8 +188,6 @@ contains
   end subroutine initialize_theory
 
   subroutine apply_gr_defaults()
-    cf    = 1.d0
-    has_scalar = .false.
     B_goal  = 0.d0
     mphi_goal = 0.d0
     B_coup = 0.d0
@@ -218,53 +196,36 @@ contains
     sphi_m = 0.d0
   end subroutine apply_gr_defaults
 
-  subroutine apply_st_defaults()
-    cf    = 0.3d0
-    has_scalar = .true.
-  end subroutine apply_st_defaults
-
   subroutine allocate_fields()
     call deallocate_fields()
 
-    allocate(s_gp(SDIV), mu(MDIV), sin_theta(MDIV))
+    allocate(s_gp(SDIV), source=0.d0)
+    allocate(mu(MDIV), source=0.d0)
+    allocate(sin_theta(MDIV), source=0.d0)
 
-    allocate(pressure(SDIV,MDIV), enthalpy(SDIV,MDIV), velocity_sq(SDIV,MDIV))
-    allocate(energy(SDIV,MDIV), omg(SDIV,MDIV), F_j(SDIV,MDIV))
-    allocate(v_plus(SDIV), v_minus(SDIV), V_rr_p(SDIV), V_rr_m(SDIV))
+    allocate(pressure(SDIV,MDIV), source=0.d0)
+    allocate(enthalpy(SDIV,MDIV), source=0.d0)
+    allocate(velocity_sq(SDIV,MDIV), source=0.d0)
+    allocate(energy(SDIV,MDIV), source=0.d0)
+    allocate(omg(SDIV,MDIV), source=0.d0)
+    allocate(F_j(SDIV,MDIV), source=0.d0)
+    allocate(v_plus(SDIV), source=0.d0)
+    allocate(v_minus(SDIV), source=0.d0)
+    allocate(V_rr_p(SDIV), source=0.d0)
+    allocate(V_rr_m(SDIV), source=0.d0)
+    allocate(sound_speed(SDIV), source=0.d0)
 
-    allocate(gama(SDIV,MDIV), rho(SDIV,MDIV), ww(SDIV,MDIV), alpha(SDIV,MDIV))
-    allocate(sphi(SDIV,MDIV))
+    allocate(gama(SDIV,MDIV), source=0.d0)
+    allocate(rho(SDIV,MDIV), source=0.d0)
+    allocate(ww(SDIV,MDIV), source=0.d0)
+    allocate(alpha(SDIV,MDIV), source=0.d0)
+    allocate(sphi(SDIV,MDIV), source=0.d0)
 
-    allocate(f_rho(SDIV, LMAX+1, SDIV))
-    allocate(f_gama(SDIV, LMAX+1, SDIV))
-    allocate(P_2n(MDIV, LMAX+1))
-    allocate(P1_2n_1(MDIV, LMAX+1))
-    allocate(sin_2n_1_theta(MDIV, LMAX))
-
-    pressure    = 0.d0
-    enthalpy    = 0.d0
-    velocity_sq = 0.d0
-    energy      = 0.d0
-    omg         = 0.d0
-    F_j         = 0.d0
-    v_plus      = 0.d0
-    v_minus     = 0.d0
-    V_rr_p      = 0.d0
-    V_rr_m      = 0.d0
-    gama        = 0.d0
-    rho         = 0.d0
-    ww          = 0.d0
-    alpha       = 0.d0
-    sphi        = 0.d0
-    f_rho       = 0.d0
-    f_gama      = 0.d0
-    P_2n        = 0.d0
-    P1_2n_1     = 0.d0
-    sin_2n_1_theta = 0.d0
-
-    s_gp = 0.d0
-    mu   = 0.d0
-    sin_theta = 0.d0
+    allocate(f_rho(SDIV, LMAX+1, SDIV), source=0.d0)
+    allocate(f_gama(SDIV, LMAX+1, SDIV), source=0.d0)
+    allocate(P_2n(MDIV, LMAX+1), source=0.d0)
+    allocate(P1_2n_1(MDIV, LMAX+1), source=0.d0)
+    allocate(sin_2n_1_theta(MDIV, LMAX), source=0.d0)
   end subroutine allocate_fields
 
   subroutine deallocate_fields()

@@ -1,27 +1,20 @@
-program rns
-#include "option_macro.h"
+program grass
   use toolkit_mod, only: debug_mod_bessel
   use para_mod
   implicit none
   character(len=64) :: theory_arg
-  integer :: parse_status
 
-  call get_command_argument(1, theory_arg)
-  call initialize_theory_from_string(trim(theory_arg), parse_status)
-  if (parse_status /= 0) then
-    write(*,*) "Unknown theory option: ", trim(theory_arg)
-    write(*,*) "Use 'gr' or 'st'."
-    stop 1
-  endif
+  call initialize_theory()
+
   print *, " "
-  if (has_scalar) then
-    write(*,"(A32,es12.6,A11,f10.2,A2)") &
+  print *, " "
+  if (active_theory == THEORY_ST) then
+    write(*,"(A32,es12.6,A11,es12.6,A2)") &
     "Theory: Scalar-Tensor  ( mphi = ", mphi_goal*scalarton, "eV,  B = ", B_goal, " )"
   else
     write(*,*) "Theory: General Relativity"
   end if
   call loadEos
-  print *, " "
 
   write(*,'(1X,A)') repeat('-', 36)
   select case (trim(adjustl(solver_type)))
@@ -44,4 +37,4 @@ program rns
   !call MRcurve
   call shoot_v2
 
-end program rns
+end program grass

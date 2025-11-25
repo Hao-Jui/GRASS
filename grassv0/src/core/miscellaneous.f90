@@ -1,7 +1,6 @@
 module miscellaneous_mod
 #include "option_macro.h"
   use para_mod
-  use simpson_mod, only: simpson_1d
   use nag_compat_mod, only: e02baf, e02bbf
   implicit none
 
@@ -17,7 +16,7 @@ contains
     real(8), intent(in), optional :: column2(:), column3(:), column4(:), column5(:), &
                                     column6(:), column7(:), column8(:), column9(:), column10(:)
     integer :: s, unit, ios, nvals, n_points
-    real(8) :: row_values(10)
+    real(8) :: row_values(99)
 
     if (s_max < 1) return
     if (s_max > SDIV) write(*,*) "write_eq_profile: s_max truncated for file ", trim(file_name)
@@ -314,43 +313,6 @@ contains
 
     success = coeff_leading < 0.d0
   end subroutine spectral_tail_fit
-
-  subroutine integrate_column_spline(values, knots, result, status)
-    use nag_compat_mod, only: e02baf, e02bbf
-    real(8), intent(in)  :: values(:)
-    real(8), intent(in)  :: knots(:)
-    real(8), intent(out) :: result
-    integer, intent(out) :: status
-    integer :: n_points
-    integer :: info_fit, info_int
-    real(8), allocatable :: coeff_a(:), coeff_b(:), coeff_c(:), coeff_d(:)
-    real(8) :: temp_mat(size(values),1), temp_vec(1)
-
-    result = 0.d0
-    status = 0
-    n_points = size(values)
-    if (n_points <= 1 .or. size(knots) /= n_points) then
-      status = 1
-      return
-    end if
-
-    allocate(coeff_a(n_points-1), coeff_b(n_points-1), coeff_c(n_points-1), coeff_d(n_points-1))
-    info_fit = 0
-    info_int = 0
-
-    call e02baf(n_points, knots, values, coeff_a, coeff_b, coeff_c, coeff_d, info_fit)
-    if (info_fit == 0) then
-      call e02bbf(n_points, knots, coeff_a, coeff_b, coeff_c, coeff_d, knots(1), knots(n_points), result, info_int)
-    end if
-
-    if (info_fit /= 0 .or. info_int /= 0) then
-      temp_mat(:,1) = values
-      temp_vec = simpson_1d(temp_mat, knots(1), knots(n_points))
-      result = temp_vec(1)
-      status = 2
-    end if
-    deallocate(coeff_a, coeff_b, coeff_c, coeff_d)
-  end subroutine integrate_column_spline
 
   subroutine composite_richardson(field, ell, r_e_current, coeff_leading, coeff_next, success)
     real(8), intent(in) :: field(SDIV)

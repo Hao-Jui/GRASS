@@ -4,7 +4,6 @@
 !
 ! ********************************************* !
 subroutine sphere
-#include "option_macro.h"
   use toolkit_mod, only: interp
   use para_mod
     implicit none
@@ -57,29 +56,30 @@ subroutine sphere
     
   ! r_e is roughly r_is_final
   r_e = r_final * exp( (rho_eq-gama_eq) / 2.d0 )
-#if defined(Fishbone)
-  call set_disk(r_e)
 
-  open(217,file="./Res/disk.dat")
-  write(217,*) "test"
-  do s = 1, SDIV
-      do m = 1, MDIV
-        if ( enthalpy(s,m) <= enthalpy_min ) then
-          pressure(s,m) = 0.d0
-          energy(s,m) = 0.d0
-        else
-          pressure(s,m) = p_at_h(enthalpy(s,m))
-          energy  (s,m) = e_at_h(enthalpy(s,m))
-        endif
-        ! no info on pressure, enthalpy, and rho_0 yet; only to check energy
-        write(217,"(99es27.17)") s_gp(s), mu(m), alpha(s,m), gama(s,m), rho(s,m), ww(s,m) * (C/sqrt(kappa)), & ! 1-6
-          pressure(s,m)/KSCALE, energy(s,m)/(C*C*KSCALE), enthalpy(s,m), 0.d0, & ! 7-10
-          velocity_sq(s,m), omg(s,m) * (C/sqrt(kappa)) ! 11-12
+    if ( disk_present ) then 
+    call set_disk(r_e)
+
+    open(217,file="./Res/disk.dat")
+    write(217,*) "test"
+    do s = 1, SDIV
+        do m = 1, MDIV
+          if ( enthalpy(s,m) <= enthalpy_min ) then
+            pressure(s,m) = 0.d0
+            energy(s,m) = 0.d0
+          else
+            pressure(s,m) = p_at_h(enthalpy(s,m))
+            energy  (s,m) = e_at_h(enthalpy(s,m))
+          endif
+          ! no info on pressure, enthalpy, and rho_0 yet; only to check energy
+          write(217,"(99es27.17)") s_gp(s), mu(m), alpha(s,m), gama(s,m), rho(s,m), ww(s,m) * (C/sqrt(kappa)), & ! 1-6
+            pressure(s,m)/KSCALE, energy(s,m)/(C*C*KSCALE), enthalpy(s,m), 0.d0, & ! 7-10
+            velocity_sq(s,m), omg(s,m) * (C/sqrt(kappa)) ! 11-12
+        enddo
       enddo
-    enddo
-  close(217)
-  write(*,*) "Disk bestowed!"
-#endif
+    close(217)
+    write(*,*) "Disk bestowed!"
+  endif
 
 end subroutine sphere
 
