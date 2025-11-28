@@ -1,6 +1,6 @@
 module toolkit_mod
   implicit none
-
+  public
 contains
   elemental function interp_log_h_to_p(x) result(y)
     use para_mod
@@ -201,7 +201,7 @@ contains
   ! First and second order derivatives in s and m directions
   ! using 2nd order finite differences
   !===========================================================
-  real(8) function deriv_s(f, s, m)
+  pure real(8) function deriv_s(f, s, m)
     use para_mod, only : ds, SDIV, MDIV
     implicit none
     real(8), intent(in) :: f(SDIV, MDIV)
@@ -216,7 +216,7 @@ contains
     end if
   end function deriv_s
 
-  real(8) function deriv_ss(f, s, m)
+  pure real(8) function deriv_ss(f, s, m)
     use para_mod, only : ds, SDIV, MDIV
     implicit none
     real(8), intent(in) :: f(SDIV, MDIV)
@@ -227,7 +227,7 @@ contains
     deriv_ss = (f(si+2, m) - 2.d0*f(si, m) + f(si-2, m)) / (4.d0 * ds**2)
   end function deriv_ss
 
-  real(8) function deriv_m(f, s, m)
+  pure real(8) function deriv_m(f, s, m)
     use para_mod, only : dm, SDIV, MDIV
     implicit none
     real(8), intent(in) :: f(SDIV, MDIV)
@@ -242,7 +242,7 @@ contains
     end if
   end function deriv_m
 
-  real(8) function deriv_mm(f, s, m)
+  pure real(8) function deriv_mm(f, s, m)
     use para_mod, only : dm, SDIV, MDIV
     implicit none
     real(8), intent(in) :: f(SDIV, MDIV)
@@ -254,12 +254,11 @@ contains
     deriv_mm = (f(s, mi+1) - 2.d0*f(s, mi) + f(s, mi-1)) / (dm**2)
   end function deriv_mm
 
-  real(8) function deriv_sm(f, s, m)
+  pure real(8) function deriv_sm(f, s, m)
     use para_mod, only : dm, ds, SDIV, MDIV
     implicit none
     real(8), intent(in) :: f(SDIV, MDIV)
     integer, intent(in) :: s, m
-
     if (s == 1) then
       if (m == 1) then
         deriv_sm = (f(2,2)-f(1,2)-f(2,1)+f(1,1))/(dm*ds)
@@ -292,7 +291,6 @@ contains
     implicit none
     real(8), intent(in) :: f(SDIV)
     integer, intent(in) :: s
-
     if (s == 1) then
       deriv_s_1d = (f(2) - f(1)) / ds
     elseif (s == SDIV) then
@@ -302,6 +300,9 @@ contains
     end if
   end function deriv_s_1d
 
+  !===========================================================
+  ! Special functions
+  !===========================================================
   real(8) function legendre(n,x)
 
     implicit none
@@ -372,7 +373,7 @@ contains
 
   end function plgndr
 
-  real(8) function besseli(n,x)
+  elemental real(8) function besseli(n,x)
     implicit none
     integer,intent(in) :: n
     real(8),intent(in) :: x
@@ -386,7 +387,8 @@ contains
     real(8) :: sign_factor
 
     if (n < 0) then
-      stop "besseli expects n >= 0"
+      besseli = 0.d0
+      return
     end if
 
     xx = abs(x)
@@ -451,7 +453,7 @@ contains
     besseli = clip_bessel(sign_factor * abs(i_curr))
   end function besseli
 
-  real(8) function besselk(n,x)
+  elemental real(8) function besselk(n,x)
     implicit none
     integer,intent(in) :: n
     real(8),intent(in) :: x
@@ -461,7 +463,8 @@ contains
     real(8) :: exp_neg, em1
 
     if (n < 0) then
-      stop "besselk expects n >= 0"
+      besselk = 0.d0
+      return
     end if
 
     xx = abs(x)
@@ -499,7 +502,7 @@ contains
     besselk = k_curr
   end function besselk
 
-  pure real(8) function odd_double_factorial(m)
+  elemental pure real(8) function odd_double_factorial(m)
     implicit none
     integer,intent(in) :: m
     integer :: k
@@ -518,7 +521,7 @@ contains
     odd_double_factorial = acc
   end function odd_double_factorial
 
-  pure real(8) function spherical_i_series(n,x)
+  elemental pure real(8) function spherical_i_series(n,x)
     implicit none
     integer,intent(in) :: n
     real(8),intent(in) :: x
@@ -550,7 +553,7 @@ contains
     spherical_i_series = clip_bessel(base * sum_series)
   end function spherical_i_series
 
-  pure real(8) function pow_int_real(x,n)
+  elemental pure real(8) function pow_int_real(x,n)
     implicit none
     real(8),intent(in) :: x
     integer,intent(in) :: n
@@ -570,7 +573,7 @@ contains
     pow_int_real = result
   end function pow_int_real
 
-  pure real(8) function expm1_safe(x)
+  elemental pure real(8) function expm1_safe(x)
     implicit none
     real(8),intent(in) :: x
     real(8) :: absx, term, sum
@@ -592,19 +595,20 @@ contains
     expm1_safe = sum
   end function expm1_safe
 
-  pure real(8) function clip_bessel(val)
+  elemental pure real(8) function clip_bessel(val)
     implicit none
     real(8),intent(in) :: val
-    real(8), parameter :: limit = 1.d98
+    real(8), parameter :: limit = huge(1.d0)
     clip_bessel = min(limit, max(-limit, val))
   end function clip_bessel
 
-  pure real(8) function clip_besselk(val)
+  elemental pure real(8) function clip_besselk(val)
     implicit none
     real(8),intent(in) :: val
+    real(8), parameter :: floor_val = tiny(1.d0)
     real(8) :: tmp
     tmp = abs(clip_bessel(val))
-    if (tmp < 1.d-90) tmp = 1.d-90
+    if (tmp < floor_val) tmp = floor_val
     clip_besselk = tmp
   end function clip_besselk
 

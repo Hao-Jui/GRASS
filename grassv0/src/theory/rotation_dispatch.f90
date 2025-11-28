@@ -10,11 +10,8 @@ contains
   subroutine call_rotation_solver()
     select case (trim(adjustl(solver_type)))
     case ("uniform")
-      if ( active_theory == THEORY_ST .and. mphi_goal < 1.d-10 ) then
-        call spin_massless()
-      else
-        call spin()
-      endif
+      !if ( active_theory == THEORY_ST .and. mphi_goal < 1.d-10 ) then
+      call spin()
     case ("const_j")
       !call spin_gr_const_j()
     case default
