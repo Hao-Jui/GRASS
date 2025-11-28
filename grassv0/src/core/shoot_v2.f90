@@ -15,8 +15,7 @@ subroutine initialize_starting_model(p_at_e, h_at_p)
     h_center = h_at_p(p_center)
   case default
     r_ratio  = 1.d0
-    e_center = 8.6405005E+14
-    if (.not. use_shoot_1d) r_ratio = min(r_ratio, 0.9d0)
+    e_center = 8.d14
     e_center = e_center * C * C * KSCALE
     p_center = p_at_e(e_center)
     h_center = h_at_p(p_center)
@@ -27,6 +26,7 @@ subroutine initialize_starting_model(p_at_e, h_at_p)
       call perform_scalar_burn(target_mphi)
     end if
   end select
+  if (.not. use_shoot_1d) r_ratio = min(r_ratio, 0.99d0)
   !call single_model()
   if (active_theory /= THEORY_GR) then
     B_coup  = B_goal
@@ -158,7 +158,7 @@ subroutine shoot_v2
           cycle
         endif
 
-        if (solver_state%has_jacobian .and. maxval(abs(delta_x(1:2))) < 1.d-4 &
+        if (solver_state%has_jacobian .and. maxval(abs(delta_x(1:2))) < 1.d-5 &
             .and. maxval(abs(F)) > accuracy*1.d2) then
           call reset_newton_state(solver_state)
           write(*,*) "Jacobian refreshed"
@@ -237,8 +237,8 @@ subroutine print_converged_block(rho0, ee)
     open(221, file="./Cont/properties.dat")
   end if
 
-  write(unit=*, fmt=*) " ===================================="
-  write(unit=*, fmt=*) "              Converged              "
+  write(unit=*, fmt=*) repeat('=', 40)
+  write(unit=*, fmt=*) "                Converged              "
   do i = 1, 2
      write(6+215*(i-1),"(A18,ES18.9,A8,ES18.9)")  &
           "   Central rho =", rho0*MB,"g/cm^3", rho0*MB*rho_uni
@@ -270,10 +270,10 @@ subroutine print_converged_block(rho0, ee)
   end do
 
   write(unit=*, fmt=*) " "
-  write(unit=*, fmt=*) "In code unit:"
-  write(*,"(A6,ES18.9,2X,A4,ES18.9,2X,A5,ES18.9,2X,A8,ES18.9)")  &
+  write(unit=*, fmt=*) " In code unit:"
+  write(*,"(A9,es18.9)")  &
        "h_c", h_center, "r_e", r_e, "Fmax", Fmax_h, "Omega_e", Omega_e*r_e
-  write(unit=*, fmt=*) " ===================================="
+  write(unit=*, fmt=*) repeat('=', 40)
   close(221)
   write(unit=*, fmt=*) " "
   write(unit=*, fmt=*) "Completed!"

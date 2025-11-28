@@ -18,6 +18,7 @@ SOURCES := \
   $(SRC_TOOL)/toolkit_mod.f90 \
   $(SRC_CORE)/miscellaneous.f90 \
   $(SRC_CORE)/set_disk.f90 \
+  $(SRC_THEORY)/relaxation_mod.f90 \
   $(SRC_THEORY)/spin_helper.f90 \
   $(SRC_THEORY)/spin.f90 \
   $(SRC_THEORY)/spin_gr.f90 \

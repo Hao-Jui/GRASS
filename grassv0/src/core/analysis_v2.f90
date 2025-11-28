@@ -4,7 +4,7 @@ subroutine mass_radius()
   implicit none
   integer :: s
   real(8) :: s1, mphi_local
-  real(8), dimension(MDIV) :: scal, acoup, vphi, vel_safe
+  real(8), dimension(MDIV) :: acoup, vphi, vel_safe
   real(8), dimension(MDIV,5) :: mu_integrand_buffer
   real(8), dimension(SDIV) :: mass_weight, ang_weight
   real(8), dimension(SDIV) :: d_m, d_m0, d_mp, d_j, d_t
@@ -28,8 +28,8 @@ subroutine mass_radius()
   if (.not. use_scalar) sphi = 0.d0
 
   do s = 1, SDIV
-    acoup = exp(-scal**2 * B_coup / 4.d0)
-    vphi  = mphi_local * scal**2 / 2.d0
+    acoup = exp(-sphi(s,:)**2 * B_coup / 4.d0)
+    vphi  = mphi_local * sphi(s,:)**2 / 2.d0
     s1 = (s_gp(s)/(1.d0-s_gp(s)))**s_pwr
     vel_safe = min(max(velocity_sq(s,:), 0.d0), 1.d0 - 1.d-12)
 

@@ -575,7 +575,7 @@ contains
         end if
         write(98,"(99es27.17e3)") s_gp(s), mu(m), alpha(s,m), gama(s,m), rho(s,m), ww(s,m) * (C/sqrt(kappa)), &
           pressure(s,m)/KSCALE, energy(s,m)/(C*C*KSCALE), enthalpy(s,m), rho_0, &
-          velocity_sq(s,m), omg(s,m) * (C/sqrt(kappa)), sphi(s,m)!*sqrt(B_coup)
+          velocity_sq(s,m), omg(s,m) * (C/sqrt(kappa)), sphi(s,m)*sqrt(B_coup)
       end do
     end do
     close(98)
@@ -592,7 +592,7 @@ contains
         end if
         write(99,"(99es27.17e3)") s_gp(s), mu(m), alpha(s,m), gama(s,m), rho(s,m), ww(s,m) * (C/sqrt(kappa)), &
           pressure(s,m)/KSCALE, energy(s,m)/(C*C*KSCALE), enthalpy(s,m), rho_0, &
-          velocity_sq(s,m), omg(s,m) * (C/sqrt(kappa)), sphi(s,m)!*sqrt(B_coup)
+          velocity_sq(s,m), omg(s,m) * (C/sqrt(kappa)), sphi(s,m)*sqrt(B_coup)
       end do
     end do
     close(99)

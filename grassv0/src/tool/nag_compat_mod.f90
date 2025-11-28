@@ -44,6 +44,7 @@ contains
       end if
     end do
 
+    ! piecewise cubic / higher-order Newton–Cotes adaptive-like interpolatory method
     h2 = first_step
     d3 = (y(2) - y(1)) / h2
     h3 = x(3) - x(2)

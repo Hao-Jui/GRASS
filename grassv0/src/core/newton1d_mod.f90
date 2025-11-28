@@ -20,7 +20,7 @@ end module newton_types_mod
 module shoot_solver_mod_1d
   use newton_types_mod
   implicit none
-  real(8), parameter :: max_step_1d = 1.0d0  ! trust-region style clamp on log(h) step
+  real(8), parameter :: max_step_1d = 1.d0  ! trust-region style clamp on log(h) step; smaller to be less aggressive
 
 contains
   subroutine reset_newton_state_1d(state)

@@ -14,6 +14,16 @@ program grass
   else
     write(*,*) "Theory: General Relativity"
   end if
+  if ( relaxation_scheme == "anderson" ) then
+    write(*,*) "Relaxation scheme: Anderson"
+  elseif ( relaxation_scheme == "newton" ) then
+    write(*,*) "Relaxation scheme: Newton"
+  elseif ( relaxation_scheme == "hybrid" ) then
+    write(*,*) "Relaxation scheme: Hybrid"
+  else
+    stop "Unknown relaxation scheme"
+  end if
+
   call loadEos
 
   write(*,'(1X,A)') repeat('-', 36)

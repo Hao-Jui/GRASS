@@ -5,39 +5,40 @@ module para_mod
   integer, parameter :: THEORY_ST = 1
   integer :: active_theory = THEORY_ST
 
-  character(len=20) :: relaxation_scheme = "anderson" ! anderson, newton (much slower per iteration)
+  ! hybrid (default), anderson, newton (much slower per iteration)
+  character(len=20) :: relaxation_scheme = "hybrid"
 
   ! -- Running option --------------------------------------------------------
   integer, parameter :: MODE_REGRID  = 1
   integer, parameter :: MODE_DEFAULT = 2
 
-  integer :: run_mode = MODE_REGRID 
+  integer :: run_mode = MODE_DEFAULT
 
   ! -- Rotation configuration ------------------------------------------------
   character(len=20) :: solver_type = "uniform"
 
   ! -- Solver state ----------------------------------------------------------
   logical :: output = .false.
-  logical :: use_shoot_1d = .true.      ! adjust hc while keeping rep constant
-  character(len=20) :: FIX1 = "Mb_goal"
-  character(len=20) :: FIX2 = "J_goal"
+  logical :: use_shoot_1d = .false.      ! adjust hc while keeping rep constant
+  character(len=20) :: FIX1 = "M_goal"
+  character(len=20) :: FIX2 = "Omega_K"
 
   ! -- Resolutions -----------------------------------------------------------
-  integer, parameter :: res  = 300
+  integer, parameter :: res  = 100
   integer, parameter :: s_pwr = 1
   integer :: SDIV = 2 * res + 1
   integer :: MDIV = 2 * res + 1
 
   ! -- Target quantities -----------------------------------------------------
   character(len=128) :: eos_file = "MPA1"
-  real(8) :: M_goal   = 1.8d0
-  real(8) :: Mb_goal  = 1.6d0
+  real(8) :: M_goal   = 1.35d0
+  real(8) :: Mb_goal  = 1.15707d0
   real(8) :: J_goal   = 1.d0
   real(8) :: chi_goal = 0.63d0
   real(8) :: omc_goal = 30.d0
 
-  real(8) :: B_goal   = 1.d1
-  real(8) :: mphi_goal = 0.d-1
+  real(8) :: B_goal   = 12.d0
+  real(8) :: mphi_goal = 3.d-2
 
   ! -- Rotation-law parameters (advanced modes currently disabled) ----------
   real(8) :: A_diff  = 10.d0
@@ -141,7 +142,7 @@ module para_mod
   real(8), parameter :: MB   = 1.6749286d-24
   real(8), parameter :: pi   = acos(-1.d0)
 
-  real(8), parameter :: accuracy  = 1.d-6
+  real(8), parameter :: accuracy  = 1.d-7
   real(8), parameter :: tov_rmin  = 1.d-15
   real(8), parameter :: KAPPA     = 1.d-15 * C**2 / G
   real(8), parameter :: KSCALE    = KAPPA * G / C**4

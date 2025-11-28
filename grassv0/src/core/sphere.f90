@@ -39,7 +39,7 @@ subroutine sphere
           lambda_s = 2.d0 * log( 1.d0 + m_final / (2.d0*r_is_s) )
           nu_s     = log( (1.d0 - m_final / (2.d0*r_is_s)) / (1.d0 + m_final / (2.d0 * r_is_s) ) )
       endif
-      sphi (s,:) = ( 1.d0 - exp(nu_s) ) /1.d1 * exp(-sqrt(mphi_r)*r_is_s) 
+      sphi (s,:) = ( 1.d0 - exp(nu_s) ) /1.d2 * exp(-sqrt(mphi_r)*r_is_s) 
       rho  (s,:) = nu_s-lambda_s
       gama (s,:) = lambda_s+nu_s
       alpha(s,:) = (lambda_s-nu_s) / 2.d0
@@ -47,10 +47,10 @@ subroutine sphere
       rho_mu_0 (s) = nu_s-lambda_s
       gama_mu_0(s) = lambda_s+nu_s
   enddo
-    
+
   ww(:,:) = 0.d0
   omg(:,:)= 0.d0
-    
+  
   call interp(s_gp, gama_mu_0, SDIV, s_e, gama_eq)
   call interp(s_gp,  rho_mu_0, SDIV, s_e,  rho_eq)
     
@@ -91,10 +91,11 @@ subroutine TOV(i_check, r_is_gp, lambda_gp, nu_gp, e_d_gp, &
 
     use para_mod
     integer :: i_check, i
-    real(8),intent(inout):: r_is_final
-    real(8),intent (out) :: r_final,m_final
-    real(8),dimension(RDIV) :: r_is_gp, lambda_gp, nu_gp, e_d_gp
-    real(8),dimension(RDIV) :: r_gp, m_gp
+    real(8), intent(inout) :: r_is_final
+    real(8), intent(out) :: r_final, m_final
+    real(8), intent(out), dimension(RDIV) :: r_is_gp, lambda_gp, e_d_gp
+    real(8), intent(out), dimension(RDIV) :: nu_gp
+    real(8), dimension(RDIV) :: r_gp, m_gp
     real(8) r, r_is, r_is_est, r_is_check, dr_is_save, &
             e_d, p, h, m, nu_s, hh, rho_0, &
             a1,a2,a3,a4,b1,b2,b3,b4,c1,c2,c3,c4, &
@@ -264,5 +265,3 @@ real(8) function dr_dr_is(r_is,r,m)
   endif
 
 end function dr_dr_is
-
-

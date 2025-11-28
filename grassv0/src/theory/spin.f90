@@ -29,7 +29,7 @@ subroutine spin
   if ( maxval(sphi*sqrt(B_coup)) < 1.d-3 ) sphi = sphi*1.d1
   if (zero_scalar_mode) sphi = 0.d0
   if ( any(isnan(sphi)) ) stop "NaN found in sphi"
-
+  
   ! ---------------------------------------------------------------
   ! Iteration
   ! ---------------------------------------------------------------
@@ -38,6 +38,7 @@ subroutine spin
 
   do while( dif > 1.d-7 .or. n_of_it < 2 )
     if (zero_scalar_mode) sphi = 0.d0
+    sphi_m   = maxval( sphi(:,1) * sqrt(B_coup) )
     call rescale_metric(r_e_new_sq)
 
     ! --- Compute r_e ---
@@ -49,10 +50,10 @@ subroutine spin
          sphi_center_h, gama_center_h, rho_center_h )                    ! output   
 
     r_e_new_sq = r_e_new**2
-    
+
     if ( n_of_it > 50 .and. mod(n_of_it,50)==0 ) then 
       write(*,'(A,i4,A,es12.4,A,2es10.2,A,3es10.2,4es18.9)') 'iter = ', n_of_it, ', diff :', dif, &
-        ' sphi :', sphi_center_h*r_e_old*sqrt(B_coup), sphi_m * sqrt(B_coup), &
+        ' sphi :', sphi_center_h*r_e_old*sqrt(B_coup), sphi_m, &
         '  |', gama_center_h, rho_center_h, alpha(1,1), r_e_old, r_e_new
     endif
 
@@ -65,7 +66,7 @@ subroutine spin
 
     call get_all_targets(r_e_new, gama_pole_h, rho_pole_h, sphi_pole_h, root_mphi_re, &
                          target_rho, target_gama, target_ww, target_sphi)
-
+    
     call relaxation(r_e_new, target_rho, target_gama, target_ww, target_sphi, root_mphi_re, n_of_it)
 
     ! ---------------------------------------------------------------
@@ -85,10 +86,10 @@ subroutine spin
     call update_alpha_potential(r_e_new, dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, dww_s_cache, dww_m_cache, &
          ds_s_cache, ds_m_cache, d2g_ss_cache, d2g_mm_cache, e_rsm_cache)
     
-    n_of_it = n_of_it + 1  
-    sphi_m   = maxval( sphi(:,1) )
+    n_of_it = n_of_it + 1
     if ( n_of_it > 2000 ) stop "Probably won't converge"
   enddo
+  !write(*,*) r_ratio, h_center, n_of_it
   call deallocate_workspace
   n_of_relaxation_steps = n_of_relaxation_steps + n_of_it
   ! --- End of iteration
