@@ -5,7 +5,7 @@
 module shoot_solver_mod
   implicit none
   real(8), parameter :: r_eps = 1.d-8
-  real(8), parameter :: r_min_ratio = 0.4d0
+  real(8), parameter :: r_min_ratio = 0.35d0
   real(8), parameter :: max_step = 0.5d0
 
   type, public :: newton_state

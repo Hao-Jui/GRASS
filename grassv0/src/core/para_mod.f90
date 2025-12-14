@@ -5,7 +5,9 @@ module para_mod
   integer, parameter :: THEORY_ST = 1
   integer :: active_theory = THEORY_ST
 
-  ! hybrid (default), anderson, newton (much slower per iteration)
+  ! hybrid (better when MODE_DEFAULT)
+  ! anderson (better when MODE_REGRID)
+  ! newton (much slower per iteration)
   character(len=20) :: relaxation_scheme = "hybrid"
 
   ! -- Running option --------------------------------------------------------
@@ -19,9 +21,9 @@ module para_mod
 
   ! -- Solver state ----------------------------------------------------------
   logical :: output = .false.
-  logical :: use_shoot_1d = .false.      ! adjust hc while keeping rep constant
+  logical :: use_shoot_1d = .true.      ! adjust hc while keeping rep constant
   character(len=20) :: FIX1 = "M_goal"
-  character(len=20) :: FIX2 = "Omega_K"
+  character(len=20) :: FIX2 = "J_goal"
 
   ! -- Resolutions -----------------------------------------------------------
   integer, parameter :: res  = 100
@@ -32,17 +34,17 @@ module para_mod
   ! -- Target quantities -----------------------------------------------------
   character(len=128) :: eos_file = "MPA1"
   real(8) :: M_goal   = 1.35d0
-  real(8) :: Mb_goal  = 1.15707d0
-  real(8) :: J_goal   = 1.d0
+  real(8) :: Mb_goal  = 2.0d0
+  real(8) :: J_goal   = 0.d0
   real(8) :: chi_goal = 0.63d0
   real(8) :: omc_goal = 30.d0
 
   real(8) :: B_goal   = 12.d0
-  real(8) :: mphi_goal = 3.d-2
+  real(8) :: mphi_goal = 1.d-6
 
   ! -- Rotation-law parameters (advanced modes currently disabled) ----------
-  real(8) :: A_diff  = 10.d0
-  real(8) :: lambda1 = 2.d0
+  real(8) :: A_diff  = 0.7d0
+  real(8) :: lambda1 = 1.5d0
   real(8) :: lambda2 = 0.5d0
   integer :: uyru_p  = 1
   integer :: uyru_q  = 3
@@ -118,14 +120,15 @@ module para_mod
   real(8) :: mass_p  = 0.d0
   real(8) :: chi     = 0.d0
   real(8) :: T_kin   = 0.d0
+  real(8) :: I_inertia = 0.d0
   real(8) :: Fmax_h  = 0.d0
   real(8) :: F_equator_h = 0.d0
-
-  integer :: n_of_relaxation_steps = 0
   ! Multipole information
   real(8) :: M2 = 0.d0
   real(8) :: M4 = 0.d0
   real(8) :: S3 = 0.d0
+
+  integer :: n_of_relaxation_steps = 0
 
   ! Spectral helpers
   real(8), allocatable :: f_rho(:,:,:), f_gama(:,:,:)
@@ -149,6 +152,7 @@ module para_mod
   real(8), parameter :: e_surface = 7.8d0 * C**2 * KSCALE
   real(8), parameter :: p_surface = 1.01d8 * KSCALE
   real(8), parameter :: rho_uni   = 1.61930347d-18
+  real(8), parameter :: prs_uni   = rho_uni/(C*1.d5)**2
   real(8), parameter :: f_uni     = 2.029739818539300d5
   real(8), parameter :: hbar      = 6.582119569d-16
   real(8), parameter :: l_uni     = 1.4769994423016508d0

@@ -35,7 +35,7 @@ subroutine spin
   ! ---------------------------------------------------------------
   !write(*,*) r_ratio, h_center
   call allocate_workspace
-
+  
   do while( dif > 1.d-7 .or. n_of_it < 2 )
     if (zero_scalar_mode) sphi = 0.d0
     sphi_m   = maxval( sphi(:,1) * sqrt(B_coup) )
@@ -70,7 +70,7 @@ subroutine spin
     call relaxation(r_e_new, target_rho, target_gama, target_ww, target_sphi, root_mphi_re, n_of_it)
 
     ! ---------------------------------------------------------------
-    ! Divergence check & rigid rotation enforcement
+    ! Divergence check
     ! ---------------------------------------------------------------
     if (abs(rho(2,1))>100.d0 .or. abs(gama(2,1))>300.d0 .or. abs(ww(2,1))>100.d0 &
         .or. abs(sphi(2,1))>10.d0) then
@@ -78,14 +78,18 @@ subroutine spin
       stop "something diverged"
     end if
 
-    if (r_ratio == 1.d0) call impose_rigid_rotation()
-
     ! ---------------------------------------------------------------
     ! Fourth equation (alpha), reuse caches where possible
     ! ---------------------------------------------------------------
-    call update_alpha_potential(r_e_new, dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, dww_s_cache, dww_m_cache, &
-         ds_s_cache, ds_m_cache, d2g_ss_cache, d2g_mm_cache, e_rsm_cache)
-    
+
+    if (r_ratio == 1.d0) then 
+      call impose_rigid_rotation()
+      alpha = ( gama - rho ) / 2.d0
+    else
+      call update_alpha_potential(r_e_new, dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, dww_s_cache, dww_m_cache, &
+          ds_s_cache, ds_m_cache, d2g_ss_cache, d2g_mm_cache, e_rsm_cache)
+    endif
+
     n_of_it = n_of_it + 1
     if ( n_of_it > 2000 ) stop "Probably won't converge"
   enddo
@@ -95,10 +99,10 @@ subroutine spin
   ! --- End of iteration
 
   ! compute omega & outputs (unchanged)
-  omg(:,:) = Omega_c / r_e_new
   Omega_c  = Omega_c / r_e_new
-  Omega_e  = Omega_c
+  Omega_e  = Omega_e / r_e_new
   r_e      = r_e_new
+  Fmax_h   = maxval(F_j(:,1))
   if (zero_scalar_mode) then
     sphi = 0.d0
     sphi_c = 0.d0
@@ -109,14 +113,12 @@ subroutine spin
   end if
 
   if (output) call output_helper(D2_metric_rho, D2_metric_omega)
-
 contains
   subroutine rescale_metric(factor)
     implicit none
     real(8), intent(in) :: factor
     real(8) :: inv_factor, sqrt_factor
     integer :: s, m
-
     inv_factor = 1.d0 / factor
     sqrt_factor = sqrt(factor)
 
@@ -126,6 +128,7 @@ contains
         gama (s,m) = gama (s,m) * inv_factor
         alpha(s,m) = alpha(s,m) * inv_factor
         ww   (s,m) = ww   (s,m) * sqrt_factor
+        omg  (s,m) = omg  (s,m) * sqrt_factor
         sphi (s,m) = sphi (s,m) / sqrt_factor
       end do
     end do
@@ -141,9 +144,9 @@ contains
       rho(s,:)  = rho_s1
       sphi(s,:) = sphi_s1
       gama(s,:) = gama_s1
-      ww(s,:)   = 0.d0
+      ww(s,:)   = ww(s,1)
+      Omg(s,:)  = Omg(s,1)
     end do
   end subroutine impose_rigid_rotation
 end subroutine spin
-
 end module rotation_uniform
