@@ -3,7 +3,7 @@ subroutine mass_radius()
   use toolkit_mod, only: interp, deriv_s_1d, integrate_profiles
   implicit none
   integer :: s
-  real(8) :: s1, mphi_local
+  real(8) :: s1
   real(8), dimension(MDIV) :: acoup, vphi, vel_safe
   real(8), dimension(MDIV,5) :: mu_integrand_buffer
   real(8), dimension(SDIV) :: mass_weight, ang_weight
@@ -29,7 +29,7 @@ subroutine mass_radius()
 
   do s = 1, SDIV
     acoup = exp(-sphi(s,:)**2 * B_coup / 4.d0)
-    vphi  = mphi_local * sphi(s,:)**2 / 2.d0
+    vphi  = mphi_r * sphi(s,:)**2 / 2.d0
     s1 = (s_gp(s)/(1.d0-s_gp(s)))**s_pwr
     vel_safe = min(max(velocity_sq(s,:), 0.d0), 1.d0 - 1.d-12)
 
@@ -68,8 +68,8 @@ subroutine mass_radius()
   T_kin   = integral_results(5) * 2.d0 * pi * sqrt(kappa) * C**2 * r_e**4 / G
   Omega_K = Kepler()
 
-  ang_mom = j_local*C/(G*MSUN**2)
-  chi     = j_local*C/(G*Mass**2)
+  ang_mom = j_local * C / (G*MSUN**2)
+  chi     = j_local * C / (G*Mass**2)
 contains
 
   real(8) function Kepler() result(val)
@@ -158,7 +158,7 @@ end subroutine mass_radius
 subroutine solution_properties()
   use para_mod
   use cheb_mod, only: cheb_diff_matrix
-  use miscellaneous_mod, only: write_eq_profile
+  use miscellaneous_mod, only: write_eq_profile, initial_data_for_spec
   use toolkit_mod, only: interp, interp_dual, deriv_s, deriv_s_1d, integrate_profiles
   use ad_mod, only: dual, dual_var
   implicit none
@@ -166,7 +166,7 @@ subroutine solution_properties()
   real(8) :: s_p, r_p
   real(8) :: gama_pole, rho_pole, gama_equator, rho_equator, ww_equator, sphi_equator
   real(8) :: doe, dge, dre, vek
-  real(8) :: sqrt_term, mphi_local
+  real(8) :: sqrt_term
   real(8) :: s1, r_h
   real(8), dimension(MDIV) :: scal, acoup, vphi, vel_safe
   real(8), dimension(MDIV,5) :: mu_integrand_buffer
@@ -188,6 +188,7 @@ subroutine solution_properties()
   logical :: use_scalar ! local snapshot of the flag
   real(8), dimension(SDIV)  :: gamj, schwarz, gg, BV
   real(8) :: delt = 0.005
+  real(8), external :: moment_inertia
   type(dual) :: energy_dual, pressure_dual, sphi_dual
 
   interface
@@ -246,7 +247,9 @@ subroutine solution_properties()
 
   call radial_configuration()
   !call to_alexis()
+  call to_sizeng()
   call mass_radius()
+  I_inertia = moment_inertia() / (mass/MSUN*l_uni)**3
   !call spectral_analysis()
 contains
 
@@ -318,12 +321,14 @@ contains
               // trim(adjustl(B_str)) //"_"// trim(adjustl(mphi_str)) //"_" &
               // trim(adjustl(Mb_str)) // "d"
     call write_eq_profile(profile_file,(SDIV-1)/2,&
+         gama(:,1), rho(:,1), alpha(:,1),         &
+         ww(:,1), omg(:,1),                       &
          enthalpy(:,1),                           &
          rho_0(:,1)/(KSCALE*C**2)/ n_sat,         &
+         energy(:,1)/(C*C*KSCALE),                &
+         pressure(:,1)/KSCALE,                    &
          sound_speed,                             &
-         sound_slope,                             &
          effective_cs,                            &
-         suscep_slope,                            &
          sphi(:,1) * sqrt(B_coup),                &
          sphi_deriv * sqrt(B_coup),               &
          effective_pressure,                      & 
@@ -341,6 +346,14 @@ contains
          enthalpy(:,1), rho_0(:,1)/(KSCALE*C**2), pressure(:,1)/KSCALE, & ! 4-6
          sound_speed, BV) ! 7-8
   end subroutine to_alexis  
+
+  subroutine to_sizeng()
+    real(8), parameter :: rho_to_km = 1.d12 * 6.67408d-20 / (2.99792458d5)**2
+    real(8), parameter :: K_km = 218.04217865726338d0
+    profile_file = "./Cont/sizeng.dat"
+    call initial_data_for_spec( profile_file, rho_0 / (KSCALE*C**2) * rho_to_km * K_km, &
+         alpha, rho, gama, ww * ( sqrt(K_km) / sqrt(KAPPA) ), sqrt(velocity_sq) )
+  end subroutine to_sizeng  
 
 end subroutine solution_properties
 
@@ -375,4 +388,66 @@ subroutine prepare_common_data(rho_0, gama_mu_0, rho_mu_0, ww_mu_0, gama_mu_1, r
     rho_0 = 0.d0
   end where
 end subroutine prepare_common_data
+  
+function moment_inertia() result(val)
+  use para_mod
+  use ad_mod, only: dual, dual_var
+  use toolkit_mod, only: interp, interp_dual
+  use nag_compat_mod, only: d02pcf
+  implicit none
+  real(8) :: r_in, r_surf ! in km
+  integer, parameter :: neqn = 2
+  real(8) :: relerr = 1.d-6, abserr = 1.d-8
+  real(8) :: val, ec, pc, y(neqn), yp(neqn), s_h
+  integer :: flag, step_count
+  logical :: debug = .false.
+  r_surf = r_e * sqrt(KAPPA) / 1.d5
+  r_in = r_surf * s_gp(2) / ( 1.d0 - s_gp(2) )
+  ec = energy(1,1) / (C*C*KSCALE) * rho_uni 
+  pc = pressure(1,1) / KSCALE * prs_uni
+  ! I(r) ~ 8π/15(ρc+pc)r^5 + O(r^7)
+  y(1) = r_in - pi * ec * r_in**3
+  y(2) = 8.d0 * pi / 15.d0 * y(1)**5 * (ec+pc)
+  yp(1)= 1 - 3.d0 * pi * ec * r_in**2
+  yp(2)= 8.d0 * pi / 3.d0 * y(1)**4 * (ec+pc)
+  flag = 1
+  call d02pcf(deriv, neqn, y, yp, r_in, r_surf, relerr, abserr, flag, step_count, debug)
+  if (abs(flag) /= 2) then
+    write(*,*) "d02pcf failed with flag = ", flag
+    stop
+  end if
+  val = y(2)
+  write(*,"(A,es18.9,A,i5)") "Double check Schwarzschild radius :", y(1), "  RK45 steps :", step_count
+contains
+  subroutine deriv(t, y, yp)
+    implicit none
+    real(8), intent(in) :: t, y(:)
+    real(8), intent(out) :: yp(:)
+    real(8) :: gama_val, rho_val, s_h, e, p, elm
+    real(8) :: dalphads, logP, dsphids
+    type(dual) :: s_d, alpha_d, sphi_d
 
+    s_h = t / ( t + r_surf )
+    call interp(s_gp, gama(:,1)     , SDIV, s_h, gama_val)
+    call interp(s_gp, rho(:,1)      , SDIV, s_h,  rho_val)
+    call interp(s_gp, energy(:,1)   , SDIV, s_h,        e)
+    call interp(s_gp, pressure(:,1) , SDIV, s_h,        p)
+    s_d = dual_var(s_h)
+    call interp_dual(s_gp, alpha(:,1), SDIV, s_d, alpha_d)
+    call interp_dual(s_gp, sphi(:,1),  SDIV, s_d,  sphi_d)
+    dalphads = alpha_d%der
+    dsphids  = sphi_d%der
+    
+    logP = ( 4.d0 * alpha_d%val + gama_val - rho_val ) / 12.d0
+
+    e = e / (C*C*KSCALE) * rho_uni 
+    p = p / KSCALE * prs_uni
+    elm = 1.d0 / ( 1.d0 + s_h * (1.d0 - s_h) * dalphads )**2
+    yp(1) = exp(2.d0 * logP) * ( 1.d0 + s_h * (1.d0 - s_h) * dalphads )
+    yp(2) = 8.d0 / 3.d0 * pi * t**4 * (e+p) * ( 1.d0 - 5.d0 * y(2) / 2.d0 / t**3 + y(2)**2 / t**6 ) * elm
+    if (active_theory /= THEORY_GR) then 
+      yp(2) = yp(2) + y(2) * y(1) * ( 1.d0 - 2.d0 * y(2) / y(1)**3 ) / yp(1)**2 &
+            * ( (1.d0 - s_h)**2 / r_surf * dsphids )**2
+    endif
+  end subroutine deriv
+end function moment_inertia

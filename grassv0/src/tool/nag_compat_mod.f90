@@ -2,6 +2,13 @@ module nag_compat_mod
   implicit none
 
   ! to include: F06QWF, D02NBF
+  abstract interface
+    subroutine nag_ode_rhs(t, y, dy)
+      real(8), intent(in) :: t
+      real(8), intent(in) :: y(:)
+      real(8), intent(out) :: dy(:)
+    end subroutine nag_ode_rhs
+  end interface
 contains
 
   subroutine d01gaf(x, y, n, ans, er, ifail)
@@ -249,5 +256,206 @@ contains
 
     if (aint > bint) result = -result
   end subroutine e02bbf
+
+  subroutine d02pcf(f, neqn, y, yp, t, tout, relerr, abserr, flag, step_count, out, max_step)
+  ! rkh45
+    implicit none
+    procedure(nag_ode_rhs) :: f
+    integer, intent(in) :: neqn
+    real(8), intent(inout) :: y(neqn)
+    real(8), intent(inout) :: yp(neqn)
+    real(8), intent(inout) :: t
+    real(8), intent(in) :: tout
+    real(8), intent(inout) :: relerr
+    real(8), intent(inout) :: abserr
+    integer, intent(inout) :: flag
+    integer, intent(out) :: step_count
+    logical, intent(in) :: out
+    real(8), intent(in), optional :: max_step
+
+    real(8) :: distance, direction, h, hmin, hmax
+    real(8) :: err, fac, new_h, scale, tol_small
+    integer :: max_steps, max_evals, nfe, i
+    logical :: eval_limit
+    real(8) :: y4(neqn), y5(neqn)
+    real(8) :: k1(neqn), k2(neqn), k3(neqn), k4(neqn), k5(neqn), k6(neqn)
+    real(8) :: ytemp(neqn)
+
+    max_steps = 200000
+    max_evals = 6 * max_steps
+    step_count = 0
+    nfe = 0
+    eval_limit = .false.
+
+    if (neqn <= 0) then
+      flag = 8
+      return
+    end if
+
+    relerr = max(relerr, 1.d-12)
+    abserr = max(abserr, 1.d-18)
+
+    if (flag == 0 .or. abs(flag) > 2) then
+      flag = 8
+      return
+    end if
+
+    distance = tout - t
+    if (distance == 0.d0) then
+      call f(t, y, yp)
+      flag = 2
+      return
+    end if
+
+    direction = sign(1.d0, distance)
+    call f(t, y, yp)
+    nfe = nfe + 1
+    if (nfe > max_evals) then
+      flag = 4
+      return
+    end if
+
+    hmin = 1.d-12
+    if (present(max_step) .and. max_step > 0.d0) then
+      hmax = min(abs(distance), max_step)
+    else
+      hmax = abs(distance)
+    end if
+    h = direction * max(1.d-6, min(abs(distance) / 10.d0, hmax))
+    tol_small = 10.d0 * epsilon(t)
+
+    do
+      distance = tout - t
+      if (direction * distance <= 0.d0) exit
+      if (step_count >= max_steps) then
+        flag = 4
+        return
+      end if
+
+      if (abs(h) > abs(distance)) h = direction * abs(distance)
+      if (abs(h) > hmax) h = direction * hmax
+      if (abs(h) < hmin) then
+        flag = 6
+        return
+      end if
+
+      call rkf45_step(f, neqn, t, y, h, y4, y5, k1, k2, k3, k4, k5, k6, eval_limit, max_evals, nfe)
+      if (eval_limit) then
+        flag = 4
+        return
+      end if
+
+      err = 0.d0
+      do i = 1, neqn
+        scale = abserr + relerr * max(abs(y(i)), abs(y5(i)))
+        if (scale > tol_small) then
+          err = max(err, abs(y5(i) - y4(i)) / scale)
+        end if
+      end do
+      err = err / sqrt( dble(neqn) )
+
+      if (err <= 1.d0) then
+        t = t + h
+        y = y5
+        step_count = step_count + 1
+        call f(t, y, yp)
+        nfe = nfe + 1
+        if (nfe > max_evals) then
+          flag = 4
+          return
+        end if
+        if (out) then
+          write(*,"(99es27.17e3)") t, y, yp
+        end if
+        if (abs(distance) <= 1.d-15) exit
+        fac = min(5.d0, 0.9d0 * err**(-0.2d0))
+        h = direction * min( abs(h) * fac, hmax )
+      else
+        fac = max(0.1d0, 0.9d0 * err**(-0.25d0))
+        h = direction * min( abs(h) * fac, hmax )
+        if (abs(h) < hmin) then
+          flag = 6
+          return
+        end if
+      end if
+    end do
+
+    flag = 2
+  contains
+    subroutine rkf45_step(f, neqn, t, y, h, y4loc, y5loc, k1, k2, k3, k4, k5, k6, limit_flag, max_eval, nfe_loc)
+      implicit none
+      procedure(nag_ode_rhs) :: f
+      integer, intent(in) :: neqn, max_eval
+      real(8), intent(in) :: t, h
+      real(8), intent(in) :: y(neqn)
+      real(8), intent(out) :: y4loc(neqn), y5loc(neqn)
+      real(8), intent(out) :: k1(neqn), k2(neqn), k3(neqn), k4(neqn), k5(neqn), k6(neqn)
+      logical, intent(out) :: limit_flag
+      integer, intent(inout) :: nfe_loc
+
+      real(8) :: ywork(neqn)
+      real(8), parameter :: a2 = 0.25d0, a3 = 3.d0/8.d0, a4 = 12.d0/13.d0, a5 = 1.d0, a6 = 0.5d0
+      real(8), parameter :: b21 = 0.25d0
+      real(8), parameter :: b31 = 3.d0/32.d0, b32 = 9.d0/32.d0
+      real(8), parameter :: b41 = 1932.d0/2197.d0, b42 = -7200.d0/2197.d0, b43 = 7296.d0/2197.d0
+      real(8), parameter :: b51 = 439.d0/216.d0, b52 = -8.d0, b53 = 3680.d0/513.d0, b54 = -845.d0/4104.d0
+      real(8), parameter :: b61 = -8.d0/27.d0, b62 = 2.d0, b63 = -3544.d0/2565.d0, b64 = 1859.d0/4104.d0, b65 = -11.d0/40.d0
+      real(8), parameter :: c1 = 16.d0/135.d0, c3 = 6656.d0/12825.d0, c4 = 28561.d0/56430.d0, c5 = -9.d0/50.d0, c6 = 2.d0/55.d0
+      real(8), parameter :: ch1 = 25.d0/216.d0, ch3 = 1408.d0/2565.d0, ch4 = 2197.d0/4104.d0, ch5 = -1.d0/5.d0
+
+      limit_flag = .false.
+
+      call f(t, y, k1)
+      nfe_loc = nfe_loc + 1
+      if (nfe_loc > max_eval) then
+        limit_flag = .true.
+        return
+      end if
+
+      ywork = y + h * b21 * k1
+      call f(t + a2*h, ywork, k2)
+      nfe_loc = nfe_loc + 1
+      if (nfe_loc > max_eval) then
+        limit_flag = .true.
+        return
+      end if
+
+      ywork = y + h * (b31 * k1 + b32 * k2)
+      call f(t + a3*h, ywork, k3)
+      nfe_loc = nfe_loc + 1
+      if (nfe_loc > max_eval) then
+        limit_flag = .true.
+        return
+      end if
+
+      ywork = y + h * (b41 * k1 + b42 * k2 + b43 * k3)
+      call f(t + a4*h, ywork, k4)
+      nfe_loc = nfe_loc + 1
+      if (nfe_loc > max_eval) then
+        limit_flag = .true.
+        return
+      end if
+
+      ywork = y + h * (b51 * k1 + b52 * k2 + b53 * k3 + b54 * k4)
+      call f(t + a5*h, ywork, k5)
+      nfe_loc = nfe_loc + 1
+      if (nfe_loc > max_eval) then
+        limit_flag = .true.
+        return
+      end if
+
+      ywork = y + h * (b61 * k1 + b62 * k2 + b63 * k3 + b64 * k4 + b65 * k5)
+      call f(t + a6*h, ywork, k6)
+      nfe_loc = nfe_loc + 1
+      if (nfe_loc > max_eval) then
+        limit_flag = .true.
+        return
+      end if
+
+      y5loc = y + h * (c1 * k1 + c3 * k3 + c4 * k4 + c5 * k5 + c6 * k6)
+      y4loc = y + h * (ch1 * k1 + ch3 * k3 + ch4 * k4 + ch5 * k5)
+    end subroutine rkf45_step
+
+  end subroutine d02pcf
 
 end module nag_compat_mod

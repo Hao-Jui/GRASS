@@ -5,7 +5,6 @@ subroutine initialize_starting_model(p_at_e, h_at_p)
   real(8), external :: p_at_e, h_at_p
   external :: sphere, restart_read, refine_read, regrid_read
   real(8) :: target_mphi
-
   select case (run_mode)
 
   case (MODE_REGRID)
@@ -26,7 +25,8 @@ subroutine initialize_starting_model(p_at_e, h_at_p)
       call perform_scalar_burn(target_mphi)
     end if
   end select
-  if (.not. use_shoot_1d) r_ratio = min(r_ratio, 0.99d0)
+  if (.not. use_shoot_1d) r_ratio = min(r_ratio, 0.9d0)
+
   !call single_model()
   if (active_theory /= THEORY_GR) then
     B_coup  = B_goal
@@ -35,14 +35,15 @@ subroutine initialize_starting_model(p_at_e, h_at_p)
 contains
   subroutine single_model()
     real(8) :: n0_at_h, e_at_h, ee, rho0
-    r_ratio  = .97d0
-    e_center = 2.d16
+    integer :: unit, ios
+    r_ratio  = 0.5d0
+    e_center = 6.d14
     e_center = e_center * C * C * KSCALE
     p_center = p_at_e(e_center)
     h_center = h_at_p(p_center)
     output = .true.
     call call_rotation_solver
-    call mass_radius
+    call solution_properties
     rho0 = n0_at_h(h_center)
     ee   = e_at_h(h_center)
     call print_converged_block(rho0, ee)
@@ -258,9 +259,11 @@ subroutine print_converged_block(rho0, ee)
      if (active_theory /= THEORY_GR) then
         write(6+215*(i-1),"(A18,ES18.9)")         "    Coupling B =", B_coup
         write(6+215*(i-1),"(A18,ES18.9)")         "   Scalar mass =", sqrt(mphi_r*1.d10/KAPPA)*l_uni
-        write(6+215*(i-1),"(A18,ES18.9)")         "     varphi(0) =", sphi_c
+        write(6+215*(i-1),"(A18,ES18.9,A16,f18.9,A2)") &
+          "     varphi(0) =", sphi_c, " ( E. frame =", sphi_c/sqrt(B_goal), " )"
         write(6+215*(i-1),"(A18,ES18.9)")         "    varphi_max =", sphi_m
      endif
+     write(6+215*(i-1),"(A18,F18.9)")             "   Slow rot. I =", I_inertia
      write(6+215*(i-1),"(A18,F18.9)")             "        M2/M^3 =", M2
      write(6+215*(i-1),"(A18,F18.9)")             "        S3/M^4 =", S3
      write(6+215*(i-1),"(A18,F18.9)")             "        M4/M^5 =", M4

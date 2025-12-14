@@ -17,8 +17,6 @@ subroutine sphere
     write(*,*) " "
     write(*,*) "Configurating spherical guess ..."
     write(*,"(4A15)") "|      runs","r_is (km)","r (km)","m (M_o)"
-!    write(*,"(A15,1P3E15.2)") "|  Real TOV",11.4484/sqrt(1-2*2.0572/11.4484), &
-!        11.4484,2.0572/1.47664
 
     do s = 1, 3
       call TOV(s, r_is_gp, lambda_gp, nu_gp, e_d_gp, r_is_final, r_final, m_final)
@@ -100,7 +98,8 @@ subroutine TOV(i_check, r_is_gp, lambda_gp, nu_gp, e_d_gp, &
             e_d, p, h, m, nu_s, hh, rho_0, &
             a1,a2,a3,a4,b1,b2,b3,b4,c1,c2,c3,c4, &
             k_rescale
-    real(8) dm_dr_is,dp_dr_is,dr_dr_is,h_at_p,p_at_e,e_at_p,n0_at_e
+    real(8) :: dm_dr_is, dp_dr_is, dr_dr_is
+    real(8) :: h_at_p, p_at_e, e_at_p, n0_at_e
 
     ! use estimate of r to set the step size h
     if (i_check == 1) then
@@ -118,11 +117,11 @@ subroutine TOV(i_check, r_is_gp, lambda_gp, nu_gp, e_d_gp, &
     m = 0.0                               ! initial mass
     p = p_center                          ! initial pressure (code unit)
 
-    r_is_gp(1) = 0.0
-    r_gp(1) = 0.0
-    m_gp(1) = 0.0
+    r_is_gp(1)   = 0.0
+    r_gp(1)      = 0.0
+    m_gp(1)      = 0.0
     lambda_gp(1) = 0.0
-    e_d_gp(1) = e_center
+    e_d_gp(1)    = e_center
 
     i = 2
     !write(*,"(3es15.6)") r,m,p,h; stop 
@@ -162,22 +161,21 @@ subroutine TOV(i_check, r_is_gp, lambda_gp, nu_gp, e_d_gp, &
       p = p + (h/6.0)*(c1+2*c2+2*c3+c4)
 
       r_is = r_is+h
-      !write(*,"(3es15.6)") r_is,m,p
+      !write(*,"(3es15.6)") r_is, m, p
     enddo
     e_d_gp (rdiv) = 0.d0
     r_is_gp(rdiv) = r_is_final
     r_gp   (rdiv) = r_final
     m_gp   (rdiv) = m_final
 
-    ! Rescale r_is and compute lambda, nu
     
+    ! Rescale r_is and compute lambda, nu
     if (i_check == 3) then
       k_rescale = 0.5*(r_final/r_is_final)* &
           (1.0-m_final/r_final + sqrt(1.0-2.0*m_final/r_final) )
-        !write(*,"(es18.9)") k_rescale
+
       r_is_final = r_is_final * k_rescale
-      ! lapse = e^{2 nu_s}
-      nu_s = log( (1.0-m_final/(2.0*r_is_final))/ &
+      nu_s = log( (1.d0-m_final/(2.d0*r_is_final))/ &
           (1.0+m_final/(2.0*r_is_final)) )
           
       open(988,file="./Cont/checkTOV.dat")
@@ -258,10 +256,10 @@ real(8) function dr_dr_is(r_is,r,m)
   implicit none
   real(8) r_is,r,m
   
-  if(r_is<tov_rmin) then
-    dr_dr_is=1.d0
+  if(r_is < tov_rmin) then
+    dr_dr_is = 1.d0
   else
-    dr_dr_is=(r/r_is)*sqrt(1-2*m/r)
+    dr_dr_is=( r / r_is ) * sqrt( 1.d0 - 2.d0 * m / r )
   endif
 
 end function dr_dr_is
