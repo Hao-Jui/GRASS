@@ -1,8 +1,8 @@
 module toolkit_mod
   implicit none
-  public
+
 contains
-  elemental function interp_log_h_to_p(x) result(y)
+  pure elemental function interp_log_h_to_p(x) result(y)
     use para_mod
     implicit none
     real(8), intent(in) :: x
@@ -24,7 +24,7 @@ contains
     end if
   end function interp_log_h_to_p
 
-  elemental function interp_log_p_to_e(x) result(y)
+  pure elemental function interp_log_p_to_e(x) result(y)
     use para_mod
     implicit none
     real(8), intent(in) :: x
@@ -46,12 +46,12 @@ contains
     end if
   end function interp_log_p_to_e
 
-  subroutine interp(xp,yp,np, xb,yb)
+  pure subroutine interp(xp,yp,np, xb,yb)
 
     implicit none
     integer,intent(in) :: np
     integer :: n_nearest_pt, ii, kk, ir
-    integer :: n_order = 4
+    integer, parameter :: n_order = 4
     real(8),intent(in)  :: xp(np),yp(np)
     real(8),intent(in)  :: xb
     real(8),intent(out) :: yb
@@ -73,12 +73,12 @@ contains
 
   end subroutine interp
 
-  subroutine interp_pt(xp,yp,np, xb,yb)
+  pure subroutine interp_pt(xp,yp,np, xb,yb)
     use para_mod, only: p_at_PT, C, KSCALE
     implicit none
     integer,intent(in) :: np
     integer :: n_nearest_pt, ii, kk, ir
-    integer :: n_order = 4
+    integer, parameter :: n_order = 4
     real(8),intent(in)  :: xp(np), yp(np)
     real(8),intent(in)  :: xb
     real(8),intent(out) :: yb
@@ -117,7 +117,7 @@ contains
 
   end subroutine interp_pt
 
-  subroutine interp_dual(xp, yp, np, xb, yb)
+  pure subroutine interp_dual(xp, yp, np, xb, yb)
     use ad_mod
     implicit none
     integer, intent(in) :: np
@@ -142,6 +142,9 @@ contains
     end do
   end subroutine interp_dual
 
+  ! **********************************************************************
+  ! Integration helpers
+  ! **********************************************************************
   subroutine integrate_profiles(x, values, results, err_estimates, ifails)
     use nag_compat_mod, only: d01gaf
     implicit none
@@ -187,6 +190,44 @@ contains
     end do
   end subroutine integrate_profiles
 
+  subroutine integrate_column_spline(values, knots, result, status)
+    use nag_compat_mod, only: e02baf, e02bbf
+    use simpson_mod, only: simpson_1d
+    real(8), intent(in)  :: values(:)
+    real(8), intent(in)  :: knots(:)
+    real(8), intent(out) :: result
+    integer, intent(out) :: status
+    integer :: n_points
+    integer :: info_fit, info_int
+    real(8), allocatable :: coeff_a(:), coeff_b(:), coeff_c(:), coeff_d(:)
+    real(8) :: temp_mat(size(values),1), temp_vec(1)
+
+    result = 0.d0
+    status = 0
+    n_points = size(values)
+    if (n_points <= 1 .or. size(knots) /= n_points) then
+      status = 1
+      return
+    end if
+
+    allocate(coeff_a(n_points-1), coeff_b(n_points-1), coeff_c(n_points-1), coeff_d(n_points-1))
+    info_fit = 0
+    info_int = 0
+
+    call e02baf(n_points, knots, values, coeff_a, coeff_b, coeff_c, coeff_d, info_fit)
+    if (info_fit == 0) then
+      call e02bbf(n_points, knots, coeff_a, coeff_b, coeff_c, coeff_d, knots(1), knots(n_points), result, info_int)
+    end if
+
+    if (info_fit /= 0 .or. info_int /= 0) then
+      temp_mat(:,1) = values
+      temp_vec = simpson_1d(temp_mat, knots(1), knots(n_points))
+      result = temp_vec(1)
+      status = 2
+    end if
+    deallocate(coeff_a, coeff_b, coeff_c, coeff_d)
+  end subroutine integrate_column_spline
+
   pure function cumsum(x) result(y)
     real(8), intent(in) :: x(:)
     real(8) :: y(size(x))
@@ -197,11 +238,11 @@ contains
     end do
   end function
 
-  !===========================================================
+  ! **********************************************************************
   ! First and second order derivatives in s and m directions
   ! using 2nd order finite differences
-  !===========================================================
-  pure real(8) function deriv_s(f, s, m)
+  ! **********************************************************************
+  real(8) function deriv_s(f, s, m)
     use para_mod, only : ds, SDIV, MDIV
     implicit none
     real(8), intent(in) :: f(SDIV, MDIV)
@@ -216,7 +257,7 @@ contains
     end if
   end function deriv_s
 
-  pure real(8) function deriv_ss(f, s, m)
+  real(8) function deriv_ss(f, s, m)
     use para_mod, only : ds, SDIV, MDIV
     implicit none
     real(8), intent(in) :: f(SDIV, MDIV)
@@ -227,7 +268,7 @@ contains
     deriv_ss = (f(si+2, m) - 2.d0*f(si, m) + f(si-2, m)) / (4.d0 * ds**2)
   end function deriv_ss
 
-  pure real(8) function deriv_m(f, s, m)
+  real(8) function deriv_m(f, s, m)
     use para_mod, only : dm, SDIV, MDIV
     implicit none
     real(8), intent(in) :: f(SDIV, MDIV)
@@ -242,7 +283,7 @@ contains
     end if
   end function deriv_m
 
-  pure real(8) function deriv_mm(f, s, m)
+  real(8) function deriv_mm(f, s, m)
     use para_mod, only : dm, SDIV, MDIV
     implicit none
     real(8), intent(in) :: f(SDIV, MDIV)
@@ -254,11 +295,12 @@ contains
     deriv_mm = (f(s, mi+1) - 2.d0*f(s, mi) + f(s, mi-1)) / (dm**2)
   end function deriv_mm
 
-  pure real(8) function deriv_sm(f, s, m)
+  real(8) function deriv_sm(f, s, m)
     use para_mod, only : dm, ds, SDIV, MDIV
     implicit none
     real(8), intent(in) :: f(SDIV, MDIV)
     integer, intent(in) :: s, m
+
     if (s == 1) then
       if (m == 1) then
         deriv_sm = (f(2,2)-f(1,2)-f(2,1)+f(1,1))/(dm*ds)
@@ -291,18 +333,40 @@ contains
     implicit none
     real(8), intent(in) :: f(SDIV)
     integer, intent(in) :: s
-    if (s == 1) then
-      deriv_s_1d = (f(2) - f(1)) / ds
-    elseif (s == SDIV) then
-      deriv_s_1d = (f(SDIV) - f(SDIV-1)) / ds
-    else
-      deriv_s_1d = (f(s+1) - f(s-1)) / (2.d0 * ds)
+
+    if (SDIV < 5) then
+      ! Not enough points for the 4th order stencil; fall back to 2nd order.
+      if (s == 1) then
+        deriv_s_1d = (f(2) - f(1)) / ds
+      elseif (s == SDIV) then
+        deriv_s_1d = (f(SDIV) - f(SDIV-1)) / ds
+      else
+        deriv_s_1d = (f(s+1) - f(s-1)) / (2.d0 * ds)
+      end if
+      return
     end if
+
+    select case (s)
+    case (1)
+      deriv_s_1d = (-25.d0*f(1) + 48.d0*f(2) - 36.d0*f(3) + 16.d0*f(4) - 3.d0*f(5)) / (12.d0 * ds)
+    case (2)
+      deriv_s_1d = (-3.d0*f(1) - 10.d0*f(2) + 18.d0*f(3) - 6.d0*f(4) + f(5)) / (12.d0 * ds)
+    case default
+      if (s == SDIV-1) then
+        deriv_s_1d = (3.d0*f(SDIV) + 10.d0*f(SDIV-1) - 18.d0*f(SDIV-2) + 6.d0*f(SDIV-3) - f(SDIV-4)) / (12.d0 * ds)
+      elseif (s == SDIV) then
+        deriv_s_1d = (25.d0*f(SDIV) - 48.d0*f(SDIV-1) + 36.d0*f(SDIV-2) - 16.d0*f(SDIV-3) + 3.d0*f(SDIV-4)) / (12.d0 * ds)
+      else
+        deriv_s_1d = (-f(s+2) + 8.d0*f(s+1) - 8.d0*f(s-1) + f(s-2)) / (12.d0 * ds)
+      end if
+    end select
   end function deriv_s_1d
 
-  !===========================================================
-  ! Special functions
-  !===========================================================
+  ! **********************************************************************
+  ! Special functions: Legendre polynomials, Associated ones, 
+  ! Modified Spherical Bessel functions of two kinds
+  ! **********************************************************************
+
   real(8) function legendre(n,x)
 
     implicit none
@@ -373,7 +437,7 @@ contains
 
   end function plgndr
 
-  elemental real(8) function besseli(n,x)
+  real(8) function besseli(n,x) 
     implicit none
     integer,intent(in) :: n
     real(8),intent(in) :: x
@@ -387,8 +451,7 @@ contains
     real(8) :: sign_factor
 
     if (n < 0) then
-      besseli = 0.d0
-      return
+      stop "besseli expects n >= 0"
     end if
 
     xx = abs(x)
@@ -453,7 +516,7 @@ contains
     besseli = clip_bessel(sign_factor * abs(i_curr))
   end function besseli
 
-  elemental real(8) function besselk(n,x)
+  real(8) function besselk(n,x)
     implicit none
     integer,intent(in) :: n
     real(8),intent(in) :: x
@@ -463,8 +526,7 @@ contains
     real(8) :: exp_neg, em1
 
     if (n < 0) then
-      besselk = 0.d0
-      return
+      stop "besselk expects n >= 0"
     end if
 
     xx = abs(x)
@@ -502,7 +564,7 @@ contains
     besselk = k_curr
   end function besselk
 
-  elemental pure real(8) function odd_double_factorial(m)
+  pure real(8) function odd_double_factorial(m)
     implicit none
     integer,intent(in) :: m
     integer :: k
@@ -521,7 +583,7 @@ contains
     odd_double_factorial = acc
   end function odd_double_factorial
 
-  elemental pure real(8) function spherical_i_series(n,x)
+  pure real(8) function spherical_i_series(n,x)
     implicit none
     integer,intent(in) :: n
     real(8),intent(in) :: x
@@ -553,7 +615,7 @@ contains
     spherical_i_series = clip_bessel(base * sum_series)
   end function spherical_i_series
 
-  elemental pure real(8) function pow_int_real(x,n)
+  pure real(8) function pow_int_real(x,n)
     implicit none
     real(8),intent(in) :: x
     integer,intent(in) :: n
@@ -573,7 +635,7 @@ contains
     pow_int_real = result
   end function pow_int_real
 
-  elemental pure real(8) function expm1_safe(x)
+  pure real(8) function expm1_safe(x)
     implicit none
     real(8),intent(in) :: x
     real(8) :: absx, term, sum
@@ -595,20 +657,19 @@ contains
     expm1_safe = sum
   end function expm1_safe
 
-  elemental pure real(8) function clip_bessel(val)
+  pure real(8) function clip_bessel(val)
     implicit none
     real(8),intent(in) :: val
-    real(8), parameter :: limit = huge(1.d0)
+    real(8), parameter :: limit = 1.d98
     clip_bessel = min(limit, max(-limit, val))
   end function clip_bessel
 
-  elemental pure real(8) function clip_besselk(val)
+  pure real(8) function clip_besselk(val)
     implicit none
     real(8),intent(in) :: val
-    real(8), parameter :: floor_val = tiny(1.d0)
     real(8) :: tmp
     tmp = abs(clip_bessel(val))
-    if (tmp < floor_val) tmp = floor_val
+    if (tmp < tiny(1.d0)) tmp = tiny(1.d0)
     clip_besselk = tmp
   end function clip_besselk
 

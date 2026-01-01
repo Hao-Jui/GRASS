@@ -3,7 +3,6 @@ module rotation_const_j
 contains
 
 subroutine spin_gr_const_j
-#include "option_macro.h"
   use toolkit_mod
   use para_mod
   use nag_compat_mod, only: d01gaf
@@ -85,18 +84,17 @@ subroutine spin_gr_const_j
       ww_equator_h = 0.d0
     else
       call interp(s_gp, ww_mu_0, SDIV, s_e, ww_equator_h)
-#if defined(restart)
-#elif defined (refine)
-#else
-      if (n_of_it == 0) then
-        term_in_Omega_h = 1.d0 - exp(r_e_new_sq * (gama_pole_h + rho_pole_h - gama_equator_h - rho_equator_h))
-        if (term_in_Omega_h >= 0.d0) then
-          Omega_e = ww_equator_h + exp(r_e_new_sq * rho_equator_h) * sqrt(term_in_Omega_h)
-        else
-          stop "L96 in spin_gr_const_j"
+
+      if ( run_mode .ne. MODE_DEFAULT ) then
+        if (n_of_it == 0) then
+          term_in_Omega_h = 1.d0 - exp(r_e_new_sq * (gama_pole_h + rho_pole_h - gama_equator_h - rho_equator_h))
+          if (term_in_Omega_h >= 0.d0) then
+            Omega_e = ww_equator_h + exp(r_e_new_sq * rho_equator_h) * sqrt(term_in_Omega_h)
+          else
+            stop "L96 in spin_gr_const_j"
+          end if
         end if
-      end if
-#endif
+      endif
 
       call zbrent_diff(Omega_e * 8.d-1, r_e_new, rho_equator_h, gama_equator_h, &
                        ww_equator_h, rho_pole_h, gama_pole_h, 0.d0, 1.d-5, Omega_e, diff_rotation_const_j)
@@ -207,14 +205,6 @@ subroutine spin_gr_const_j
           + 0.25*s1**2*(4*d_rho_s**2 - d_gama_s**2) &
           + 0.25*m1   *(4*d_rho_m**2 - d_gama_m**2) &
           - m1*e_rsm**2*(sgp**4*d_ww_s**2 + s2*m1*d_ww_m**2)))
-#if defined(debug)
-        if (S_metric_rho(s,m) /= S_metric_rho(s,m) .or. S_metric_gama(s,m) /= S_metric_gama(s,m) &
-            .or. S_metric_omega(s,m) /= S_metric_omega(s,m)) then
-            write(*,*) esm,psm,enthalpy(s,m),s_gp(s)/s_e,mu(m)
-            write(*,*) n_of_it
-            stop "L241 in spin_gr_const_j"
-        end if
-#endif
       end do
     end do
 

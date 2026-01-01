@@ -4,7 +4,6 @@
 !
 ! ********************************************* !
 subroutine sphere
-#include "option_macro.h"
   use toolkit_mod, only: interp
   use para_mod
     implicit none
@@ -18,8 +17,6 @@ subroutine sphere
     write(*,*) " "
     write(*,*) "Configurating spherical guess ..."
     write(*,"(4A15)") "|      runs","r_is (km)","r (km)","m (M_o)"
-!    write(*,"(A15,1P3E15.2)") "|  Real TOV",11.4484/sqrt(1-2*2.0572/11.4484), &
-!        11.4484,2.0572/1.47664
 
     do s = 1, 3
       call TOV(s, r_is_gp, lambda_gp, nu_gp, e_d_gp, r_is_final, r_final, m_final)
@@ -40,7 +37,7 @@ subroutine sphere
           lambda_s = 2.d0 * log( 1.d0 + m_final / (2.d0*r_is_s) )
           nu_s     = log( (1.d0 - m_final / (2.d0*r_is_s)) / (1.d0 + m_final / (2.d0 * r_is_s) ) )
       endif
-      sphi (s,:) = ( 1.d0 - exp(nu_s) ) /1.d1 * exp(-sqrt(mphi_r)*r_is_s) 
+      sphi (s,:) = ( 1.d0 - exp(nu_s) ) /1.d2 * exp(-sqrt(mphi_r)*r_is_s) 
       rho  (s,:) = nu_s-lambda_s
       gama (s,:) = lambda_s+nu_s
       alpha(s,:) = (lambda_s-nu_s) / 2.d0
@@ -48,38 +45,39 @@ subroutine sphere
       rho_mu_0 (s) = nu_s-lambda_s
       gama_mu_0(s) = lambda_s+nu_s
   enddo
-    
+
   ww(:,:) = 0.d0
   omg(:,:)= 0.d0
-    
+  
   call interp(s_gp, gama_mu_0, SDIV, s_e, gama_eq)
   call interp(s_gp,  rho_mu_0, SDIV, s_e,  rho_eq)
     
   ! r_e is roughly r_is_final
   r_e = r_final * exp( (rho_eq-gama_eq) / 2.d0 )
-#if defined(Fishbone)
-  call set_disk(r_e)
 
-  open(217,file="./Res/disk.dat")
-  write(217,*) "test"
-  do s = 1, SDIV
-      do m = 1, MDIV
-        if ( enthalpy(s,m) <= enthalpy_min ) then
-          pressure(s,m) = 0.d0
-          energy(s,m) = 0.d0
-        else
-          pressure(s,m) = p_at_h(enthalpy(s,m))
-          energy  (s,m) = e_at_h(enthalpy(s,m))
-        endif
-        ! no info on pressure, enthalpy, and rho_0 yet; only to check energy
-        write(217,"(99es27.17)") s_gp(s), mu(m), alpha(s,m), gama(s,m), rho(s,m), ww(s,m) * (C/sqrt(kappa)), & ! 1-6
-          pressure(s,m)/KSCALE, energy(s,m)/(C*C*KSCALE), enthalpy(s,m), 0.d0, & ! 7-10
-          velocity_sq(s,m), omg(s,m) * (C/sqrt(kappa)) ! 11-12
+    if ( disk_present ) then 
+    call set_disk(r_e)
+
+    open(217,file="./Res/disk.dat")
+    write(217,*) "test"
+    do s = 1, SDIV
+        do m = 1, MDIV
+          if ( enthalpy(s,m) <= enthalpy_min ) then
+            pressure(s,m) = 0.d0
+            energy(s,m) = 0.d0
+          else
+            pressure(s,m) = p_at_h(enthalpy(s,m))
+            energy  (s,m) = e_at_h(enthalpy(s,m))
+          endif
+          ! no info on pressure, enthalpy, and rho_0 yet; only to check energy
+          write(217,"(99es27.17)") s_gp(s), mu(m), alpha(s,m), gama(s,m), rho(s,m), ww(s,m) * (C/sqrt(kappa)), & ! 1-6
+            pressure(s,m)/KSCALE, energy(s,m)/(C*C*KSCALE), enthalpy(s,m), 0.d0, & ! 7-10
+            velocity_sq(s,m), omg(s,m) * (C/sqrt(kappa)) ! 11-12
+        enddo
       enddo
-    enddo
-  close(217)
-  write(*,*) "Disk bestowed!"
-#endif
+    close(217)
+    write(*,*) "Disk bestowed!"
+  endif
 
 end subroutine sphere
 
@@ -91,15 +89,17 @@ subroutine TOV(i_check, r_is_gp, lambda_gp, nu_gp, e_d_gp, &
 
     use para_mod
     integer :: i_check, i
-    real(8),intent(inout):: r_is_final
-    real(8),intent (out) :: r_final,m_final
-    real(8),dimension(RDIV) :: r_is_gp, lambda_gp, nu_gp, e_d_gp
-    real(8),dimension(RDIV) :: r_gp, m_gp
+    real(8), intent(inout) :: r_is_final
+    real(8), intent(out) :: r_final, m_final
+    real(8), intent(out), dimension(RDIV) :: r_is_gp, lambda_gp, e_d_gp
+    real(8), intent(out), dimension(RDIV) :: nu_gp
+    real(8), dimension(RDIV) :: r_gp, m_gp
     real(8) r, r_is, r_is_est, r_is_check, dr_is_save, &
             e_d, p, h, m, nu_s, hh, rho_0, &
             a1,a2,a3,a4,b1,b2,b3,b4,c1,c2,c3,c4, &
             k_rescale
-    real(8) dm_dr_is,dp_dr_is,dr_dr_is,h_at_p,p_at_e,e_at_p,n0_at_e
+    real(8) :: dm_dr_is, dp_dr_is, dr_dr_is
+    real(8) :: h_at_p, p_at_e, e_at_p, n0_at_e
 
     ! use estimate of r to set the step size h
     if (i_check == 1) then
@@ -117,11 +117,11 @@ subroutine TOV(i_check, r_is_gp, lambda_gp, nu_gp, e_d_gp, &
     m = 0.0                               ! initial mass
     p = p_center                          ! initial pressure (code unit)
 
-    r_is_gp(1) = 0.0
-    r_gp(1) = 0.0
-    m_gp(1) = 0.0
+    r_is_gp(1)   = 0.0
+    r_gp(1)      = 0.0
+    m_gp(1)      = 0.0
     lambda_gp(1) = 0.0
-    e_d_gp(1) = e_center
+    e_d_gp(1)    = e_center
 
     i = 2
     !write(*,"(3es15.6)") r,m,p,h; stop 
@@ -161,22 +161,21 @@ subroutine TOV(i_check, r_is_gp, lambda_gp, nu_gp, e_d_gp, &
       p = p + (h/6.0)*(c1+2*c2+2*c3+c4)
 
       r_is = r_is+h
-      !write(*,"(3es15.6)") r_is,m,p
+      !write(*,"(3es15.6)") r_is, m, p
     enddo
     e_d_gp (rdiv) = 0.d0
     r_is_gp(rdiv) = r_is_final
     r_gp   (rdiv) = r_final
     m_gp   (rdiv) = m_final
 
-    ! Rescale r_is and compute lambda, nu
     
+    ! Rescale r_is and compute lambda, nu
     if (i_check == 3) then
       k_rescale = 0.5*(r_final/r_is_final)* &
           (1.0-m_final/r_final + sqrt(1.0-2.0*m_final/r_final) )
-        !write(*,"(es18.9)") k_rescale
+
       r_is_final = r_is_final * k_rescale
-      ! lapse = e^{2 nu_s}
-      nu_s = log( (1.0-m_final/(2.0*r_is_final))/ &
+      nu_s = log( (1.d0-m_final/(2.d0*r_is_final))/ &
           (1.0+m_final/(2.0*r_is_final)) )
           
       open(988,file="./Cont/checkTOV.dat")
@@ -257,12 +256,10 @@ real(8) function dr_dr_is(r_is,r,m)
   implicit none
   real(8) r_is,r,m
   
-  if(r_is<tov_rmin) then
-    dr_dr_is=1.d0
+  if(r_is < tov_rmin) then
+    dr_dr_is = 1.d0
   else
-    dr_dr_is=(r/r_is)*sqrt(1-2*m/r)
+    dr_dr_is=( r / r_is ) * sqrt( 1.d0 - 2.d0 * m / r )
   endif
 
 end function dr_dr_is
-
-
