@@ -1,23 +1,24 @@
 module miscellaneous_mod
 #include "option_macro.h"
   use para_mod
-  use simpson_mod, only: simpson_1d
   use nag_compat_mod, only: e02baf, e02bbf
   implicit none
 
 contains
-
   subroutine write_eq_profile(file_name, s_max, column1, column2, column3, column4, &
-                            column5, column6, column7, column8, column9, column10)
+                            column5, column6, column7, column8, column9, column10, &
+                            column11, column12, column13, column14, column15, column16)
     use para_mod, only : s_gp, s_pwr, SDIV
     implicit none
     character(*), intent(in) :: file_name
     integer, intent(in) :: s_max
     real(8), intent(in) :: column1(:)
     real(8), intent(in), optional :: column2(:), column3(:), column4(:), column5(:), &
-                                    column6(:), column7(:), column8(:), column9(:), column10(:)
+                                    column6(:), column7(:), column8(:), column9(:), column10(:), &
+                                    column11(:), column12(:), column13(:), column14(:), column15(:), &
+                                    column16(:)
     integer :: s, unit, ios, nvals, n_points
-    real(8) :: row_values(10)
+    real(8) :: row_values(99)
 
     if (s_max < 1) return
     if (s_max > SDIV) write(*,*) "write_eq_profile: s_max truncated for file ", trim(file_name)
@@ -37,6 +38,12 @@ contains
     if (.not. check_column(column8,  "column8",  n_points)) return
     if (.not. check_column(column9,  "column9",  n_points)) return
     if (.not. check_column(column10, "column10", n_points)) return
+    if (.not. check_column(column11, "column11", n_points)) return
+    if (.not. check_column(column12, "column12", n_points)) return
+    if (.not. check_column(column13, "column13", n_points)) return
+    if (.not. check_column(column14, "column14", n_points)) return
+    if (.not. check_column(column15, "column15", n_points)) return
+    if (.not. check_column(column16, "column16", n_points)) return
 
     open(newunit=unit, file=file_name, status="replace", action="write", iostat=ios)
     if (ios /= 0) then
@@ -58,6 +65,12 @@ contains
       if (present(column8))  then; nvals=nvals+1; row_values(nvals)=column8(s);  end if
       if (present(column9))  then; nvals=nvals+1; row_values(nvals)=column9(s);  end if
       if (present(column10)) then; nvals=nvals+1; row_values(nvals)=column10(s); end if
+      if (present(column11)) then; nvals=nvals+1; row_values(nvals)=column11(s); end if
+      if (present(column12)) then; nvals=nvals+1; row_values(nvals)=column12(s); end if
+      if (present(column13)) then; nvals=nvals+1; row_values(nvals)=column13(s); end if
+      if (present(column14)) then; nvals=nvals+1; row_values(nvals)=column14(s); end if
+      if (present(column15)) then; nvals=nvals+1; row_values(nvals)=column15(s); end if
+      if (present(column16)) then; nvals=nvals+1; row_values(nvals)=column16(s); end if
       write(unit,"(99es18.9e3)") row_values(1:nvals)
     end do
 
@@ -68,10 +81,8 @@ contains
       real(8), intent(in), optional :: col(:)
       character(*), intent(in)      :: name
       integer, intent(in)           :: n_points
-
       ! Default to OK
       check_column = .true.
-
       if (present(col)) then
         if (size(col) < n_points) then
             write(*,*) "write_eq_profile: ", trim(name), " too short for file."
@@ -80,7 +91,36 @@ contains
       end if
     end function check_column
   end subroutine write_eq_profile
+  
+  subroutine initial_data_for_spec(file_name, var1, var2, var3, var4, var5, var6)
+    use para_mod, only : s_gp, mu, s_pwr, SDIV,MDIV, l_uni
+    implicit none
+    character(*), intent(in) :: file_name
+    real(8), intent(in) :: var1(:,:), var2(:,:), var3(:,:), var4(:,:), var5(:,:), var6(:,:)
+    integer :: s, m, unit, ios
+    real(8), parameter :: K_km = 218.04217865726338d0
+    real(8) :: r_s 
+    open(newunit=unit, file=file_name, status="replace", action="write", iostat=ios)
+    if (ios /= 0) then
+      write(*,*) "write_eq_profile: failed to open file ", trim(file_name)
+      return
+    end if
 
+    write(unit,"(3(A,e10.4))") "BaryM = ", mass_0 / MSUN * l_uni / sqrt(K_km), &
+                            "  AngM = ", ang_mom * l_uni**2 / K_km,         &
+                            "   E = ", mass / MSUN * l_uni / sqrt(K_km)
+    write(unit,"(2i12)") SDIV, MDIV
+    write(unit,"(2es21.12)") r_e * sqrt(KAPPA) / 1.d5 / sqrt(K_km), 1.0d0, &
+                             omega_c * ( sqrt(K_km) / sqrt(kappa) ), 0.0d0
+    do s = 1, SDIV
+      r_s = r_e * sqrt(KAPPA) / 1.d5 / sqrt(K_km) * s_gp(s) / (1.d0 - s_gp(s))
+      do m = 1, MDIV
+        write(unit,"(4es22.12)") r_s, mu(m), var1(s,m), var2(s,m), &
+                                 var3(s,m), var4(s,m), var5(s,m), var6(s,m)
+      enddo
+    enddo
+    close(unit)
+  end subroutine initial_data_for_spec
 
   subroutine log_kepler_sequence()
     integer :: i
@@ -314,43 +354,6 @@ contains
 
     success = coeff_leading < 0.d0
   end subroutine spectral_tail_fit
-
-  subroutine integrate_column_spline(values, knots, result, status)
-    use nag_compat_mod, only: e02baf, e02bbf
-    real(8), intent(in)  :: values(:)
-    real(8), intent(in)  :: knots(:)
-    real(8), intent(out) :: result
-    integer, intent(out) :: status
-    integer :: n_points
-    integer :: info_fit, info_int
-    real(8), allocatable :: coeff_a(:), coeff_b(:), coeff_c(:), coeff_d(:)
-    real(8) :: temp_mat(size(values),1), temp_vec(1)
-
-    result = 0.d0
-    status = 0
-    n_points = size(values)
-    if (n_points <= 1 .or. size(knots) /= n_points) then
-      status = 1
-      return
-    end if
-
-    allocate(coeff_a(n_points-1), coeff_b(n_points-1), coeff_c(n_points-1), coeff_d(n_points-1))
-    info_fit = 0
-    info_int = 0
-
-    call e02baf(n_points, knots, values, coeff_a, coeff_b, coeff_c, coeff_d, info_fit)
-    if (info_fit == 0) then
-      call e02bbf(n_points, knots, coeff_a, coeff_b, coeff_c, coeff_d, knots(1), knots(n_points), result, info_int)
-    end if
-
-    if (info_fit /= 0 .or. info_int /= 0) then
-      temp_mat(:,1) = values
-      temp_vec = simpson_1d(temp_mat, knots(1), knots(n_points))
-      result = temp_vec(1)
-      status = 2
-    end if
-    deallocate(coeff_a, coeff_b, coeff_c, coeff_d)
-  end subroutine integrate_column_spline
 
   subroutine composite_richardson(field, ell, r_e_current, coeff_leading, coeff_next, success)
     real(8), intent(in) :: field(SDIV)
