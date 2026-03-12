@@ -1,6 +1,9 @@
 data/
 *.o
 *.dat
+*.txt
+*.csv
+build/
 
 # Byte-compiled / optimized / DLL files
 _pycache_/
