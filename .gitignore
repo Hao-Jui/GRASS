@@ -7,6 +7,10 @@ build/
 # Data / EOS
 data/
 *.dat
+!eos/**/*.f90
+!eos/**/*.F90
+!eos/**/[Mm]akefile
+!eos/[Mm]akefile
 *.txt
 *.csv
 *.zip
