@@ -184,7 +184,7 @@ subroutine solution_properties()
   real(wp), dimension(SDIV,5) :: integrand_buffer
   real(wp), dimension(5) :: integral_results, mu_results
   real(wp) :: l_minus, e_minus
-  character(128) :: profile_file, mphi_str, B_str, M_str
+  character(128) :: profile_file, mphi_str, B_str, M_str, sdiv_str, mdiv_str
   real(wp) :: j_local
   real(wp) :: moi_love(2), cc, yy, dom
   logical :: use_scalar ! local snapshot of the flag
@@ -334,7 +334,10 @@ contains
     write(mphi_str,"(es8.2)") mphi_goal
     write(B_str,"(es8.2)") B_goal
     write(M_str,"(f8.0)") mass/MSUN*1.e2_wp
+    write(sdiv_str,"(i0)") SDIV
+    write(mdiv_str,"(i0)") MDIV
     profile_file = "/Users/horay/Data4Projects/crazy/Dat/1dprofile_" &
+              // trim(adjustl(sdiv_str)) //"_"// trim(adjustl(mdiv_str)) //"_" &
               // trim(adjustl(B_str)) //"_" &
               // trim(adjustl(mphi_str)) //"_M" &
               // trim(adjustl(M_str)) // "dat"

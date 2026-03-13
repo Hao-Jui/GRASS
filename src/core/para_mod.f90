@@ -4,9 +4,7 @@ module para_mod
   ! -- Theory selection ------------------------------------------------------
   integer, parameter :: THEORY_GR = 0
   integer, parameter :: THEORY_ST = 1
-  integer :: active_theory = THEORY_GR
-
-  logical :: has_scalar = .false.
+  integer :: active_theory = THEORY_ST
 
   ! hybrid / anderson
   character(len=20) :: relaxation_scheme = "hybrid"
@@ -19,11 +17,11 @@ module para_mod
 
   ! -- Rotation configuration ------------------------------------------------
   ! uniform / const_j / uryu
-  character(len=20) :: solver_type = "uryu"
+  character(len=20) :: solver_type = "uniform"
 
   ! -- Solver state ----------------------------------------------------------
   logical :: output = .false.
-  logical :: timing = .false.
+  logical :: timing = .true.
   logical :: use_shoot_1d = .true.      ! adjust hc while keeping rep constant
   character(len=20) :: FIX1 = "Mb_goal"
   character(len=20) :: FIX2 = "chi_goal"
@@ -31,8 +29,8 @@ module para_mod
   ! -- Resolutions -----------------------------------------------------------
   integer, parameter :: res  = 100
   integer, parameter :: s_pwr = 1
-  integer :: SDIV = 8 * res + 1
-  integer :: MDIV = 8 * res + 1
+  integer :: SDIV = 240 * res + 1
+  integer :: MDIV = 1 * res + 1
 
   ! -- Target quantities -----------------------------------------------------
   character(len=128) :: eos_file = "MPA1"
@@ -42,8 +40,8 @@ module para_mod
   real(wp) :: chi_goal = 0.0e0_wp
   real(wp) :: omc_goal = 30.e0_wp
 
-  real(wp) :: B_goal   = 2.8e4_wp
-  real(wp) :: mphi_goal = 10.e0_wp
+  real(wp) :: B_goal   = 6.4e5_wp
+  real(wp) :: mphi_goal = 50.e0_wp
 
   ! -- Rotation-law parameters (KEH, Uryu enabled) --------------------------
   real(wp) :: A_diff  = 0.5e0_wp
@@ -100,10 +98,12 @@ module para_mod
   real(wp), allocatable :: gama(:,:), rho(:,:), ww(:,:), alpha(:,:), sphi(:,:)
 
   ! Scalar field
+  logical :: has_scalar = .false.
   real(wp) :: B_coup = 0.e0_wp
   real(wp) :: mphi_r = 0.e0_wp
-  real(wp) :: sphi_c = 0.e0_wp
-  real(wp) :: sphi_m = 0.e0_wp
+  real(wp) :: sphi_c     = 0.e0_wp
+  real(wp) :: sphi_m     = 0.e0_wp
+  real(wp) :: r_sphi_max = 0.e0_wp  ! physical equatorial radius at max(sphi)
 
   real(wp) :: B_burn_init = 15.e0_wp
   real(wp) :: mphi_burn_seed = 0.05e0_wp
@@ -134,8 +134,7 @@ module para_mod
 
   integer :: n_of_relaxation_steps = 0
 
-  ! Green's functions
-  real(wp), allocatable :: f_rho(:,:,:), f_gama(:,:,:)
+  ! Green's functions (Legendre weights — precomputed on grid)
   real(wp), allocatable :: P_2n(:,:), P1_2n_1(:,:), sin_2n_1_theta(:,:)
 
   ! Timing
@@ -236,8 +235,6 @@ contains
     allocate(alpha(SDIV,MDIV), source=0.e0_wp)
     allocate(sphi(SDIV,MDIV), source=0.e0_wp)
 
-    allocate(f_rho(SDIV, LMAX+1, SDIV), source=0.e0_wp)
-    allocate(f_gama(SDIV, LMAX+1, SDIV), source=0.e0_wp)
     allocate(P_2n(MDIV, LMAX+1), source=0.e0_wp)
     allocate(P1_2n_1(MDIV, LMAX+1), source=0.e0_wp)
     allocate(sin_2n_1_theta(MDIV, LMAX), source=0.e0_wp)
@@ -262,8 +259,6 @@ contains
     if (allocated(ww))               deallocate(ww)
     if (allocated(alpha))            deallocate(alpha)
     if (allocated(sphi))             deallocate(sphi)
-    if (allocated(f_rho))            deallocate(f_rho)
-    if (allocated(f_gama))           deallocate(f_gama)
     if (allocated(P_2n))             deallocate(P_2n)
     if (allocated(P1_2n_1))          deallocate(P1_2n_1)
     if (allocated(sin_2n_1_theta))   deallocate(sin_2n_1_theta)

@@ -42,7 +42,7 @@ contains
   contains
     subroutine single_model()
       real(wp) :: ee, rho0
-      r_ratio = 0.5e0_wp
+      
       output = .true.
       call rotation_solver
       call solution_properties
@@ -52,7 +52,7 @@ contains
       call print_converged_block(rho0, ee)
       output = .false.
       print *, " "
-      stop "One model solved!"
+      !stop "One model solved!"
     end subroutine single_model
   end subroutine initialize_starting_model
 end module starting_model_mod

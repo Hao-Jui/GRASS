@@ -41,7 +41,7 @@ program grass
   call GridTrig
 
   write(*,fmt="(A18,es18.9)",Advance='NO') " Outer boundary:", (s_gp(SDIV-1) / ( 1.d0 - s_gp(SDIV-1) ))**s_pwr
-  write(*,"(A18,i5,A4,i5)") "Resolution:", SDIV, "x", MDIV
+  write(*,"(A18,i0,A,i0)") "Resolution: ", SDIV, " x ", MDIV
   write(*,"(A18,es18.9)") "Surface eps:", e_surface / (C*C*KSCALE)
   
   !call debug_mod_bessel; stop "debug_mod_bessel output written"

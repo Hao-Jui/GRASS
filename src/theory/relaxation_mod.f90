@@ -45,15 +45,17 @@ contains
     
     ! Compute residual
     residual = current_field - target_field
-    
-    ! Early iterations: simple damping
+    idx_curr = modulo(iter - 1, m_hist) + 1
+
+    ! Early iterations: simple damping, but still seed valid history.
     if (iter < conservative_steps) then
+      history_f(:,:,idx_curr) = residual            ! store pre-update residual
+      if (use_x) history_x(:,:,idx_curr) = current_field
       current_field = 0.5e0_wp * current_field + 0.5e0_wp * target_field
       return
     end if
     
     ! Store current residual
-    idx_curr = modulo(iter - 1, m_hist) + 1
     history_f(:,:,idx_curr) = residual
     if (use_x) history_x(:,:,idx_curr) = current_field
     
@@ -71,21 +73,20 @@ contains
         idx = modulo(iter - j - 1, m_hist) + 1
         dg = residual - history_f(:,:,idx)
         F_mat(i,j) = sum(df * dg)
-        F_mat(j,i) = F_mat(i,j)  ! Symmetry
+        F_mat(j,i) = F_mat(i,j)
       end do
       
       gamma(i) = sum(df * residual)
     end do
     
-    ! Solve using Cholesky (faster than general solve)
     call DPOSV('U', k, 1, F_mat, m_hist, gamma, m_hist, info)
-    
+
     if (info == 0) then
-      ! Anderson extrapolation
+      ! Anderson extrapolation: x_new = F(x) - Σ γ_i * Δf_i, where Δf_i = r_k - r_{k-i}
       accel_field = target_field
       do i = 1, k
         idx = modulo(iter - i - 1, m_hist) + 1
-        accel_field = accel_field - gamma(i) * history_f(:,:,idx)
+        accel_field = accel_field - gamma(i) * (residual - history_f(:,:,idx))
       end do
       current_field = damping * accel_field + (1.0e0_wp - damping) * current_field
     else
@@ -236,38 +237,31 @@ module aitken_acceleration
   use precision_mod, only: wp
   use para_mod, only: SDIV, MDIV
   implicit none
-  
-  real(wp), allocatable, save :: field_prev(:,:), field_prev2(:,:)
-  logical, save :: initialized = .false.
-  
+
 contains
 
-  subroutine aitken_update(current_field, target_field, iter)
+  subroutine aitken_update(current_field, target_field, history_x, iter, m_hist)
     real(wp), dimension(SDIV,MDIV), intent(inout) :: current_field
     real(wp), dimension(SDIV,MDIV), intent(in)    :: target_field
-    integer, intent(in) :: iter
+    real(wp), dimension(SDIV,MDIV,m_hist), intent(in) :: history_x
+    integer, intent(in) :: iter, m_hist
     
     real(wp) :: d1(SDIV,MDIV), d2(SDIV,MDIV), lambda
     real(wp) :: numerator, denominator
     real(wp), parameter :: lambda_min = 0.1e0_wp, lambda_max = 2.0e0_wp
-    
-    if (.not. initialized) then
-      allocate(field_prev(SDIV,MDIV), field_prev2(SDIV,MDIV))
-      field_prev = 0.e0_wp
-      field_prev2 = 0.e0_wp
-      initialized = .true.
-    end if
+    integer :: idx_prev, idx_prev2
 
     if (iter < 3) then
       current_field = 0.5e0_wp * current_field + 0.5e0_wp * target_field
-      field_prev2 = field_prev
-      field_prev = current_field
       return
     end if
+
+    idx_prev = modulo(iter - 2, m_hist) + 1
+    idx_prev2 = modulo(iter - 3, m_hist) + 1
     
     ! Compute differences
-    d1 = current_field - field_prev
-    d2 = field_prev - field_prev2
+    d1 = current_field - history_x(:,:,idx_prev)
+    d2 = history_x(:,:,idx_prev) - history_x(:,:,idx_prev2)
     
     ! Aitken acceleration parameter
     numerator = sum(d1 * (d1 - d2))
@@ -281,23 +275,15 @@ contains
     end if
     
     ! Update with acceleration
-    field_prev2 = field_prev
-    field_prev = current_field
     current_field = target_field + lambda * (current_field - target_field)
     
   end subroutine aitken_update
-  
-  subroutine reset_aitken()
-    if (allocated(field_prev))  deallocate(field_prev)
-    if (allocated(field_prev2)) deallocate(field_prev2)
-    initialized = .false.
-  end subroutine reset_aitken
 
 end module aitken_acceleration
 
 
 !===============================================================================
-! METHOD 5: Hybrid Scheme (Combines best of multiple methods)
+! METHOD 5: Hybrid Scheme (Anderson-first with occasional rescue)
 !===============================================================================
 module hybrid_relaxation
   use precision_mod, only: wp
@@ -315,11 +301,11 @@ contains
     real(wp), dimension(SDIV,MDIV,m_hist), intent(inout) :: history_f, history_x
     integer, intent(in) :: iter, m_hist
     
-    real(wp) :: residual_norm, prev_residual_norm, ratio
-    real(wp), parameter :: diverge_ratio = 1.08e0_wp
-    real(wp), parameter :: stall_ratio   = 0.98e0_wp
-    integer :: idx_prev
-    logical :: has_prev
+    real(wp) :: residual_norm, prev_residual_norm, prevprev_residual_norm, ratio, prev_ratio
+    real(wp), parameter :: diverge_ratio = 1.15e0_wp
+    real(wp), parameter :: stall_ratio   = 0.995e0_wp
+    integer :: idx_prev, idx_prev2
+    logical :: has_prev, repeated_diverge, repeated_stall
 
     ! Early iterations: stabilize before acceleration.
     if (iter < 3) then
@@ -338,12 +324,22 @@ contains
       ratio = 1.e0_wp
     end if
 
+    repeated_diverge = .false.
+    repeated_stall = .false.
+    if (iter > 2) then
+      idx_prev2 = modulo(iter - 3, m_hist) + 1
+      prevprev_residual_norm = sqrt(sum(history_f(:,:,idx_prev2)**2))
+      prev_ratio = prev_residual_norm / max(prevprev_residual_norm, 1.e-30_wp)
+      repeated_diverge = (ratio > diverge_ratio) .and. (prev_ratio > diverge_ratio)
+      repeated_stall = (ratio > stall_ratio) .and. (prev_ratio > stall_ratio)
+    end if
+
     ! Anderson-first policy: keep its speed, use lightweight rescue only when needed.
-    if (has_prev .and. ratio > diverge_ratio .and. iter > 4) then
+    if (has_prev .and. repeated_diverge .and. iter > 6) then
       current_field = 0.35e0_wp * current_field + 0.65e0_wp * target_field
       call store_history(current_field, target_field, history_f, history_x, iter, m_hist)
-    else if (has_prev .and. ratio > stall_ratio .and. iter > 6) then
-      call aitken_update(current_field, target_field, iter)
+    else if (has_prev .and. repeated_stall .and. iter > 8) then
+      call aitken_update(current_field, target_field, history_x, iter, m_hist)
       call store_history(current_field, target_field, history_f, history_x, iter, m_hist)
     else
       call anderson_accel_optimized(current_field, target_field, history_f, &
