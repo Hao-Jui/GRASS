@@ -1,0 +1,150 @@
+module rotation_uniform
+  use precision_mod
+  use toolkit_mod
+  use para_mod
+  use spin_helper
+  implicit none
+contains
+
+subroutine rotation_solver
+  implicit none
+  integer :: m, s, n_of_it
+  real(wp) :: r_e_old, r_e_new, r_e_new_sq
+  real(wp) :: gama_pole_h, gama_center_h, gama_equator_h
+  real(wp) :: rho_pole_h, rho_center_h, rho_equator_h, ww_equator_h
+  real(wp) :: sphi_pole_h, sphi_center_h, sphi_equator_h
+  real(wp) :: root_mphi_re, sqrt_B_coup
+  logical :: zero_scalar_mode
+  character(32) :: fil1, fil2, fil3, fil4, fil5, fil6
+
+  ! externs used in precompute
+  real(wp) :: n0_at_e
+
+  zero_scalar_mode = merge(.true., .false., active_theory == THEORY_GR)
+  sqrt_B_coup = sqrt(B_coup)
+
+  dif = 1.e0_wp
+  n_of_it = 0
+  r_e_new = r_e
+  r_e_new_sq = r_e_new**2
+
+  if ( maxval(sphi*sqrt_B_coup) < 1.e-3_wp ) sphi = sphi * 10.e0_wp
+  if (zero_scalar_mode) sphi = 0.e0_wp
+  if ( any(isnan(sphi)) ) stop "NaN found in sphi"
+  
+  ! ---------------------------------------------------------------
+  ! Iteration
+  ! ---------------------------------------------------------------
+  !write(*,*) r_ratio, h_center
+  call allocate_workspace
+  
+  do while( dif > 1.e-8_wp .or. n_of_it < 2 )
+    if (zero_scalar_mode) sphi = 0.e0_wp
+    sphi_m   = maxval( sphi(:,1) * sqrt_B_coup )
+    call rescale_metric(r_e_new_sq)
+
+    ! ---------------------------------------------------------------
+    ! Update r_e
+    ! ---------------------------------------------------------------
+    r_e_old = r_e_new
+    call update_equatorial_radius( r_e_old, &                            ! input 
+         r_e_new, dif, &                                                 ! output           
+         sphi_pole_h, gama_pole_h, rho_pole_h, &                         ! output
+         gama_equator_h, rho_equator_h, ww_equator_h, sphi_equator_h, &  ! output
+         sphi_center_h, gama_center_h, rho_center_h )                    ! output   
+
+    r_e_new_sq = r_e_new**2
+
+    if ( n_of_it > 50 .and. mod(n_of_it,50)==0 ) then 
+      write(*,'(A,i4,A,es12.4,A,2es10.2,A,3es10.2,4es18.9)') 'iter = ', n_of_it, ', diff :', dif, &
+        ' sphi :', sphi_center_h*r_e_old*sqrt_B_coup, sphi_m, &
+        '  |', gama_center_h, rho_center_h, alpha(1,1), r_e_old, r_e_new
+    endif
+
+    ! ---------------------------------------------------------------
+    ! Elliptic solver
+    ! ---------------------------------------------------------------
+    call update_angular_velocity(r_e_new, gama_pole_h, rho_pole_h, gama_equator_h, rho_equator_h, &
+         sphi_pole_h, sphi_equator_h, ww_equator_h)
+
+    call update_eos_and_velocity(r_e_new, gama_pole_h, rho_pole_h, sphi_pole_h)
+
+    root_mphi_re = sqrt(mphi_r * r_e_new_sq)
+
+    call get_all_targets(r_e_new, gama_pole_h, rho_pole_h, sphi_pole_h, root_mphi_re, &
+                         target_rho, target_gama, target_ww, target_sphi)
+    
+    call relaxation(r_e_new, target_rho, target_gama, target_ww, target_sphi, root_mphi_re, n_of_it)
+
+    ! ---------------------------------------------------------------
+    ! Divergence check
+    ! ---------------------------------------------------------------
+    if (abs(rho(2,1))>100.e0_wp .or. abs(gama(2,1))>300.e0_wp .or. abs(ww(2,1))>100.e0_wp &
+        .or. abs(sphi(2,1))>10.e0_wp) then
+      write(*,"(i5,4es18.9)") n_of_it, rho(2,1), gama(2,1), ww(2,1), sphi(2,1)
+      stop "something diverged"
+    end if
+
+    ! ---------------------------------------------------------------
+    ! Fourth equation (alpha), reuse caches where possible
+    ! ---------------------------------------------------------------
+
+    if (r_ratio == 1.e0_wp) then 
+      call impose_rigid_rotation()
+      alpha = ( gama - rho ) / 2.e0_wp
+    else
+      call update_alpha_potential(r_e_new, dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, dww_s_cache, dww_m_cache, &
+          ds_s_cache, ds_m_cache, d2g_ss_cache, d2g_mm_cache, e_rsm_cache)
+    endif
+
+    n_of_it = n_of_it + 1
+    if ( n_of_it > 2000 ) stop "Probably won't converge"
+  enddo
+  !write(*,*) r_ratio, h_center, n_of_it
+  n_of_relaxation_steps = n_of_relaxation_steps + n_of_it
+  ! --- End of iteration
+
+  ! ---------------------------------------------------------------
+  ! compute omega & outputs
+  ! ---------------------------------------------------------------
+  Omega_c  = Omega_c / r_e_new
+  Omega_e  = Omega_e / r_e_new
+  r_e      = r_e_new
+  Fmax_h   = maxval(F_j(:,1))
+  if (zero_scalar_mode) then
+    sphi = 0.e0_wp
+    sphi_c = 0.e0_wp
+    sphi_m = 0.e0_wp
+  else
+    sphi_c   = sphi(1,1) * sqrt_B_coup
+    sphi_m   = maxval( sphi(:,1) * sqrt_B_coup )
+  end if
+  call mass_radius()
+  call output_helper(D2_metric_rho, D2_metric_omega)
+  call deallocate_workspace
+contains
+  subroutine rescale_metric(factor)
+    implicit none
+    real(wp), intent(in) :: factor
+    real(wp) :: inv_factor, sqrt_factor
+    inv_factor = 1.e0_wp / factor
+    sqrt_factor = sqrt(factor)
+
+    rho   = rho   * inv_factor
+    gama  = gama  * inv_factor
+    alpha = alpha * inv_factor
+    ww    = ww    * sqrt_factor
+    omg   = omg   * sqrt_factor
+    sphi  = sphi  / sqrt_factor
+  end subroutine rescale_metric
+
+  subroutine impose_rigid_rotation()
+    rho  = spread(rho(:,1),  dim=2, ncopies=MDIV)
+    sphi = spread(sphi(:,1), dim=2, ncopies=MDIV)
+    gama = spread(gama(:,1), dim=2, ncopies=MDIV)
+    ww   = spread(ww(:,1),   dim=2, ncopies=MDIV)
+    omg  = spread(omg(:,1),  dim=2, ncopies=MDIV)
+  end subroutine impose_rigid_rotation
+end subroutine rotation_solver
+end module rotation_uniform
+
