@@ -18,7 +18,7 @@ subroutine regrid_read(target_sdiv, target_mdiv, interpolation_order)
   integer, intent(in), optional :: interpolation_order
   integer :: res_r, res_t, spwr, ios
   integer :: s, m
-  logical :: need_reinit
+  logical :: need_reinit, need_grid_rebuild
   character(len=512) :: line
   real(8) :: vals(13)
   real(8), allocatable :: alpha_src(:,:), gama_src(:,:), rho_src(:,:), &
@@ -48,7 +48,10 @@ subroutine regrid_read(target_sdiv, target_mdiv, interpolation_order)
   if (interp_order < 1) interp_order = 1
 
   open(89, file="./Res/res.dat")
-  read(89,"(3i5,99es27.17)") res_r, res_t, spwr, r_e, e_center, r_ratio, Omega_e, Omega_c
+  read(89,'(A)',iostat=ios) line
+  if (ios /= 0) stop "regrid_read: failed to read header"
+  read(line,*,iostat=ios) res_r, res_t, spwr, r_e, e_center, r_ratio, Omega_e, Omega_c
+  if (ios /= 0) stop "regrid_read: malformed header"
   r_e = r_e / (sqrt(KAPPA)/1.d5)
   Omega_e = Omega_e / (C/sqrt(kappa)) * r_e
   Omega_c = Omega_c / (C/sqrt(kappa)) * r_e
@@ -85,6 +88,9 @@ subroutine regrid_read(target_sdiv, target_mdiv, interpolation_order)
 
   need_reinit = (.not. allocated(alpha)) .or. (.not. allocated(gama)) .or. &
                 size(alpha,1) /= target_sdiv .or. size(alpha,2) /= target_mdiv
+  need_grid_rebuild = (.not. allocated(s_gp)) .or. (.not. allocated(mu)) .or. (.not. allocated(sin_theta)) .or. &
+                      (.not. allocated(P_2n)) .or. (.not. allocated(P1_2n_1)) .or. (.not. allocated(sin_2n_1_theta)) .or. &
+                      size(s_gp) /= target_sdiv .or. size(mu) /= target_mdiv .or. size(P_2n,1) /= target_mdiv
 
   if (need_reinit .or. SDIV /= target_sdiv .or. MDIV /= target_mdiv) then
     SDIV = target_sdiv
@@ -92,6 +98,10 @@ subroutine regrid_read(target_sdiv, target_mdiv, interpolation_order)
     DS   = SMAX / (dble(SDIV) - 1.d0)
     DM   = 1.d0  / (dble(MDIV) - 1.d0)
     call allocate_fields()
+    need_grid_rebuild = .true.
+  end if
+
+  if (need_grid_rebuild) then
     call make_grid
     call GridTrig
   end if
@@ -147,16 +157,10 @@ subroutine regrid_read(target_sdiv, target_mdiv, interpolation_order)
   if (use_quadratic) then
     do s = 1, target_sdiv
       do m = 1, target_mdiv
-        alpha(s,m)       = biquadratic(alpha_src,       s_quad_idx(:,s), m_quad_idx(:,m), s_quad_weight(:,s), m_quad_weight(:,m))
-        gama (s,m)       = biquadratic(gama_src,        s_quad_idx(:,s), m_quad_idx(:,m), s_quad_weight(:,s), m_quad_weight(:,m))
-        rho  (s,m)       = biquadratic(rho_src,         s_quad_idx(:,s), m_quad_idx(:,m), s_quad_weight(:,s), m_quad_weight(:,m))
-        ww   (s,m)       = biquadratic(ww_src,          s_quad_idx(:,s), m_quad_idx(:,m), s_quad_weight(:,s), m_quad_weight(:,m))
-        pressure(s,m)    = biquadratic(pressure_src,    s_quad_idx(:,s), m_quad_idx(:,m), s_quad_weight(:,s), m_quad_weight(:,m))
-        energy(s,m)      = biquadratic(energy_src,      s_quad_idx(:,s), m_quad_idx(:,m), s_quad_weight(:,s), m_quad_weight(:,m))
-        enthalpy(s,m)    = biquadratic(enthalpy_src,    s_quad_idx(:,s), m_quad_idx(:,m), s_quad_weight(:,s), m_quad_weight(:,m))
-        velocity_sq(s,m) = biquadratic(velocity_sq_src, s_quad_idx(:,s), m_quad_idx(:,m), s_quad_weight(:,s), m_quad_weight(:,m))
-        omg(s,m)         = biquadratic(omg_src,         s_quad_idx(:,s), m_quad_idx(:,m), s_quad_weight(:,s), m_quad_weight(:,m))
-        sphi(s,m)        = biquadratic(sphi_src,        s_quad_idx(:,s), m_quad_idx(:,m), s_quad_weight(:,s), m_quad_weight(:,m))
+        call biquadratic_all( &
+          s_quad_idx(:,s), m_quad_idx(:,m), s_quad_weight(:,s), m_quad_weight(:,m), &
+          alpha(s,m), gama(s,m), rho(s,m), ww(s,m), pressure(s,m), &
+          energy(s,m), enthalpy(s,m), velocity_sq(s,m), omg(s,m), sphi(s,m))
       end do
     end do
   else
@@ -169,16 +173,9 @@ subroutine regrid_read(target_sdiv, target_mdiv, interpolation_order)
         j1 = m_high(m)
         wm = m_weight(m)
 
-        alpha(s,m)       = bilinear(alpha_src,       i0, i1, j0, j1, ws, wm)
-        gama (s,m)       = bilinear(gama_src,        i0, i1, j0, j1, ws, wm)
-        rho  (s,m)       = bilinear(rho_src,         i0, i1, j0, j1, ws, wm)
-        ww   (s,m)       = bilinear(ww_src,          i0, i1, j0, j1, ws, wm)
-        pressure(s,m)    = bilinear(pressure_src,    i0, i1, j0, j1, ws, wm)
-        energy(s,m)      = bilinear(energy_src,      i0, i1, j0, j1, ws, wm)
-        enthalpy(s,m)    = bilinear(enthalpy_src,    i0, i1, j0, j1, ws, wm)
-        velocity_sq(s,m) = bilinear(velocity_sq_src, i0, i1, j0, j1, ws, wm)
-        omg(s,m)         = bilinear(omg_src,         i0, i1, j0, j1, ws, wm)
-        sphi(s,m)        = bilinear(sphi_src,        i0, i1, j0, j1, ws, wm)
+        call bilinear_all(i0, i1, j0, j1, ws, wm, &
+          alpha(s,m), gama(s,m), rho(s,m), ww(s,m), pressure(s,m), &
+          energy(s,m), enthalpy(s,m), velocity_sq(s,m), omg(s,m), sphi(s,m))
       end do
     end do
   end if
@@ -314,6 +311,44 @@ contains
     biquadratic = wm(1) * interp_s(1) + wm(2) * interp_s(2) + wm(3) * interp_s(3)
   end function biquadratic
 
+  subroutine biquadratic_all(idx_s, idx_m, ws, wm, alpha_out, gama_out, rho_out, ww_out, &
+                             pressure_out, energy_out, enthalpy_out, velocity_sq_out, omg_out, sphi_out)
+    implicit none
+    integer, intent(in) :: idx_s(3), idx_m(3)
+    real(8), intent(in) :: ws(3), wm(3)
+    real(8), intent(out) :: alpha_out, gama_out, rho_out, ww_out, pressure_out
+    real(8), intent(out) :: energy_out, enthalpy_out, velocity_sq_out, omg_out, sphi_out
+    real(8) :: interp_col(3,10)
+    integer :: i, j
+
+    interp_col = 0.d0
+    do j = 1, 3
+      do i = 1, 3
+        interp_col(j,1)  = interp_col(j,1)  + ws(i) * alpha_src(idx_s(i), idx_m(j))
+        interp_col(j,2)  = interp_col(j,2)  + ws(i) * gama_src(idx_s(i), idx_m(j))
+        interp_col(j,3)  = interp_col(j,3)  + ws(i) * rho_src(idx_s(i), idx_m(j))
+        interp_col(j,4)  = interp_col(j,4)  + ws(i) * ww_src(idx_s(i), idx_m(j))
+        interp_col(j,5)  = interp_col(j,5)  + ws(i) * pressure_src(idx_s(i), idx_m(j))
+        interp_col(j,6)  = interp_col(j,6)  + ws(i) * energy_src(idx_s(i), idx_m(j))
+        interp_col(j,7)  = interp_col(j,7)  + ws(i) * enthalpy_src(idx_s(i), idx_m(j))
+        interp_col(j,8)  = interp_col(j,8)  + ws(i) * velocity_sq_src(idx_s(i), idx_m(j))
+        interp_col(j,9)  = interp_col(j,9)  + ws(i) * omg_src(idx_s(i), idx_m(j))
+        interp_col(j,10) = interp_col(j,10) + ws(i) * sphi_src(idx_s(i), idx_m(j))
+      end do
+    end do
+
+    alpha_out       = wm(1) * interp_col(1,1)  + wm(2) * interp_col(2,1)  + wm(3) * interp_col(3,1)
+    gama_out        = wm(1) * interp_col(1,2)  + wm(2) * interp_col(2,2)  + wm(3) * interp_col(3,2)
+    rho_out         = wm(1) * interp_col(1,3)  + wm(2) * interp_col(2,3)  + wm(3) * interp_col(3,3)
+    ww_out          = wm(1) * interp_col(1,4)  + wm(2) * interp_col(2,4)  + wm(3) * interp_col(3,4)
+    pressure_out    = wm(1) * interp_col(1,5)  + wm(2) * interp_col(2,5)  + wm(3) * interp_col(3,5)
+    energy_out      = wm(1) * interp_col(1,6)  + wm(2) * interp_col(2,6)  + wm(3) * interp_col(3,6)
+    enthalpy_out    = wm(1) * interp_col(1,7)  + wm(2) * interp_col(2,7)  + wm(3) * interp_col(3,7)
+    velocity_sq_out = wm(1) * interp_col(1,8)  + wm(2) * interp_col(2,8)  + wm(3) * interp_col(3,8)
+    omg_out         = wm(1) * interp_col(1,9)  + wm(2) * interp_col(2,9)  + wm(3) * interp_col(3,9)
+    sphi_out        = wm(1) * interp_col(1,10) + wm(2) * interp_col(2,10) + wm(3) * interp_col(3,10)
+  end subroutine biquadratic_all
+
   real(8) function bilinear(field, i0, i1, j0, j1, ws, wm)
     implicit none
     real(8), intent(in) :: field(:,:)
@@ -333,5 +368,35 @@ contains
     bilinear = f00*(1.d0-w_s)*(1.d0-w_m) + f10*w_s*(1.d0-w_m) + &
                f01*(1.d0-w_s)*w_m + f11*w_s*w_m
   end function bilinear
+
+  subroutine bilinear_all(i0, i1, j0, j1, ws, wm, alpha_out, gama_out, rho_out, ww_out, &
+                          pressure_out, energy_out, enthalpy_out, velocity_sq_out, omg_out, sphi_out)
+    implicit none
+    integer, intent(in) :: i0, i1, j0, j1
+    real(8), intent(in) :: ws, wm
+    real(8), intent(out) :: alpha_out, gama_out, rho_out, ww_out, pressure_out
+    real(8), intent(out) :: energy_out, enthalpy_out, velocity_sq_out, omg_out, sphi_out
+    real(8) :: w_s, w_m
+    real(8) :: c00, c10, c01, c11
+
+    w_s = merge(0.d0, ws, i0 == i1)
+    w_m = merge(0.d0, wm, j0 == j1)
+
+    c00 = (1.d0 - w_s) * (1.d0 - w_m)
+    c10 = w_s * (1.d0 - w_m)
+    c01 = (1.d0 - w_s) * w_m
+    c11 = w_s * w_m
+
+    alpha_out       = c00*alpha_src(i0,j0)       + c10*alpha_src(i1,j0)       + c01*alpha_src(i0,j1)       + c11*alpha_src(i1,j1)
+    gama_out        = c00*gama_src(i0,j0)        + c10*gama_src(i1,j0)        + c01*gama_src(i0,j1)        + c11*gama_src(i1,j1)
+    rho_out         = c00*rho_src(i0,j0)         + c10*rho_src(i1,j0)         + c01*rho_src(i0,j1)         + c11*rho_src(i1,j1)
+    ww_out          = c00*ww_src(i0,j0)          + c10*ww_src(i1,j0)          + c01*ww_src(i0,j1)          + c11*ww_src(i1,j1)
+    pressure_out    = c00*pressure_src(i0,j0)    + c10*pressure_src(i1,j0)    + c01*pressure_src(i0,j1)    + c11*pressure_src(i1,j1)
+    energy_out      = c00*energy_src(i0,j0)      + c10*energy_src(i1,j0)      + c01*energy_src(i0,j1)      + c11*energy_src(i1,j1)
+    enthalpy_out    = c00*enthalpy_src(i0,j0)    + c10*enthalpy_src(i1,j0)    + c01*enthalpy_src(i0,j1)    + c11*enthalpy_src(i1,j1)
+    velocity_sq_out = c00*velocity_sq_src(i0,j0) + c10*velocity_sq_src(i1,j0) + c01*velocity_sq_src(i0,j1) + c11*velocity_sq_src(i1,j1)
+    omg_out         = c00*omg_src(i0,j0)         + c10*omg_src(i1,j0)         + c01*omg_src(i0,j1)         + c11*omg_src(i1,j1)
+    sphi_out        = c00*sphi_src(i0,j0)        + c10*sphi_src(i1,j0)        + c01*sphi_src(i0,j1)        + c11*sphi_src(i1,j1)
+  end subroutine bilinear_all
 
 end subroutine regrid_read

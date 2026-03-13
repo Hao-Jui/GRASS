@@ -9,6 +9,7 @@ data/
 *.dat
 *.txt
 *.csv
+*.zip
 
 # Runtime output directories
 Cont/

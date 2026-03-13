@@ -4,7 +4,7 @@ subroutine shoot_v2
   use shoot_solver_mod_1d
   use rotation_uniform,  only: rotation_solver
   use starting_model_mod, only: initialize_starting_model
-  use miscellaneous_mod, only: log_kepler_sequence
+  use miscellaneous_mod, only: log_kepler_sequence, print_converged_block
   use shoot_newton_helpers, only: evaluate_solution, build_jacobian
   use shoot_newton_helpers_1d, only: evaluate_solution_1d, build_jacobian_1d
   implicit none
@@ -68,6 +68,7 @@ subroutine shoot_v2
     ee   = e_at_h(h_center)
     write(unit=*, fmt=*) " "
     write(*,'(A,2es18.9)') "converged rho0, ee:", rho0, ee
+    call print_converged_block(rho0, ee)
 
     call output_seq()
     chi_goal = 0.2e0_wp + dble(i_idx-1) * 0.05e0_wp
