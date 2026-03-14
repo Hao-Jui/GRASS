@@ -23,6 +23,7 @@ module spin_helper
   real(wp), allocatable, target :: dr_s_cache(:,:), dr_m_cache(:,:), dww_s_cache(:,:), dww_m_cache(:,:)
   real(wp), allocatable, target :: ds_s_cache(:,:), ds_m_cache(:,:) 
   real(wp), allocatable, target :: mr_cache(:), besseli_cache(:,:), besselk_cache(:,:), wfac_cache(:)
+  real(wp), allocatable :: s1_geom(:), s1_sq_geom(:), s1_one_minus_s_geom(:), s2_geom(:), sgp4_geom(:), m1_geom(:)
   real(wp), allocatable :: radial_quad_weights(:)
   real(wp), allocatable :: angular_quad_weights(:)
   real(wp), allocatable :: weighted_even_basis(:,:), weighted_gama_basis(:,:), weighted_omega_basis(:,:)
@@ -375,54 +376,74 @@ contains
     real(wp), intent(in)  :: ds_s_cache(:,:), ds_m_cache(:,:)
     real(wp), intent(in)  :: d2g_ss_cache(:,:), d2g_mm_cache(:,:), e_gsm_cache(:,:), e_rsm_cache(:,:)
     real(wp), intent(in)  :: e2alpha_r2_cache(:,:), Acoup4_cache(:,:)
-    integer :: s, m
-    real(wp), dimension(SDIV,MDIV) :: esm, psm, Vphi, scal_p
-    real(wp), dimension(SDIV,MDIV) :: s1, s2, m1, mum
+    integer :: m
+    real(wp) :: mum, m1
+    real(wp), dimension(SDIV) :: esm_col, psm_col, vphi_col, scal_p_col
+    real(wp), dimension(SDIV) :: vel_fac_col, matter_sum_col, matter_trace_col
+    real(wp), dimension(SDIV) :: e2alpha_s2_col, source_common_col, e_rsm2_col
+    real(wp), dimension(SDIV) :: dg_s_scaled_col, dg_m_scaled_col, rho_bracket_col
+    real(wp), dimension(SDIV) :: omega_matter_col, omega_bracket_col, sphi_source_col
+    real(wp), dimension(SDIV) :: vsq_col, one_plus_vsq_col, ww_col
 
-    s1 = spread(s_gp * (1.e0_wp - s_gp), 2, MDIV)
-    s2 = spread((s_gp / (1.e0_wp - s_gp))**2, 2, MDIV)
-    mum = spread(mu, 1, SDIV)
-    m1 = 1.e0_wp - mum**2
+    do m = 1, MDIV
+      mum = mu(m)
+      m1 = m1_geom(m)
 
-    esm  = energy   * Acoup4_cache
-    psm  = pressure * Acoup4_cache
-    Vphi = sphi**2 * mphi_r * 0.5e0_wp * e2alpha_r2_cache
-    scal_p = sphi * e_gsm_cache
+      esm_col = energy(:,m) * Acoup4_cache(:,m)
+      psm_col = pressure(:,m) * Acoup4_cache(:,m)
+      vphi_col = sphi(:,m)**2 * mphi_r * 0.5e0_wp * e2alpha_r2_cache(:,m)
+      scal_p_col = sphi(:,m) * e_gsm_cache(:,m)
+      vsq_col = velocity_sq(:,m)
+      one_plus_vsq_col = 1.e0_wp + vsq_col
+      ww_col = ww(:,m)
+      vel_fac_col = 1.e0_wp / (1.e0_wp - vsq_col)
+      matter_sum_col = esm_col + psm_col
+      matter_trace_col = esm_col - 3.e0_wp * psm_col
+      e_rsm2_col = e_rsm_cache(:,m)**2
+      e2alpha_s2_col = e2alpha_r2_cache(:,m) * s2_geom
+      source_common_col = 16.e0_wp * pi * e2alpha_s2_col * psm_col - 4.e0_wp * vphi_col * s2_geom
+      dg_s_scaled_col = s1_geom * dg_s_cache(:,m)
+      dg_m_scaled_col = m1 * dg_m_cache(:,m)
 
-    S_metric_rho = e_gsm_cache * ( &
-        16.e0_wp * pi * e2alpha_r2_cache / 2.e0_wp * (esm + psm) * s2 * (1.e0_wp+velocity_sq) / (1.e0_wp-velocity_sq) &
-      + s2 * m1 * e_rsm_cache**2 * ( (s1*dww_s_cache)**2 + m1*dww_m_cache**2 ) &
-      + s1 * dg_s_cache - mum * dg_m_cache &
-      + rho / 2.e0_wp * ( ( 16.e0_wp * pi * e2alpha_r2_cache * psm - 4.e0_wp * Vphi ) * s2 &
-        - s1 * dg_s_cache * ( s1 / 2.e0_wp * dg_s_cache + 1.e0_wp ) &
-        - dg_m_cache * ( m1 / 2.e0_wp * dg_m_cache - mum ) ) )
+      rho_bracket_col = source_common_col &
+        - dg_s_scaled_col * (0.5e0_wp * dg_s_scaled_col + 1.e0_wp) &
+        - dg_m_cache(:,m) * (0.5e0_wp * dg_m_scaled_col - mum)
 
-    S_metric_gama = e_gsm_cache * ( ( 16.e0_wp * pi * e2alpha_r2_cache * psm - 4.e0_wp * Vphi ) * s2 &
-      + gama / 2.e0_wp * ( ( 16.e0_wp * pi * e2alpha_r2_cache * psm - 4.e0_wp * Vphi ) * s2 &
-        - ( s1 * dg_s_cache )**2 / 2.e0_wp - m1 * dg_m_cache**2 / 2.e0_wp ) )
+      S_metric_rho(:,m) = e_gsm_cache(:,m) * ( &
+          8.e0_wp * pi * e2alpha_s2_col * matter_sum_col * one_plus_vsq_col * vel_fac_col &
+        + s2_geom * m1 * e_rsm2_col * ((s1_geom * dww_s_cache(:,m))**2 + m1 * dww_m_cache(:,m)**2) &
+        + dg_s_scaled_col - mum * dg_m_cache(:,m) &
+        + rho(:,m) * 0.5e0_wp * rho_bracket_col )
+
+      S_metric_gama(:,m) = e_gsm_cache(:,m) * (source_common_col &
+        + gama(:,m) * 0.5e0_wp * (source_common_col - 0.5e0_wp * dg_s_scaled_col**2 &
+        - 0.5e0_wp * dg_m_scaled_col * dg_m_cache(:,m)) )
     
-    S_metric_omega = e_gsm_cache * e_rsm_cache * ( &
-      - 16.e0_wp * pi * e2alpha_r2_cache * ( Omg - ww ) * ( esm + psm ) * s2 / (1.e0_wp-velocity_sq) &
-      + ww * ( -0.5e0_wp * 16.e0_wp * pi * e2alpha_r2_cache * s2 * &
-        ( ( ( 1.e0_wp + velocity_sq ) * esm + 2.e0_wp * velocity_sq*psm ) / ( 1.e0_wp - velocity_sq ) ) &
-        - s1 * ( 2.e0_wp * dr_s_cache + 0.5e0_wp * dg_s_cache ) &
-        + mum * ( 2.e0_wp * dr_m_cache + 0.5e0_wp * dg_m_cache) &
-        + 0.25e0_wp * s1**2 * ( 4.e0_wp * dr_s_cache**2 - dg_s_cache**2) &
-        + 0.25e0_wp * m1 * ( 4.e0_wp * dr_m_cache**2 - dg_m_cache**2 ) &
-        - m1 * e_rsm_cache**2 * ( spread(s_gp,2,MDIV)**4 * dww_s_cache**2 + s2 * m1 * dww_m_cache**2) &
-        - 2.e0_wp * Vphi * s2 ) )
+      omega_matter_col = (one_plus_vsq_col * esm_col + 2.e0_wp * vsq_col * psm_col) * vel_fac_col
+      omega_bracket_col = -8.e0_wp * pi * e2alpha_s2_col * omega_matter_col &
+        - s1_geom * (2.e0_wp * dr_s_cache(:,m) + 0.5e0_wp * dg_s_cache(:,m)) &
+        + mum * (2.e0_wp * dr_m_cache(:,m) + 0.5e0_wp * dg_m_cache(:,m)) &
+        + 0.25e0_wp * s1_sq_geom * (4.e0_wp * dr_s_cache(:,m)**2 - dg_s_cache(:,m)**2) &
+        + 0.25e0_wp * m1 * (4.e0_wp * dr_m_cache(:,m)**2 - dg_m_cache(:,m)**2) &
+        - m1 * e_rsm2_col * (sgp4_geom * dww_s_cache(:,m)**2 + s2_geom * m1 * dww_m_cache(:,m)**2) &
+        - 2.e0_wp * vphi_col * s2_geom
 
-    if ( mphi_r > (mphi_tran / l_uni)**2 * KAPPA / 1.e10_wp ) then
-      S_metric_sphi = - r_e_new**2 * s2 * scal_p * mphi_r &
-        + s2 * scal_p * e2alpha_r2_cache * ( -2.e0_wp * pi * B_coup * ( esm - 3.e0_wp * psm ) + mphi_r ) &
-        + scal_p * ( s1 * spread(1.e0_wp-s_gp,2,MDIV) * dg_s_cache       &
-        + s1 * s1 * ( d2g_ss_cache * 0.5e0_wp + dg_s_cache**2 * 0.25e0_wp ) &
-        + m1      * ( d2g_mm_cache * 0.5e0_wp + dg_m_cache**2 * 0.25e0_wp ) &
-        - mum * dg_m_cache )
-    else
-      S_metric_sphi = -s1**2 * dg_s_cache * ds_s_cache - m1 * dg_m_cache * ds_m_cache &
-        + sphi * ( -2.e0_wp * pi * B_coup * (esm - 3.e0_wp*psm) ) * s2 * e2alpha_r2_cache
-    endif
+      S_metric_omega(:,m) = e_gsm_cache(:,m) * e_rsm_cache(:,m) * ( &
+        -16.e0_wp * pi * e2alpha_s2_col * (Omg(:,m) - ww_col) * matter_sum_col * vel_fac_col &
+        + ww_col * omega_bracket_col )
+
+      if ( mphi_r > (mphi_tran / l_uni)**2 * KAPPA / 1.e10_wp ) then
+        sphi_source_col = -2.e0_wp * pi * B_coup * matter_trace_col + mphi_r
+        S_metric_sphi(:,m) = -r_e_new**2 * s2_geom * scal_p_col * mphi_r &
+          + e2alpha_s2_col * scal_p_col * sphi_source_col &
+          + scal_p_col * (s1_one_minus_s_geom * dg_s_cache(:,m) + s1_sq_geom * (0.5e0_wp * d2g_ss_cache(:,m) + 0.25e0_wp * dg_s_cache(:,m)**2) &
+          + m1 * (0.5e0_wp * d2g_mm_cache(:,m) + 0.25e0_wp * dg_m_cache(:,m)**2) - mum * dg_m_cache(:,m))
+      else
+        sphi_source_col = -2.e0_wp * pi * B_coup * matter_trace_col
+        S_metric_sphi(:,m) = -s1_sq_geom * dg_s_cache(:,m) * ds_s_cache(:,m) - dg_m_scaled_col * ds_m_cache(:,m) &
+          + sphi(:,m) * sphi_source_col * e2alpha_s2_col
+      endif
+    end do
   end subroutine build_source_terms
 
   subroutine angular_integration(S_metric_rho, S_metric_gama, S_metric_omega, S_metric_sphi, &
@@ -984,6 +1005,7 @@ contains
     allocate(dr_s_cache(SDIV,MDIV), dr_m_cache(SDIV,MDIV), dww_s_cache(SDIV,MDIV), dww_m_cache(SDIV,MDIV))
     allocate(ds_s_cache(SDIV,MDIV), ds_m_cache(SDIV,MDIV)) 
     allocate(mr_cache(SDIV), besseli_cache(LMAX+1,SDIV), besselk_cache(LMAX+1,SDIV), wfac_cache(SDIV))
+    allocate(s1_geom(SDIV), s1_sq_geom(SDIV), s1_one_minus_s_geom(SDIV), s2_geom(SDIV), sgp4_geom(SDIV), m1_geom(MDIV))
     allocate(radial_quad_weights(SDIV), angular_quad_weights(MDIV))
     allocate(weighted_even_basis(MDIV,LMAX+1))
     allocate(weighted_gama_basis(MDIV,LMAX))
@@ -996,6 +1018,12 @@ contains
     call compute_effective_d01gaf_weights(s_gp, radial_quad_weights)
     call compute_effective_d01gaf_weights(mu, angular_quad_weights)
     wfac_cache = 1.e0_wp / (1.e0_wp - s_gp)**2
+    s1_geom = s_gp * (1.e0_wp - s_gp)
+    s1_sq_geom = s1_geom**2
+    s1_one_minus_s_geom = s1_geom * (1.e0_wp - s_gp)
+    s2_geom = (s_gp / (1.e0_wp - s_gp))**2
+    sgp4_geom = s_gp**4
+    m1_geom = 1.e0_wp - mu**2
     weighted_even_basis = spread(angular_quad_weights, 2, LMAX+1) * P_2n
     if (LMAX > 0) then
       weighted_gama_basis = spread(angular_quad_weights, 2, LMAX) * sin_2n_1_theta
@@ -1010,6 +1038,7 @@ contains
     deallocate(dr_s_cache, dr_m_cache, dww_s_cache, dww_m_cache)
     deallocate(ds_s_cache, ds_m_cache) 
     deallocate(mr_cache, besseli_cache, besselk_cache, wfac_cache)
+    deallocate(s1_geom, s1_sq_geom, s1_one_minus_s_geom, s2_geom, sgp4_geom, m1_geom)
     deallocate(weighted_even_basis, weighted_gama_basis, weighted_omega_basis)
     deallocate(target_rho, target_gama, target_ww, target_sphi)
     deallocate(S_metric_rho, S_metric_gama, S_metric_omega, S_metric_sphi)

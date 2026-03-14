@@ -21,16 +21,16 @@ module para_mod
 
   ! -- Solver state ----------------------------------------------------------
   logical :: output = .false.
-  logical :: timing = .true.
+  logical :: timing = .false.
   logical :: use_shoot_1d = .true.      ! adjust hc while keeping rep constant
   character(len=20) :: FIX1 = "Mb_goal"
   character(len=20) :: FIX2 = "chi_goal"
 
   ! -- Resolutions -----------------------------------------------------------
-  integer, parameter :: res  = 100
+  integer, parameter :: res  = 10
   integer, parameter :: s_pwr = 1
-  integer :: SDIV = 240 * res + 1
-  integer :: MDIV = 1 * res + 1
+  integer :: SDIV = 1800 * res + 1
+  integer :: MDIV = 4 * res + 1
 
   ! -- Target quantities -----------------------------------------------------
   character(len=128) :: eos_file = "MPA1"
@@ -40,8 +40,8 @@ module para_mod
   real(wp) :: chi_goal = 0.0e0_wp
   real(wp) :: omc_goal = 30.e0_wp
 
-  real(wp) :: B_goal   = 6.4e5_wp
-  real(wp) :: mphi_goal = 50.e0_wp
+  real(wp) :: B_goal   = 2.4e5_wp
+  real(wp) :: mphi_goal = 30.e0_wp
 
   ! -- Rotation-law parameters (KEH, Uryu enabled) --------------------------
   real(wp) :: A_diff  = 0.5e0_wp
