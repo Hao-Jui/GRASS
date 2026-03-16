@@ -811,67 +811,68 @@ contains
     real(wp), intent(in) :: dg_s_cache(:,:), dg_m_cache(:,:), dr_s_cache(:,:), dr_m_cache(:,:), dww_s_cache(:,:), dww_m_cache(:,:)
     real(wp), intent(in) :: ds_s_cache(:,:), ds_m_cache(:,:)
     real(wp), intent(in) :: d2g_ss_cache(:,:), d2g_mm_cache(:,:), e_rsm_cache(:,:)
-    integer :: s, m
-    real(wp) :: sgp, s1, sgp_ratio
+    integer :: m
+    real(wp) :: m1, mu_m
     real(wp), dimension(SDIV,MDIV) :: da_dm, d_gama_sm_all
-    real(wp), dimension(MDIV) :: m1_vec, d_gama_s_row, d_gama_m_row, d_rho_s_row, d_rho_m_row
-    real(wp), dimension(MDIV) :: d_sphi_s_row, d_sphi_m_row, d_gama_sm_row, d_ww_s_row, d_ww_m_row, d_gama_ss_row, d_gama_mm_row
-    real(wp), dimension(MDIV) :: temp1_row, temp2_row, temp3_row, temp4_row, temp5_row, temp6_row, temp7_row, temp8_row, temp9_row
-    real(wp), dimension(SDIV) :: s1_cache, sgp_ratio_cache
+    real(wp), dimension(SDIV) :: sgp_ratio_cache
+    real(wp), dimension(SDIV) :: d_gama_s_col, d_gama_m_col, d_rho_s_col, d_rho_m_col
+    real(wp), dimension(SDIV) :: d_sphi_s_col, d_sphi_m_col, d_gama_sm_col, d_ww_s_col, d_ww_m_col, d_gama_ss_col, d_gama_mm_col
+    real(wp), dimension(SDIV) :: temp1_col, temp2_col, temp3_col, temp4_col, temp5_col, temp6_col, temp7_col, temp8_col, temp9_col
+    real(wp), dimension(SDIV) :: numer_m, one_plus_s1dgs, da_col
     real(wp) :: adj_const(SDIV)
 
     alpha(:,:) = 0.e0_wp
     if (r_ratio == 1.e0_wp) then
-      da_dm(:,:) = 0.0e0_wp
+      return
     else
-      s1_cache = s_gp * (1.e0_wp-s_gp)
       sgp_ratio_cache = s_gp / (1.e0_wp-s_gp)
 
       da_dm(1,:) = 0.0e0_wp
-      d_gama_sm_all = deriv_sm_vec(gama)
-      m1_vec = 1.e0_wp - mu**2
-      do s = 2, SDIV
-        sgp = s_gp(s)
-        s1  = s1_cache(s)
-        sgp_ratio = sgp_ratio_cache(s)
-        d_gama_s_row  = dg_s_cache(s,:)
-        d_gama_m_row  = dg_m_cache(s,:)
-        d_rho_s_row   = dr_s_cache(s,:)
-        d_rho_m_row   = dr_m_cache(s,:)
-        d_sphi_s_row  = ds_s_cache(s,:)
-        d_sphi_m_row  = ds_m_cache(s,:)
-        d_gama_sm_row = d_gama_sm_all(s,:)
-        d_ww_s_row    = dww_s_cache(s,:)
-        d_ww_m_row    = dww_m_cache(s,:)
-        d_gama_ss_row = d2g_ss_cache(s,:)
-        d_gama_mm_row = d2g_mm_cache(s,:)
+      d_gama_sm_all = deriv_m_vec(dg_s_cache)
+      do m = 1, MDIV
+        mu_m = mu(m)
+        m1   = 1.e0_wp - mu_m**2
+        d_gama_s_col  = dg_s_cache(:,m)
+        d_gama_m_col  = dg_m_cache(:,m)
+        d_rho_s_col   = dr_s_cache(:,m)
+        d_rho_m_col   = dr_m_cache(:,m)
+        d_sphi_s_col  = ds_s_cache(:,m)
+        d_sphi_m_col  = ds_m_cache(:,m)
+        d_gama_sm_col = d_gama_sm_all(:,m)
+        d_ww_s_col    = dww_s_cache(:,m)
+        d_ww_m_col    = dww_m_cache(:,m)
+        d_gama_ss_col = d2g_ss_cache(:,m)
+        d_gama_mm_col = d2g_mm_cache(:,m)
 
-        temp1_row = 2.e0_wp * sgp**2 * sgp_ratio * m1_vec * d_ww_s_row * d_ww_m_row * (1.e0_wp + s1 * d_gama_s_row) &
-          - ( (sgp**2 * d_ww_s_row)**2 - (sgp * d_ww_m_row * sgp_ratio)**2 * m1_vec ) * (-mu + m1_vec * d_gama_m_row)
-        temp2_row = 1.e0_wp / ( m1_vec * (1.e0_wp + s1 * d_gama_s_row)**2 + (-mu + m1_vec * d_gama_m_row)**2 )
-        temp3_row = s1 * d_gama_ss_row + (s1 * d_gama_s_row)**2
-        temp4_row = d_gama_m_row * (-mu + m1_vec * d_gama_m_row)
-        temp5_row = ( (s1 * (d_rho_s_row + d_gama_s_row))**2 - m1_vec * (d_rho_m_row + d_gama_m_row)**2 ) * (-mu + m1_vec * d_gama_m_row)
-        temp6_row = s1 * m1_vec * (  (d_rho_s_row + d_gama_s_row) * (d_rho_m_row + d_gama_m_row) / 2.e0_wp + d_gama_sm_row + d_gama_s_row * d_gama_m_row  ) * (1.e0_wp + s1 * d_gama_s_row)
-        temp7_row = s1 * mu * d_gama_s_row * ( 1.e0_wp + s1 * d_gama_s_row )
-        temp8_row = m1_vec * (e_rsm_cache(s,:)**2)
-        temp9_row = -temp2_row * (-mu + m1_vec * d_gama_m_row) * ( (s1 * d_sphi_s_row)**2 - m1_vec * d_sphi_m_row**2 ) &
-              - m1_vec * s1 * ( 1.e0_wp + s1 * d_gama_s_row ) * 2.e0_wp * d_sphi_m_row * d_sphi_s_row
+        numer_m        = -mu_m + m1 * d_gama_m_col
+        one_plus_s1dgs =  1.e0_wp + s1_geom * d_gama_s_col
 
-        da_dm(s,:) = - (d_rho_m_row + d_gama_m_row) / 2.e0_wp &
-          - temp2_row * ( (temp3_row - d_gama_mm_row - temp4_row) * (-mu + m1_vec * d_gama_m_row) / 2.e0_wp &
-          + temp5_row / 4.e0_wp - temp6_row  + temp7_row + temp8_row * temp1_row / 4.e0_wp ) + temp9_row
+        temp1_col = 2.e0_wp * s_gp**2 * sgp_ratio_cache * m1 * d_ww_s_col * d_ww_m_col * one_plus_s1dgs &
+          - ( (s_gp**2 * d_ww_s_col)**2 - (s_gp * d_ww_m_col * sgp_ratio_cache)**2 * m1 ) * numer_m
+        temp2_col = 1.e0_wp / ( m1 * one_plus_s1dgs**2 + numer_m**2 )
+        temp3_col = s1_geom * d_gama_ss_col + (s1_geom * d_gama_s_col)**2
+        temp4_col = d_gama_m_col * numer_m
+        temp5_col = ( (s1_geom * (d_rho_s_col + d_gama_s_col))**2 - m1 * (d_rho_m_col + d_gama_m_col)**2 ) * numer_m
+        temp6_col = s1_geom * m1 * (  (d_rho_s_col + d_gama_s_col) * (d_rho_m_col + d_gama_m_col) / 2.e0_wp + d_gama_sm_col + d_gama_s_col * d_gama_m_col  ) * one_plus_s1dgs
+        temp7_col = s1_geom * mu_m * d_gama_s_col * one_plus_s1dgs
+        temp8_col = m1 * (e_rsm_cache(:,m)**2)
+        temp9_col = -temp2_col * numer_m * ( (s1_geom * d_sphi_s_col)**2 - m1 * d_sphi_m_col**2 ) &
+              - m1 * s1_geom * one_plus_s1dgs * 2.e0_wp * d_sphi_m_col * d_sphi_s_col
+
+        da_col = - (d_rho_m_col + d_gama_m_col) / 2.e0_wp &
+          - temp2_col * ( (temp3_col - d_gama_mm_col - temp4_col) * numer_m / 2.e0_wp &
+          + temp5_col / 4.e0_wp - temp6_col  + temp7_col + temp8_col * temp1_col / 4.e0_wp ) + temp9_col
+        da_dm(2:SDIV,m) = da_col(2:SDIV)
       end do
-    end if
 
-    do m = 1, MDIV-1
+      do m = 1, MDIV-1
         alpha(:,m+1) = alpha(:,m) + dm * ( da_dm(:,m+1) + da_dm(:,m) ) * 0.5e0_wp
-    enddo
-    
-    alpha(SDIV,:) = 0.e0_wp
-    adj_const = alpha(:,MDIV) - ( gama(:,MDIV) - rho(:,MDIV) )/2.e0_wp
+      enddo
 
-    alpha = alpha - spread(adj_const, DIM=2, NCOPIES=MDIV)
+      alpha(SDIV,:) = 0.e0_wp
+      adj_const = alpha(:,MDIV) - ( gama(:,MDIV) - rho(:,MDIV) )/2.e0_wp
+      alpha = alpha - spread(adj_const, DIM=2, NCOPIES=MDIV)
+    end if
     if (any(alpha .ge. 300.0)) then
       write(*,*) "Error: Alpha fails in at least one row."
       stop "alpha fails"
@@ -912,43 +913,33 @@ contains
          dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, dww_s_cache, dww_m_cache, ds_s_cache, ds_m_cache, &
          d2g_ss_cache, d2g_mm_cache, e_gsm_cache, e_rsm_cache, e2alpha_r2_cache, Acoup4_cache)
     if (timing) then
-      call cpu_time(t1)
-      dt_precompute = t1 - t0
-      call cpu_time(t0)
+      call cpu_time(t1); dt_precompute = t1 - t0; call cpu_time(t0)
     end if
 
     call build_source_terms(r_e_new, S_metric_rho, S_metric_gama, S_metric_omega, S_metric_sphi, &
          dr_s_cache, dr_m_cache, dg_s_cache, dg_m_cache, dww_s_cache, dww_m_cache, ds_s_cache, ds_m_cache, &
          d2g_ss_cache, d2g_mm_cache, e_gsm_cache, e_rsm_cache, e2alpha_r2_cache, Acoup4_cache)
     if (timing) then
-      call cpu_time(t1)
-      dt_build = t1 - t0
-      call cpu_time(t0)
+      call cpu_time(t1); dt_build = t1 - t0; call cpu_time(t0)
     end if
 
     call angular_integration(S_metric_rho, S_metric_gama, S_metric_omega, S_metric_sphi, &
          D1_metric_rho, D1_metric_gama, D1_metric_omega, D1_metric_sphi)
     if (timing) then
-      call cpu_time(t1)
-      dt_angular = t1 - t0
-      call cpu_time(t0)
+      call cpu_time(t1); dt_angular = t1 - t0; call cpu_time(t0)
     end if
 
     call radial_integration(D1_metric_rho, D1_metric_gama, D1_metric_omega, D1_metric_sphi, &
          D2_metric_rho, D2_metric_gama, D2_metric_omega, D2_metric_sphi, root_mphi_re, wfac_cache, &
          besseli_cache, besselk_cache)
     if (timing) then
-      call cpu_time(t1)
-      dt_radial = t1 - t0
-      call cpu_time(t0)
+      call cpu_time(t1); dt_radial = t1 - t0; call cpu_time(t0)
     end if
 
     call sum_coefficients_and_get_targets(out_target_rho, out_target_gama, out_target_ww, out_target_sphi, &
          D2_metric_rho, D2_metric_gama, D2_metric_omega, D2_metric_sphi)
     if (timing) then
-      call cpu_time(t1)
-      dt_sum = t1 - t0
-      call cpu_time(t0)
+      call cpu_time(t1); dt_sum = t1 - t0; call cpu_time(t0)
     end if
 
     if (timing) then
