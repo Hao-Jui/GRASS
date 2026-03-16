@@ -4,7 +4,7 @@ module para_mod
   ! -- Theory selection ------------------------------------------------------
   integer, parameter :: THEORY_GR = 0
   integer, parameter :: THEORY_ST = 1
-  integer :: active_theory = THEORY_GR
+  integer :: active_theory = THEORY_ST
 
   ! hybrid / anderson
   character(len=20) :: relaxation_scheme = "hybrid"
@@ -21,7 +21,7 @@ module para_mod
 
   ! -- Solver state ----------------------------------------------------------
   logical :: output = .false.
-  logical :: timing = .true.
+  logical :: timing = .false.
   logical :: use_shoot_1d = .true.      ! adjust hc while keeping rep constant
   character(len=20) :: FIX1 = "Mb_goal"
   character(len=20) :: FIX2 = "chi_goal"
@@ -29,8 +29,8 @@ module para_mod
   ! -- Resolutions -----------------------------------------------------------
   integer, parameter :: res  = 10
   integer, parameter :: s_pwr = 1
-  integer :: SDIV = 180 * res + 1
-  integer :: MDIV = 180 * res + 1
+  integer :: SDIV = 100 * res + 1
+  integer :: MDIV = 4 * res + 1
 
   ! -- Target quantities -----------------------------------------------------
   character(len=128) :: eos_file = "MPA1"
