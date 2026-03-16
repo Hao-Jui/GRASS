@@ -95,45 +95,54 @@ contains
   use para_mod
   implicit none
   real(8), intent(in) :: rho0, ee
-  integer :: i
+  integer :: i, prop_unit, out_unit, ios
 
   if (has_scalar) then
-    open(221, file="./Cont/properties_st.dat")
+    open(newunit=prop_unit, file="./Cont/properties_st.dat", status="replace", action="write", iostat=ios)
   else
-    open(221, file="./Cont/properties.dat")
+    open(newunit=prop_unit, file="./Cont/properties.dat", status="replace", action="write", iostat=ios)
+  end if
+  if (ios /= 0) then
+    write(*,*) "print_converged_block: failed to open properties file"
+    return
   end if
 
   write(*,*) " ===================================="
   write(*,*) "              Converged              "
   do i = 1, 2
-     write(6+215*(i-1),"(A18,ES18.9,A8,ES18.9)")  &
-          "   Central rho =", rho0*MB,"g/cm^3", rho0*MB*rho_uni
-     write(6+215*(i-1),"(A18,ES18.9,A10)")        &
-          "Central energy =", ee/(C*C*KSCALE), "g/cm^3"
-     write(6+215*(i-1),"(A18,ES18.9)")            "   Axial ratio =", r_ratio
-     write(6+215*(i-1),"(A18,F18.9,A4)")          " Central Omega =", Omega_c/(2.d0*pi)*(C/sqrt(kappa)), "Hz"
-     write(6+215*(i-1),"(A18,F18.9,A4)")          " Equator Omega =", Omega_e/(2.d0*pi)*(C/sqrt(kappa)), "Hz"
-     if (.not. has_scalar) then
-       write(6+215*(i-1),"(A18,F18.9,A4)")        "   Kepler Omega =", Omega_K/(2.d0*pi), "Hz"
+     if (i == 1) then
+       out_unit = 6
+     else
+       out_unit = prop_unit
      end if
-     write(6+215*(i-1),"(A18,F18.9,A4)")          "      ADM Mass =", mass/MSUN, "M_o"
-     write(6+215*(i-1),"(A18,F18.9,A16,ES18.9,A2)") &
+     write(out_unit,"(A18,ES18.9,A8,ES18.9)")  &
+          "   Central rho =", rho0*MB,"g/cm^3", rho0*MB*rho_uni
+     write(out_unit,"(A18,ES18.9,A10)")        &
+          "Central energy =", ee/(C*C*KSCALE), "g/cm^3"
+     write(out_unit,"(A18,ES18.9)")            "   Axial ratio =", r_ratio
+     write(out_unit,"(A18,F18.9,A4)")          " Central Omega =", Omega_c/(2.d0*pi)*(C/sqrt(kappa)), "Hz"
+     write(out_unit,"(A18,F18.9,A4)")          " Equator Omega =", Omega_e/(2.d0*pi)*(C/sqrt(kappa)), "Hz"
+     if (.not. has_scalar) then
+       write(out_unit,"(A18,F18.9,A4)")        "   Kepler Omega =", Omega_K/(2.d0*pi), "Hz"
+     end if
+     write(out_unit,"(A18,F18.9,A4)")          "      ADM Mass =", mass/MSUN, "M_o"
+     write(out_unit,"(A18,F18.9,A16,ES18.9,A2)") &
           " Baryonic Mass =", mass_0/MSUN, "M_o ( binding =", (mass - mass_0)/MSUN, " )"
-     write(6+215*(i-1),"(A18,F18.9,A10,F7.4,A2)") &
+     write(out_unit,"(A18,F18.9,A10,F7.4,A2)") &
           " Ang. Momentum =", ang_mom, " ( chi =", chi, ")"
      if (has_scalar) then
-        write(6+215*(i-1),"(A18,ES18.9)")         "    Coupling B =", B_coup
-        write(6+215*(i-1),"(A18,ES18.9)")         "   Scalar mass =", sqrt(mphi_r*1.d10/KAPPA)*l_uni
-        write(6+215*(i-1),"(A18,ES18.9)")         "     varphi(0) =", sphi_c
-        write(6+215*(i-1),"(A18,ES18.9)")         "    varphi_max =", sphi_m
+        write(out_unit,"(A18,ES18.9)")         "    Coupling B =", B_coup
+        write(out_unit,"(A18,ES18.9)")         "   Scalar mass =", sqrt(mphi_r*1.d10/KAPPA)*l_uni
+        write(out_unit,"(A18,ES18.9)")         "     varphi(0) =", sphi_c
+        write(out_unit,"(A18,ES18.9)")         "    varphi_max =", sphi_m
      endif
-     write(6+215*(i-1),"(A18,F18.9)")             "   Slow rot. I =", I_inertia
-     write(6+215*(i-1),"(A18,F18.9)")             "        M2/M^3 =", M2
-     write(6+215*(i-1),"(A18,F18.9)")             "        S3/M^4 =", S3
-     write(6+215*(i-1),"(A18,F18.9)")             "        M4/M^5 =", M4
-     write(6+215*(i-1),"(A18,F18.9)")             "           T/W =", T_kin/abs(mass_p - mass + T_kin)
-     write(6+215*(i-1),"(A18,F18.9,A4)")          "       Coord R =", r_e*sqrt(KAPPA)/1.d5,"km"
-     write(6+215*(i-1),"(A18,F18.9,A4)")          "       Areal R =", r_circ/1.d5,"km"
+     write(out_unit,"(A18,F18.9)")             "   Slow rot. I =", I_inertia
+     write(out_unit,"(A18,F18.9)")             "        M2/M^3 =", M2
+     write(out_unit,"(A18,F18.9)")             "        S3/M^4 =", S3
+     write(out_unit,"(A18,F18.9)")             "        M4/M^5 =", M4
+     write(out_unit,"(A18,F18.9)")             "           T/W =", T_kin/abs(mass_p - mass + T_kin)
+     write(out_unit,"(A18,F18.9,A4)")          "       Coord R =", r_e*sqrt(KAPPA)/1.d5,"km"
+     write(out_unit,"(A18,F18.9,A4)")          "       Areal R =", r_circ/1.d5,"km"
   end do
 
   write(*,*) " "
@@ -141,9 +150,7 @@ contains
   write(*,"(A6,ES18.9,2X,A4,ES18.9,2X,A5,ES18.9,2X,A8,ES18.9)")  &
        "h_c", h_center, "r_e", r_e, "Fmax", Fmax_h, "Omega_e", Omega_e*r_e
   write(*,*) " ===================================="
-  close(221)
-  write(*,*) " "
-  write(*,*) "Completed!"
+  close(prop_unit)
 end subroutine print_converged_block
   
   subroutine initial_data_for_spec(file_name, var1, var2, var3, var4, var5, var6)

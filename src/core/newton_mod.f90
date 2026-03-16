@@ -182,6 +182,7 @@ end module shoot_solver_mod
 
 module shoot_newton_helpers
   use precision_mod, only: wp
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
   use para_mod, only: r_ratio, h_center, Mass, MSUN, M_goal, Mass_0, Mb_goal, &
                       J_goal, ang_mom, chi, chi_goal, Omega_c, omc_goal, &
                       Omega_K, C, kappa, Omega_e, FIX1, FIX2
@@ -229,6 +230,17 @@ contains
     F(1) = deviA
     F(2) = deviB
     er   = abs(deviA) + abs(deviB)
+
+    if (.not. ieee_is_finite(deviA) .or. .not. ieee_is_finite(deviB) .or. .not. ieee_is_finite(er)) then
+      write(*,*) "evaluate_solution: non-finite residual detected"
+      write(*,*) "  FIX1 =", trim(FIX1), " FIX2 =", trim(FIX2)
+      write(*,*) "  hc =", hc, " rep =", rep
+      write(*,*) "  deviA =", deviA, " deviB =", deviB, " er =", er
+      write(*,*) "  Mass =", Mass, " Mass_0 =", Mass_0, " ang_mom =", ang_mom
+      write(*,*) "  chi =", chi, " Omega_c =", Omega_c, " Omega_e =", Omega_e, " Omega_K =", Omega_K
+      write(*,*) "  goals: M =", M_goal, " Mb =", Mb_goal, " J =", J_goal, " chi =", chi_goal, " omc =", omc_goal
+      stop
+    end if
   end subroutine evaluate_solution
 
   subroutine build_jacobian(state, x, F, hc, rep, rho0, ee, er, reuse_base)
@@ -262,5 +274,4 @@ contains
   end subroutine build_jacobian
 
 end module shoot_newton_helpers
-
 

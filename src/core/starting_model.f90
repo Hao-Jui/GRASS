@@ -19,7 +19,7 @@ contains
       h_center = h_at_p(p_center)
     case default
       r_ratio  = merge(0.9e0_wp, 1.e0_wp, trim(adjustl(solver_type)) == "uryu")
-      e_center = 8.e14_wp
+      e_center = 7.e14_wp
       e_center = e_center * C * C * KSCALE
       p_center = p_at_e(e_center)
       h_center = h_at_p(p_center)
@@ -42,7 +42,7 @@ contains
   contains
     subroutine single_model()
       real(wp) :: ee, rho0
-      
+      !r_ratio = 1.e0_wp
       output = .true.
       call rotation_solver
       call solution_properties
