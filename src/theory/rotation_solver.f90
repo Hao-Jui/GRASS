@@ -15,6 +15,7 @@ subroutine rotation_solver
   real(wp) :: sphi_pole_h, sphi_center_h, sphi_equator_h
   real(wp) :: root_mphi_re, sqrt_B_coup
   real(wp) :: hamL2
+  real(wp) :: t0, t1, dt_alpha, dt_relaxation
   logical :: zero_scalar_mode
   character(32) :: fil1, fil2, fil3, fil4, fil5, fil6
 
@@ -74,16 +75,12 @@ subroutine rotation_solver
 
     call get_all_targets(r_e_new, gama_pole_h, rho_pole_h, sphi_pole_h, root_mphi_re, &
                          target_rho, target_gama, target_ww, target_sphi)
-    
+    if (timing) call cpu_time(t0)
     call relaxation(r_e_new, target_rho, target_gama, target_ww, target_sphi, root_mphi_re, n_of_it)
-
-    ! ---------------------------------------------------------------
-    ! Divergence check
-    ! ---------------------------------------------------------------
-    if (abs(rho(2,1))>100.e0_wp .or. abs(gama(2,1))>300.e0_wp .or. abs(ww(2,1))>100.e0_wp &
-        .or. abs(sphi(2,1))>10.e0_wp) then
-      write(*,"(i5,4es18.9)") n_of_it, rho(2,1), gama(2,1), ww(2,1), sphi(2,1)
-      stop "something diverged"
+    if (timing) then
+      call cpu_time(t1)
+      dt_relaxation = t1 - t0
+      call cpu_time(t0)
     end if
 
     ! ---------------------------------------------------------------
@@ -97,7 +94,12 @@ subroutine rotation_solver
       call update_alpha_potential(r_e_new, dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, dww_s_cache, dww_m_cache, &
           ds_s_cache, ds_m_cache, d2g_ss_cache, d2g_mm_cache, e_rsm_cache)
     endif
-
+    if (timing) then
+      call cpu_time(t1)
+      dt_alpha = t1 - t0
+      call cpu_time(t0)
+    end if
+    if (timing) write(*,'(A,7(1X,ES12.5))') "Relaxation + Alpha: ", dt_relaxation, dt_alpha
     n_of_it = n_of_it + 1
     if ( n_of_it > 2000 ) stop "Probably won't converge"
   enddo
