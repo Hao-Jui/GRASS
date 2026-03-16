@@ -78,9 +78,7 @@ subroutine rotation_solver
     if (timing) call cpu_time(t0)
     call relaxation(r_e_new, target_rho, target_gama, target_ww, target_sphi, root_mphi_re, n_of_it)
     if (timing) then
-      call cpu_time(t1)
-      dt_relaxation = t1 - t0
-      call cpu_time(t0)
+      call cpu_time(t1); dt_relaxation = t1 - t0; call cpu_time(t0)
     end if
 
     ! ---------------------------------------------------------------
@@ -89,15 +87,12 @@ subroutine rotation_solver
 
     if (r_ratio == 1.e0_wp) then 
       call impose_rigid_rotation()
-      alpha = ( gama - rho ) / 2.e0_wp
     else
       call update_alpha_potential(r_e_new, dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, dww_s_cache, dww_m_cache, &
           ds_s_cache, ds_m_cache, d2g_ss_cache, d2g_mm_cache, e_rsm_cache)
     endif
     if (timing) then
-      call cpu_time(t1)
-      dt_alpha = t1 - t0
-      call cpu_time(t0)
+      call cpu_time(t1); dt_alpha = t1 - t0; call cpu_time(t0)
     end if
     if (timing) write(*,'(A,7(1X,ES12.5))') "Relaxation + Alpha: ", dt_relaxation, dt_alpha
     n_of_it = n_of_it + 1
@@ -147,6 +142,7 @@ contains
     gama = spread(gama(:,1), dim=2, ncopies=MDIV)
     ww   = spread(ww(:,1),   dim=2, ncopies=MDIV)
     omg  = spread(omg(:,1),  dim=2, ncopies=MDIV)
+    alpha= spread( (gama(:,1) - rho(:,1)) * 0.5e0_wp, dim=2, ncopies=MDIV )
   end subroutine impose_rigid_rotation
 end subroutine rotation_solver
 end module rotation_uniform
