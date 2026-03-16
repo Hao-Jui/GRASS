@@ -1,8 +1,10 @@
 program grass
   use toolkit_mod, only: debug_mod_bessel
   use para_mod
+  use constrain_mod, only: hamiltonian
   implicit none
   character(len=64) :: theory_arg
+  real(wp) :: hamL2
 
   call initialize_theory()
 
@@ -48,5 +50,10 @@ program grass
   
   !call MRcurve
   call shoot_v2
+
+  call hamiltonian(hamL2)
+  write(*,"(A18,es12.4)") "Ham L2:", hamL2
+  write(*,*) " "
+  write(*,*) "Completed!"
 
 end program grass

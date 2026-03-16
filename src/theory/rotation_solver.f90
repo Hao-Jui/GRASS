@@ -38,7 +38,7 @@ subroutine rotation_solver
   !write(*,*) r_ratio, h_center
   call allocate_workspace
   
-  do while( dif > 1.e-8_wp .or. n_of_it < 2 )
+  do while( dif > 1.e-14_wp .or. n_of_it < 2 )
     if (zero_scalar_mode) sphi = 0.e0_wp
     sphi_m   = maxval( sphi(:,1) * sqrt_B_coup )
     call rescale_metric(r_e_new_sq)

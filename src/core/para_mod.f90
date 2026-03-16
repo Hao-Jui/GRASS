@@ -4,7 +4,7 @@ module para_mod
   ! -- Theory selection ------------------------------------------------------
   integer, parameter :: THEORY_GR = 0
   integer, parameter :: THEORY_ST = 1
-  integer :: active_theory = THEORY_ST
+  integer :: active_theory = THEORY_GR
 
   ! hybrid / anderson
   character(len=20) :: relaxation_scheme = "hybrid"
@@ -29,7 +29,7 @@ module para_mod
   ! -- Resolutions -----------------------------------------------------------
   integer, parameter :: res  = 10
   integer, parameter :: s_pwr = 1
-  integer :: SDIV = 1800 * res + 1
+  integer :: SDIV = 60 * res + 1
   integer :: MDIV = 4 * res + 1
 
   ! -- Target quantities -----------------------------------------------------
@@ -37,11 +37,11 @@ module para_mod
   real(wp) :: M_goal   = 1.2e0_wp
   real(wp) :: Mb_goal  = 1.8e0_wp
   real(wp) :: J_goal   = 1.6e0_wp
-  real(wp) :: chi_goal = 0.0e0_wp
+  real(wp) :: chi_goal = 0.1e0_wp
   real(wp) :: omc_goal = 30.e0_wp
 
-  real(wp) :: B_goal   = 2.4e5_wp
-  real(wp) :: mphi_goal = 30.e0_wp
+  real(wp) :: B_goal   = 8.e5_wp
+  real(wp) :: mphi_goal = 50.e0_wp
 
   ! -- Rotation-law parameters (KEH, Uryu enabled) --------------------------
   real(wp) :: A_diff  = 0.5e0_wp

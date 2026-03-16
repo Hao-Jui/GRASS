@@ -12,12 +12,14 @@ contains
 
     if (active_theory == THEORY_GR) return
 
-    print *, " "
-    print *, "scalar burn stage:  (B, mphi, sphi_c, sphi_m)"
     B_coup = B_burn_init
     mphi_r = (mphi_burn_seed / l_uni)**2 * KAPPA / 1.e10_wp
+    print *, " "
+    write(*,'("Solving for B =",es15.6," and mphi =",es15.6)') B_burn_init, mphi_burn_seed
     call rotation_solver()
     current_mphi = sqrt(mphi_r*1.e10_wp/KAPPA) * l_uni
+    print *, " "
+    print *, "scalar burn stage:  (B, mphi, sphi_c, sphi_m)"
 
     burn_iter = 0
     do while (current_mphi < target_mphi .and. burn_iter < scalar_burn_max_iter)
@@ -41,6 +43,7 @@ contains
       burn_iter = burn_iter + 1
     end do
     output = .true.; call rotation_solver(); output = .false.
+    
     write(*,"(A)") " ", " Solution saved for restart after burning.", " "
     write(string,"(f12.4)") sphi_m
     if (burn_iter >= scalar_burn_max_iter .and. current_mphi < target_mphi) then
