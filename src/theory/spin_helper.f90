@@ -805,53 +805,6 @@ contains
     target_sphi = sum_sphi
   end subroutine sum_coefficients_and_get_targets
 
-  ! Smooth a radial profile by solving (I + lambda * D^T D) z = y,
-  ! where D is the second-difference operator. This is a global
-  ! curvature-penalized smoother, so it directly regularizes the
-  ! second derivative instead of only damping the slope.
-  subroutine smooth_profile(profile_in, profile_out)
-    real(wp), intent(in) :: profile_in(:)
-    real(wp), intent(out) :: profile_out(:)
-    integer, parameter :: kd = 2
-    real(wp), parameter :: curvature_lambda = 5.e1_wp
-    real(wp), allocatable :: ab(:,:), rhs(:,:)
-    real(wp), dimension(3) :: coeff
-    integer :: n, i, p, q, col_p, col_q, band_row, info
-
-    n = size(profile_in)
-    if (size(profile_out) /= n) stop "smooth_profile: size mismatch"
-    if (n <= 2) then
-      profile_out = profile_in
-      return
-    end if
-
-    allocate(ab(kd + 1, n), rhs(n,1))
-    ab = 0.e0_wp
-    rhs(:,1) = profile_in
-
-    do i = 1, n
-      ab(kd + 1, i) = 1.e0_wp
-    end do
-
-    coeff = [1.e0_wp, -2.e0_wp, 1.e0_wp]
-    do i = 1, n - 2
-      do p = 1, 3
-        col_p = i + p - 1
-        do q = p, 3
-          col_q = i + q - 1
-          band_row = kd + 1 + col_p - col_q
-          ab(band_row, col_q) = ab(band_row, col_q) + curvature_lambda * coeff(p) * coeff(q)
-        end do
-      end do
-    end do
-
-    call dpbsv('U', n, kd, 1, ab, kd + 1, rhs, n, info)
-    if (info /= 0) stop "smooth_profile: dpbsv failed"
-    profile_out = rhs(:,1)
-
-    deallocate(ab, rhs)
-  end subroutine smooth_profile
-
   subroutine update_alpha_potential(r_e_new, dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, dww_s_cache, dww_m_cache, &
                                     ds_s_cache, ds_m_cache, d2g_ss_cache, d2g_mm_cache, e_rsm_cache)
     real(wp), intent(in) :: r_e_new
@@ -932,13 +885,12 @@ contains
     real(wp), intent(in) :: r_e_new, gama_pole_h, rho_pole_h, sphi_pole_h
     real(wp), intent(in) :: root_mphi_re
     real(wp), intent(out) :: out_target_rho(SDIV,MDIV), out_target_gama(SDIV,MDIV), out_target_ww(SDIV,MDIV), out_target_sphi(SDIV,MDIV)
-    real(wp) :: t0, t1, dt_precompute, dt_build, dt_angular, dt_radial, dt_sum, dt_smooth
-    real(wp) :: smoothed_sphi(SDIV)
+    real(wp) :: t0, t1, dt_precompute, dt_build, dt_angular, dt_radial, dt_sum
     integer :: m
     integer, parameter :: timing_calls = 5
     integer, save :: target_call_count = 0
     real(wp), save :: sum_dt_precompute = 0.e0_wp, sum_dt_build = 0.e0_wp, sum_dt_angular = 0.e0_wp
-    real(wp), save :: sum_dt_radial = 0.e0_wp, sum_dt_sum = 0.e0_wp, sum_dt_smooth = 0.e0_wp
+    real(wp), save :: sum_dt_radial = 0.e0_wp, sum_dt_sum = 0.e0_wp
 
     if (timing) then
       if (target_call_count == 0) then
@@ -947,7 +899,6 @@ contains
         sum_dt_angular = 0.e0_wp
         sum_dt_radial = 0.e0_wp
         sum_dt_sum = 0.e0_wp
-        sum_dt_smooth = 0.e0_wp
       end if
       target_call_count = target_call_count + 1
       dt_precompute = 0.e0_wp
@@ -955,7 +906,6 @@ contains
       dt_angular = 0.e0_wp
       dt_radial = 0.e0_wp
       dt_sum = 0.e0_wp
-      dt_smooth = 0.e0_wp
       call cpu_time(t0)
     end if
     call precompute_derivatives_and_bessels(r_e_new, root_mphi_re, mr_cache, wfac_cache, besseli_cache, besselk_cache, &
@@ -1001,36 +951,21 @@ contains
       call cpu_time(t0)
     end if
 
-    !if (r_ratio == 1.e0_wp) then
-    !  call smooth_profile(out_target_sphi(:,1), smoothed_sphi)
-    !  do m = 1, MDIV
-    !    out_target_sphi(:,m) = smoothed_sphi
-    !  end do
-    !else
-    !  do m = 1, MDIV
-    !    call smooth_profile(out_target_sphi(:,m), smoothed_sphi)
-    !    out_target_sphi(:,m) = smoothed_sphi
-    !  end do
-    !end if
-
     if (timing) then
-      call cpu_time(t1)
-      dt_smooth = t1 - t0
       sum_dt_precompute = sum_dt_precompute + dt_precompute
       sum_dt_build = sum_dt_build + dt_build
       sum_dt_angular = sum_dt_angular + dt_angular
       sum_dt_radial = sum_dt_radial + dt_radial
       sum_dt_sum = sum_dt_sum + dt_sum
-      sum_dt_smooth = sum_dt_smooth + dt_smooth
 
       write(*,'(A,I0,A,7(1X,ES12.5))') 'get_all_targets call ', target_call_count, ':', &
-        dt_precompute, dt_build, dt_angular, dt_radial, dt_sum, dt_smooth, &
-        dt_precompute + dt_build + dt_angular + dt_radial + dt_sum + dt_smooth
+        dt_precompute, dt_build, dt_angular, dt_radial, dt_sum, &
+        dt_precompute + dt_build + dt_angular + dt_radial + dt_sum
       if (target_call_count >= timing_calls) then
         write(*,'(A,I0,A,7(1X,ES12.5))') 'get_all_targets avg over ', timing_calls, ':', &
           sum_dt_precompute / timing_calls, sum_dt_build / timing_calls, sum_dt_angular / timing_calls, &
-          sum_dt_radial / timing_calls, sum_dt_sum / timing_calls, sum_dt_smooth / timing_calls, &
-          (sum_dt_precompute + sum_dt_build + sum_dt_angular + sum_dt_radial + sum_dt_sum + sum_dt_smooth) / timing_calls
+          sum_dt_radial / timing_calls, sum_dt_sum / timing_calls, &
+          (sum_dt_precompute + sum_dt_build + sum_dt_angular + sum_dt_radial + sum_dt_sum) / timing_calls
         stop "Finish profiling."
       end if
     end if
@@ -1116,6 +1051,15 @@ contains
         end if
       end do
     end do
+
+    ! ---------------------------------------------------------------
+    ! Divergence check
+    ! ---------------------------------------------------------------
+    if (abs(rho(2,1))>100.e0_wp .or. abs(gama(2,1))>300.e0_wp .or. abs(ww(2,1))>100.e0_wp &
+        .or. abs(sphi(2,1))>10.e0_wp) then
+      write(*,"(i5,4es18.9)") n_of_it, rho(2,1), gama(2,1), ww(2,1), sphi(2,1)
+      stop "something diverged"
+    end if
   end subroutine relaxation
 
   subroutine allocate_workspace
