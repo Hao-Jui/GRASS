@@ -746,57 +746,49 @@ contains
     real(wp), dimension(SDIV,MDIV) :: sum_rho, sum_sphi, sum_gama, sum_omega
     real(wp), dimension(MDIV) :: sin_theta_inv
 
-    exp_mhalf_gsm = exp(-0.5e0_wp * gama)
-    exp_rsm_mhalf_gsm = exp(rho - 0.5e0_wp * gama)
+    exp_mhalf_gsm = 1.0e0_wp / e_gsm_cache          ! e_gsm_cache = exp(+0.5*gama), computed in precompute
+    exp_rsm_mhalf_gsm = exp_mhalf_gsm / e_rsm_cache ! e_rsm_cache = exp(-rho), so /e_rsm = *exp(+rho)
     sin_theta_inv = 0.e0_wp; where (sin_theta > 1.e-12_wp) sin_theta_inv = 1.e0_wp / sin_theta
 
-    ! Monopole term (n=0)
-    do m = 1, MDIV
-      sum_rho(:,m) = -exp_mhalf_gsm(:,m) * D2_metric_rho(:,1) * P_2n(m,1)
-    end do
+    ! sum_rho = -exp_mhalf_gsm * (D2_rho @ P_2n^T), all n=0..LMAX in one DGEMM
+    call dgemm('N','T', SDIV, MDIV, LMAX+1, 1.e0_wp, D2_metric_rho, SDIV, P_2n, MDIV, 0.e0_wp, sum_rho, SDIV)
+    sum_rho = -exp_mhalf_gsm * sum_rho
+
+    ! sum_gama monopole (n=1 only; higher multipoles added below after early return)
     sum_gama = 0.e0_wp
     sum_gama(:,1:MDIV-1) = -(2.e0_wp/pi) * exp_mhalf_gsm(:,1:MDIV-1) * spread(D2_metric_gama(:,2), 2, MDIV-1)
     sum_gama(:,MDIV) = -(2.e0_wp/pi) * exp_mhalf_gsm(:, MDIV) * D2_metric_gama(:, 2)
     sum_omega = 0.e0_wp
+
+    ! sum_sphi = -(exp_mhalf_gsm *) (D2_sphi_scaled @ P_2n^T), all n=0..LMAX in one DGEMM
     if ( mphi_r > (mphi_tran / l_uni)**2 * KAPPA / 1.e10_wp ) then
-      do m = 1, MDIV
-        sum_sphi(:,m) = -exp_mhalf_gsm(:,m) * D2_metric_sphi(:,1) * P_2n(m,1)
-      end do
+      block
+        real(wp) :: D2_sphi_scaled(SDIV, LMAX+1)
+        integer :: nn
+        do nn = 0, LMAX
+          D2_sphi_scaled(:,nn+1) = real(2*nn+1, wp) * D2_metric_sphi(:,nn+1)
+        end do
+        call dgemm('N','T', SDIV, MDIV, LMAX+1, 1.e0_wp, D2_sphi_scaled, SDIV, P_2n, MDIV, 0.e0_wp, sum_sphi, SDIV)
+      end block
+      sum_sphi = -exp_mhalf_gsm * sum_sphi
     else
-      do m = 1, MDIV
-        sum_sphi(:,m) = -D2_metric_sphi(:,1) * P_2n(m,1)
-      end do
+      call dgemm('N','T', SDIV, MDIV, LMAX+1, -1.e0_wp, D2_metric_sphi, SDIV, P_2n, MDIV, 0.e0_wp, sum_sphi, SDIV)
     endif
-  
-    if (r_ratio == 1.e0_wp) then 
+
+    if (r_ratio == 1.e0_wp) then
       target_rho  = sum_rho
       target_gama = sum_gama
       target_ww   = sum_omega
       target_sphi = sum_sphi
       return
     endif
-    ! Higher multipoles (n=1 to LMAX)
+    ! Higher multipoles: only omega and gama loops remain (pole singularity at m=MDIV)
     do n = 1, LMAX
-      do m = 1, MDIV
-        sum_rho(:,m) = sum_rho(:,m) - exp_mhalf_gsm(:,m) * D2_metric_rho(:,n+1) * P_2n(m,n+1)
-      end do
-
       do m = 1, MDIV-1
         sum_omega(:,m) = sum_omega(:,m) - exp_rsm_mhalf_gsm(:,m) * D2_metric_omega(:,n+1) * &
           (P1_2n_1(m,n+1) * sin_theta_inv(m) / (2.e0_wp*n*(2.e0_wp*n-1.e0_wp)))
       end do
       sum_omega(:,MDIV) = sum_omega(:,MDIV) + exp_rsm_mhalf_gsm(:,MDIV) * D2_metric_omega(:,n+1) / 2.e0_wp
-
-      if ( mphi_r > (mphi_tran / l_uni)**2 * KAPPA / 1.e10_wp ) then
-        do m = 1, MDIV
-          sum_sphi(:,m) = sum_sphi(:,m) - exp_mhalf_gsm(:,m) * (2.e0_wp*dble(n)+1.e0_wp) * &
-            D2_metric_sphi(:,n+1) * P_2n(m,n+1)
-        end do
-      else
-        do m = 1, MDIV
-          sum_sphi(:,m) = sum_sphi(:,m) - D2_metric_sphi(:,n+1) * P_2n(m,n+1)
-        end do
-      endif
     end do
 
     do n = 2, LMAX
