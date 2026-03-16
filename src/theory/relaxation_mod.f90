@@ -31,18 +31,25 @@ contains
     integer, intent(in) :: iter, m_hist
     logical, intent(in), optional :: use_x_history
     
-    real(wp), dimension(m_hist) :: gamma, work
+    real(wp), dimension(m_hist) :: gamma
     real(wp), dimension(m_hist, m_hist) :: F_mat
     real(wp) :: residual(SDIV,MDIV), accel_field(SDIV,MDIV)
-    integer :: k, i, j, info, idx_curr, idx
-    real(wp) :: df(SDIV,MDIV), dg(SDIV,MDIV)
+    integer :: k, i, info, idx_curr, idx, N
     real(wp), parameter :: blend = 0.1e0_wp, damping = 0.8e0_wp
     integer, parameter :: conservative_steps = 3
     logical :: use_x
-    
+    real(wp), allocatable, save :: delta(:,:)
+
+    N = SDIV*MDIV
     use_x = .false.
     if (present(use_x_history)) use_x = use_x_history
-    
+
+    ! Allocate/resize delta buffer (persists across calls, size N x m_hist)
+    if (.not. allocated(delta) .or. size(delta,1) /= N .or. size(delta,2) /= m_hist) then
+      if (allocated(delta)) deallocate(delta)
+      allocate(delta(N, m_hist))
+    end if
+
     ! Compute residual
     residual = current_field - target_field
     idx_curr = modulo(iter - 1, m_hist) + 1
@@ -54,40 +61,33 @@ contains
       current_field = 0.5e0_wp * current_field + 0.5e0_wp * target_field
       return
     end if
-    
+
     ! Store current residual
     history_f(:,:,idx_curr) = residual
     if (use_x) history_x(:,:,idx_curr) = current_field
-    
+
     ! Determine history depth
     k = min(iter - conservative_steps + 1, m_hist)
-    
-    ! Build F_mat without reshape temporaries to reduce allocation overhead
+
+    ! Precompute delta(:,i) = residual - history_f(:,:,idx(i))
+    ! Each history slice is read exactly once (vs k*(k+1)/2 times in the scalar loop)
     do i = 1, k
       idx = modulo(iter - i - 1, m_hist) + 1
-      df = residual - history_f(:,:,idx)
-      
-      ! Compute column of F using dot products
-      F_mat(i,i) = sum(df * df)
-      do j = i+1, k
-        idx = modulo(iter - j - 1, m_hist) + 1
-        dg = residual - history_f(:,:,idx)
-        F_mat(i,j) = sum(df * dg)
-        F_mat(j,i) = F_mat(i,j)
-      end do
-      
-      gamma(i) = sum(df * residual)
+      delta(:,i) = reshape(residual, [N]) - reshape(history_f(:,:,idx), [N])
     end do
-    
+
+    ! F_mat(1:k,1:k) = delta(:,1:k)^T @ delta(:,1:k)  — all k^2 dot products in one DGEMM
+    call dgemm('T', 'N', k, k, N, 1.e0_wp, delta, N, delta, N, 0.e0_wp, F_mat, m_hist)
+
+    ! gamma(1:k) = delta(:,1:k)^T @ residual
+    call dgemv('T', N, k, 1.e0_wp, delta, N, residual(1,1), 1, 0.e0_wp, gamma, 1)
+
     call DPOSV('U', k, 1, F_mat, m_hist, gamma, m_hist, info)
 
     if (info == 0) then
-      ! Anderson extrapolation: x_new = F(x) - Σ γ_i * Δf_i, where Δf_i = r_k - r_{k-i}
+      ! accel_field = target_field - delta(:,1:k) @ gamma(1:k)
       accel_field = target_field
-      do i = 1, k
-        idx = modulo(iter - i - 1, m_hist) + 1
-        accel_field = accel_field - gamma(i) * (residual - history_f(:,:,idx))
-      end do
+      call dgemv('N', N, k, -1.e0_wp, delta, N, gamma, 1, 1.e0_wp, accel_field(1,1), 1)
       current_field = damping * accel_field + (1.0e0_wp - damping) * current_field
     else
       ! Fallback to damped Picard
