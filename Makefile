@@ -1,7 +1,20 @@
 PROG    := a.out
 .DEFAULT_GOAL := all
 FC      = gfortran
-FFLAGS  ?= -O2 -march=native -ftree-vectorize -I.
+
+MODE    ?= Release
+BASE_FFLAGS := -I.
+RELEASE_FFLAGS := -O2 -march=native -ftree-vectorize
+DEBUG_FFLAGS := -O0 -g -fbacktrace -Wall -Wextra -Wimplicit-interface -fcheck=all -ffpe-trap=invalid,zero,overflow -finit-real=snan
+ifeq ($(MODE),Release)
+  MODE_FFLAGS := $(RELEASE_FFLAGS)
+else ifeq ($(MODE),Debug)
+  MODE_FFLAGS := $(DEBUG_FFLAGS)
+else
+  $(error Unsupported MODE='$(MODE)'. Use MODE=Release or MODE=Debug)
+endif
+FFLAGS  ?= $(BASE_FFLAGS) $(MODE_FFLAGS)
+
 LDFLAGS ?=
 LIBS    ?= -llapack -lblas
 BUILDDIR := build
@@ -11,9 +24,10 @@ BINDIR   := $(BUILDDIR)/bin
 TARGET   := $(BINDIR)/$(PROG)
 
 FFLAGS  += -J$(MODDIR) -I$(MODDIR)
-SRC_TOOL := src/tool
-SRC_CORE   := src/core
-SRC_THEORY := src/theory
+SRCDIR := src
+SRC_TOOL := $(SRCDIR)/tool
+SRC_CORE := $(SRCDIR)/core
+SRC_THEORY := $(SRCDIR)/theory
 
 SOURCES := \
   $(SRC_CORE)/precision_mod.f90 \
@@ -71,9 +85,15 @@ $(OBJDIR)/$(SRC_CORE)/shoot_v2.o: $(OBJDIR)/$(SRC_CORE)/starting_model.o
 $(OBJDIR)/$(SRC_CORE)/MRcurve.o: $(OBJDIR)/$(SRC_THEORY)/rotation_solver.o $(OBJDIR)/$(SRC_CORE)/starting_model.o
 $(OBJDIR)/src/main.o: $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_CORE)/constraint_eq.o
 
-.PHONY: all clean
+.PHONY: all clean release debug
 
 all: $(TARGET)
+
+release:
+  $(MAKE) MODE=Release
+
+debug:
+  $(MAKE) MODE=Debug
 
 $(TARGET): $(OBJECTS)
 	@mkdir -p $(BINDIR)
