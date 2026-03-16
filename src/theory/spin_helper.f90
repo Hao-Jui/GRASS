@@ -135,141 +135,6 @@ contains
     df_dsm = deriv_m_vec(deriv_s_vec(f))
   end function deriv_sm_vec
 
-  ! Fused: compute df/ds AND d²f/ds² in one pass over f (6th-order, MDIV columns).
-  pure subroutine deriv_s_and_ss_vec(f, df_ds, d2f_ds2)
-    use para_mod, only: SDIV, MDIV, DS
-    real(wp), dimension(SDIV,MDIV), intent(in)  :: f
-    real(wp), dimension(SDIV,MDIV), intent(out) :: df_ds, d2f_ds2
-    real(wp) :: inv60DS, inv180DS2
-    integer :: m
-    if (SDIV < 5) then
-      df_ds(1,:) = (f(2,:) - f(1,:)) / DS
-      if (SDIV > 2) df_ds(2:SDIV-1,:) = (f(3:SDIV,:) - f(1:SDIV-2,:)) / (2.e0_wp*DS)
-      df_ds(SDIV,:) = (f(SDIV,:) - f(SDIV-1,:)) / DS
-      d2f_ds2(1,:) = (f(3,:) - 2.e0_wp*f(2,:) + f(1,:)) / DS**2
-      if (SDIV > 3) d2f_ds2(2:SDIV-1,:) = (f(3:SDIV,:) - 2.e0_wp*f(2:SDIV-1,:) + f(1:SDIV-2,:)) / DS**2
-      d2f_ds2(SDIV,:) = (f(SDIV,:) - 2.e0_wp*f(SDIV-1,:) + f(SDIV-2,:)) / DS**2
-      return
-    end if
-    if (SDIV < 7) then
-      df_ds(1,:) = (-25.e0_wp*f(1,:)+48.e0_wp*f(2,:)-36.e0_wp*f(3,:)+16.e0_wp*f(4,:)-3.e0_wp*f(5,:)) / (12.e0_wp*DS)
-      df_ds(2,:) = ( -3.e0_wp*f(1,:)-10.e0_wp*f(2,:)+18.e0_wp*f(3,:)-6.e0_wp*f(4,:)+f(5,:)) / (12.e0_wp*DS)
-      df_ds(SDIV-1,:) = (3.e0_wp*f(SDIV,:)+10.e0_wp*f(SDIV-1,:)-18.e0_wp*f(SDIV-2,:)+6.e0_wp*f(SDIV-3,:)-f(SDIV-4,:)) / (12.e0_wp*DS)
-      df_ds(SDIV,:) = (25.e0_wp*f(SDIV,:)-48.e0_wp*f(SDIV-1,:)+36.e0_wp*f(SDIV-2,:)-16.e0_wp*f(SDIV-3,:)+3.e0_wp*f(SDIV-4,:)) / (12.e0_wp*DS)
-      d2f_ds2(1,:) = (35.e0_wp*f(1,:)-104.e0_wp*f(2,:)+114.e0_wp*f(3,:)-56.e0_wp*f(4,:)+11.e0_wp*f(5,:)) / (12.e0_wp*DS**2)
-      d2f_ds2(2,:) = (11.e0_wp*f(1,:)-20.e0_wp*f(2,:)+6.e0_wp*f(3,:)+4.e0_wp*f(4,:)-f(5,:)) / (12.e0_wp*DS**2)
-      d2f_ds2(SDIV-1,:) = (11.e0_wp*f(SDIV,:)-20.e0_wp*f(SDIV-1,:)+6.e0_wp*f(SDIV-2,:)+4.e0_wp*f(SDIV-3,:)-f(SDIV-4,:)) / (12.e0_wp*DS**2)
-      d2f_ds2(SDIV,:) = (35.e0_wp*f(SDIV,:)-104.e0_wp*f(SDIV-1,:)+114.e0_wp*f(SDIV-2,:)-56.e0_wp*f(SDIV-3,:)+11.e0_wp*f(SDIV-4,:)) / (12.e0_wp*DS**2)
-      do m = 1, MDIV
-        df_ds(3:SDIV-2,m) = (-f(5:SDIV,m)+8.e0_wp*f(4:SDIV-1,m)-8.e0_wp*f(2:SDIV-3,m)+f(1:SDIV-4,m)) / (12.e0_wp*DS)
-        d2f_ds2(3:SDIV-2,m) = (-f(5:SDIV,m)+16.e0_wp*f(4:SDIV-1,m)-30.e0_wp*f(3:SDIV-2,m)+16.e0_wp*f(2:SDIV-3,m)-f(1:SDIV-4,m)) / (12.e0_wp*DS**2)
-      end do
-      return
-    end if
-    inv60DS   = 1.e0_wp / (60.e0_wp * DS)
-    inv180DS2 = 1.e0_wp / (180.e0_wp * DS**2)
-    ! 6th-order one-sided boundaries (f')
-    df_ds(1,:) = (-147.e0_wp*f(1,:)+360.e0_wp*f(2,:)-450.e0_wp*f(3,:)+400.e0_wp*f(4,:) &
-                  -225.e0_wp*f(5,:)+ 72.e0_wp*f(6,:)- 10.e0_wp*f(7,:)) * inv60DS
-    df_ds(2,:) = ( -10.e0_wp*f(1,:)- 77.e0_wp*f(2,:)+150.e0_wp*f(3,:)-100.e0_wp*f(4,:) &
-                  +  50.e0_wp*f(5,:)- 15.e0_wp*f(6,:)+  2.e0_wp*f(7,:)) * inv60DS
-    df_ds(3,:) = (   2.e0_wp*f(1,:)- 24.e0_wp*f(2,:)- 35.e0_wp*f(3,:)+ 80.e0_wp*f(4,:) &
-                  -  30.e0_wp*f(5,:)+  8.e0_wp*f(6,:)-       f(7,:)) * inv60DS
-    df_ds(SDIV-2,:) = (        f(SDIV-6,:)-  8.e0_wp*f(SDIV-5,:)+ 30.e0_wp*f(SDIV-4,:)- 80.e0_wp*f(SDIV-3,:) &
-                       + 35.e0_wp*f(SDIV-2,:)+ 24.e0_wp*f(SDIV-1,:)-  2.e0_wp*f(SDIV,:)) * inv60DS
-    df_ds(SDIV-1,:) = (  -2.e0_wp*f(SDIV-6,:)+ 15.e0_wp*f(SDIV-5,:)- 50.e0_wp*f(SDIV-4,:)+100.e0_wp*f(SDIV-3,:) &
-                       -150.e0_wp*f(SDIV-2,:)+ 77.e0_wp*f(SDIV-1,:)+ 10.e0_wp*f(SDIV,:)) * inv60DS
-    df_ds(SDIV,:)   = (  10.e0_wp*f(SDIV-6,:)- 72.e0_wp*f(SDIV-5,:)+225.e0_wp*f(SDIV-4,:)-400.e0_wp*f(SDIV-3,:) &
-                       +450.e0_wp*f(SDIV-2,:)-360.e0_wp*f(SDIV-1,:)+147.e0_wp*f(SDIV,:)) * inv60DS
-    ! 5th-order one-sided boundaries (f'')
-    d2f_ds2(1,:) = ( 812.e0_wp*f(1,:)-3132.e0_wp*f(2,:)+5265.e0_wp*f(3,:)-5080.e0_wp*f(4,:) &
-                   +2970.e0_wp*f(5,:)- 972.e0_wp*f(6,:)+ 137.e0_wp*f(7,:)) * inv180DS2
-    d2f_ds2(2,:) = ( 137.e0_wp*f(1,:)- 147.e0_wp*f(2,:)- 255.e0_wp*f(3,:)+ 470.e0_wp*f(4,:) &
-                   - 285.e0_wp*f(5,:)+  93.e0_wp*f(6,:)-  13.e0_wp*f(7,:)) * inv180DS2
-    d2f_ds2(3,:) = ( -13.e0_wp*f(1,:)+ 228.e0_wp*f(2,:)- 420.e0_wp*f(3,:)+ 200.e0_wp*f(4,:) &
-                   +  15.e0_wp*f(5,:)-  12.e0_wp*f(6,:)+   2.e0_wp*f(7,:)) * inv180DS2
-    d2f_ds2(SDIV-2,:) = (  2.e0_wp*f(SDIV-6,:)- 12.e0_wp*f(SDIV-5,:)+ 15.e0_wp*f(SDIV-4,:)+200.e0_wp*f(SDIV-3,:) &
-                          -420.e0_wp*f(SDIV-2,:)+228.e0_wp*f(SDIV-1,:)- 13.e0_wp*f(SDIV,:)) * inv180DS2
-    d2f_ds2(SDIV-1,:) = (-13.e0_wp*f(SDIV-6,:)+ 93.e0_wp*f(SDIV-5,:)-285.e0_wp*f(SDIV-4,:)+470.e0_wp*f(SDIV-3,:) &
-                         -255.e0_wp*f(SDIV-2,:)-147.e0_wp*f(SDIV-1,:)+137.e0_wp*f(SDIV,:)) * inv180DS2
-    d2f_ds2(SDIV,:)   = (137.e0_wp*f(SDIV-6,:)-972.e0_wp*f(SDIV-5,:)+2970.e0_wp*f(SDIV-4,:)-5080.e0_wp*f(SDIV-3,:) &
-                         +5265.e0_wp*f(SDIV-2,:)-3132.e0_wp*f(SDIV-1,:)+812.e0_wp*f(SDIV,:)) * inv180DS2
-    ! Fused 6th-order centered interior: both stencils in one do-m pass
-    do m = 1, MDIV
-      df_ds(4:SDIV-3,m) = (   -f(1:SDIV-6,m)+ 9.e0_wp*f(2:SDIV-5,m)- 45.e0_wp*f(3:SDIV-4,m) &
-                           + 45.e0_wp*f(5:SDIV-2,m)-  9.e0_wp*f(6:SDIV-1,m)+       f(7:SDIV,m)) * inv60DS
-      d2f_ds2(4:SDIV-3,m) = (  2.e0_wp*f(1:SDIV-6,m)- 27.e0_wp*f(2:SDIV-5,m)+270.e0_wp*f(3:SDIV-4,m)-490.e0_wp*f(4:SDIV-3,m) &
-                             +270.e0_wp*f(5:SDIV-2,m)- 27.e0_wp*f(6:SDIV-1,m)+  2.e0_wp*f(7:SDIV,m)) * inv180DS2
-    end do
-  end subroutine deriv_s_and_ss_vec
-
-  ! Fused: compute df/dm AND d²f/dm² in one pass over f (6th-order, column slices).
-  pure subroutine deriv_m_and_mm_vec(f, df_dm, d2f_dm2)
-    use para_mod, only: SDIV, MDIV, DM
-    real(wp), dimension(SDIV,MDIV), intent(in)  :: f
-    real(wp), dimension(SDIV,MDIV), intent(out) :: df_dm, d2f_dm2
-    real(wp) :: inv60DM, inv180DM2
-    if (r_ratio == 1.e0_wp) then
-      df_dm = 0.e0_wp;  d2f_dm2 = 0.e0_wp
-      return
-    end if
-    if (MDIV < 5) then
-      df_dm(:,1) = (f(:,2) - f(:,1)) / DM
-      if (MDIV > 2) df_dm(:,2:MDIV-1) = (f(:,3:MDIV) - f(:,1:MDIV-2)) / (2.e0_wp*DM)
-      df_dm(:,MDIV) = (f(:,MDIV) - f(:,MDIV-1)) / DM
-      d2f_dm2(:,1) = (f(:,3) - 2.e0_wp*f(:,2) + f(:,1)) / DM**2
-      if (MDIV > 3) d2f_dm2(:,2:MDIV-1) = (f(:,3:MDIV) - 2.e0_wp*f(:,2:MDIV-1) + f(:,1:MDIV-2)) / DM**2
-      d2f_dm2(:,MDIV) = (f(:,MDIV) - 2.e0_wp*f(:,MDIV-1) + f(:,MDIV-2)) / DM**2
-      return
-    end if
-    if (MDIV < 7) then
-      df_dm(:,1) = (-25.e0_wp*f(:,1)+48.e0_wp*f(:,2)-36.e0_wp*f(:,3)+16.e0_wp*f(:,4)-3.e0_wp*f(:,5)) / (12.e0_wp*DM)
-      df_dm(:,2) = ( -3.e0_wp*f(:,1)-10.e0_wp*f(:,2)+18.e0_wp*f(:,3)-6.e0_wp*f(:,4)+f(:,5)) / (12.e0_wp*DM)
-      df_dm(:,MDIV-1) = (3.e0_wp*f(:,MDIV)+10.e0_wp*f(:,MDIV-1)-18.e0_wp*f(:,MDIV-2)+6.e0_wp*f(:,MDIV-3)-f(:,MDIV-4)) / (12.e0_wp*DM)
-      df_dm(:,MDIV) = (25.e0_wp*f(:,MDIV)-48.e0_wp*f(:,MDIV-1)+36.e0_wp*f(:,MDIV-2)-16.e0_wp*f(:,MDIV-3)+3.e0_wp*f(:,MDIV-4)) / (12.e0_wp*DM)
-      d2f_dm2(:,1) = (35.e0_wp*f(:,1)-104.e0_wp*f(:,2)+114.e0_wp*f(:,3)-56.e0_wp*f(:,4)+11.e0_wp*f(:,5)) / (12.e0_wp*DM**2)
-      d2f_dm2(:,2) = (11.e0_wp*f(:,1)-20.e0_wp*f(:,2)+6.e0_wp*f(:,3)+4.e0_wp*f(:,4)-f(:,5)) / (12.e0_wp*DM**2)
-      d2f_dm2(:,MDIV-1) = (11.e0_wp*f(:,MDIV)-20.e0_wp*f(:,MDIV-1)+6.e0_wp*f(:,MDIV-2)+4.e0_wp*f(:,MDIV-3)-f(:,MDIV-4)) / (12.e0_wp*DM**2)
-      d2f_dm2(:,MDIV) = (35.e0_wp*f(:,MDIV)-104.e0_wp*f(:,MDIV-1)+114.e0_wp*f(:,MDIV-2)-56.e0_wp*f(:,MDIV-3)+11.e0_wp*f(:,MDIV-4)) / (12.e0_wp*DM**2)
-      df_dm(:,3:MDIV-2) = (-f(:,5:MDIV)+8.e0_wp*f(:,4:MDIV-1)-8.e0_wp*f(:,2:MDIV-3)+f(:,1:MDIV-4)) / (12.e0_wp*DM)
-      d2f_dm2(:,3:MDIV-2) = (-f(:,5:MDIV)+16.e0_wp*f(:,4:MDIV-1)-30.e0_wp*f(:,3:MDIV-2)+16.e0_wp*f(:,2:MDIV-3)-f(:,1:MDIV-4)) / (12.e0_wp*DM**2)
-      return
-    end if
-    inv60DM   = 1.e0_wp / (60.e0_wp * DM)
-    inv180DM2 = 1.e0_wp / (180.e0_wp * DM**2)
-    ! 6th-order one-sided boundaries (f')
-    df_dm(:,1) = (-147.e0_wp*f(:,1)+360.e0_wp*f(:,2)-450.e0_wp*f(:,3)+400.e0_wp*f(:,4) &
-                  -225.e0_wp*f(:,5)+ 72.e0_wp*f(:,6)- 10.e0_wp*f(:,7)) * inv60DM
-    df_dm(:,2) = ( -10.e0_wp*f(:,1)- 77.e0_wp*f(:,2)+150.e0_wp*f(:,3)-100.e0_wp*f(:,4) &
-                  +  50.e0_wp*f(:,5)- 15.e0_wp*f(:,6)+  2.e0_wp*f(:,7)) * inv60DM
-    df_dm(:,3) = (   2.e0_wp*f(:,1)- 24.e0_wp*f(:,2)- 35.e0_wp*f(:,3)+ 80.e0_wp*f(:,4) &
-                  -  30.e0_wp*f(:,5)+  8.e0_wp*f(:,6)-       f(:,7)) * inv60DM
-    df_dm(:,MDIV-2) = (        f(:,MDIV-6)-  8.e0_wp*f(:,MDIV-5)+ 30.e0_wp*f(:,MDIV-4)- 80.e0_wp*f(:,MDIV-3) &
-                       + 35.e0_wp*f(:,MDIV-2)+ 24.e0_wp*f(:,MDIV-1)-  2.e0_wp*f(:,MDIV)) * inv60DM
-    df_dm(:,MDIV-1) = (  -2.e0_wp*f(:,MDIV-6)+ 15.e0_wp*f(:,MDIV-5)- 50.e0_wp*f(:,MDIV-4)+100.e0_wp*f(:,MDIV-3) &
-                       -150.e0_wp*f(:,MDIV-2)+ 77.e0_wp*f(:,MDIV-1)+ 10.e0_wp*f(:,MDIV)) * inv60DM
-    df_dm(:,MDIV)   = (  10.e0_wp*f(:,MDIV-6)- 72.e0_wp*f(:,MDIV-5)+225.e0_wp*f(:,MDIV-4)-400.e0_wp*f(:,MDIV-3) &
-                       +450.e0_wp*f(:,MDIV-2)-360.e0_wp*f(:,MDIV-1)+147.e0_wp*f(:,MDIV)) * inv60DM
-    ! 5th-order one-sided boundaries (f'')
-    d2f_dm2(:,1) = ( 812.e0_wp*f(:,1)-3132.e0_wp*f(:,2)+5265.e0_wp*f(:,3)-5080.e0_wp*f(:,4) &
-                   +2970.e0_wp*f(:,5)- 972.e0_wp*f(:,6)+ 137.e0_wp*f(:,7)) * inv180DM2
-    d2f_dm2(:,2) = ( 137.e0_wp*f(:,1)- 147.e0_wp*f(:,2)- 255.e0_wp*f(:,3)+ 470.e0_wp*f(:,4) &
-                   - 285.e0_wp*f(:,5)+  93.e0_wp*f(:,6)-  13.e0_wp*f(:,7)) * inv180DM2
-    d2f_dm2(:,3) = ( -13.e0_wp*f(:,1)+ 228.e0_wp*f(:,2)- 420.e0_wp*f(:,3)+ 200.e0_wp*f(:,4) &
-                   +  15.e0_wp*f(:,5)-  12.e0_wp*f(:,6)+   2.e0_wp*f(:,7)) * inv180DM2
-    d2f_dm2(:,MDIV-2) = (  2.e0_wp*f(:,MDIV-6)- 12.e0_wp*f(:,MDIV-5)+ 15.e0_wp*f(:,MDIV-4)+200.e0_wp*f(:,MDIV-3) &
-                          -420.e0_wp*f(:,MDIV-2)+228.e0_wp*f(:,MDIV-1)- 13.e0_wp*f(:,MDIV)) * inv180DM2
-    d2f_dm2(:,MDIV-1) = (-13.e0_wp*f(:,MDIV-6)+ 93.e0_wp*f(:,MDIV-5)-285.e0_wp*f(:,MDIV-4)+470.e0_wp*f(:,MDIV-3) &
-                         -255.e0_wp*f(:,MDIV-2)-147.e0_wp*f(:,MDIV-1)+137.e0_wp*f(:,MDIV)) * inv180DM2
-    d2f_dm2(:,MDIV)   = (137.e0_wp*f(:,MDIV-6)-972.e0_wp*f(:,MDIV-5)+2970.e0_wp*f(:,MDIV-4)-5080.e0_wp*f(:,MDIV-3) &
-                         +5265.e0_wp*f(:,MDIV-2)-3132.e0_wp*f(:,MDIV-1)+812.e0_wp*f(:,MDIV)) * inv180DM2
-    ! Fused 6th-order centered interior: both stencils, column-contiguous slices
-    df_dm(:,4:MDIV-3) = (   -f(:,1:MDIV-6)+ 9.e0_wp*f(:,2:MDIV-5)- 45.e0_wp*f(:,3:MDIV-4) &
-                         + 45.e0_wp*f(:,5:MDIV-2)-  9.e0_wp*f(:,6:MDIV-1)+       f(:,7:MDIV)) * inv60DM
-    d2f_dm2(:,4:MDIV-3) = (  2.e0_wp*f(:,1:MDIV-6)- 27.e0_wp*f(:,2:MDIV-5)+270.e0_wp*f(:,3:MDIV-4)-490.e0_wp*f(:,4:MDIV-3) &
-                           +270.e0_wp*f(:,5:MDIV-2)- 27.e0_wp*f(:,6:MDIV-1)+  2.e0_wp*f(:,7:MDIV)) * inv180DM2
-  end subroutine deriv_m_and_mm_vec
-
   subroutine update_equatorial_radius(r_e_old, r_e_new, dif, sphi_pole_h, gama_pole_h, rho_pole_h, &
                                       gama_equator_h, rho_equator_h, ww_equator_h, sphi_equator_h, &
                                       sphi_center_h, gama_center_h, rho_center_h)
@@ -518,33 +383,33 @@ contains
       end do
     end if
 
-    ! Fused: compute dg/ds and d²g/ds² in one pass over gama
-    call deriv_s_and_ss_vec(gama, dg_s_cache, d2g_ss_cache)
-    dr_s_cache  = deriv_s_vec(rho)
+    dg_s_cache = deriv_s_vec(gama)
+    dr_s_cache = deriv_s_vec(rho)
     dww_s_cache = deriv_s_vec(ww)
-    ds_s_cache  = deriv_s_vec(sphi)
+    ds_s_cache = deriv_s_vec(sphi)
     if (r_ratio == 1.e0_wp) then
-      dg_m_cache  = 0.e0_wp
-      dr_m_cache  = 0.e0_wp
+      dg_m_cache = 0.e0_wp
+      dr_m_cache = 0.e0_wp
       dww_m_cache = 0.e0_wp
-      ds_m_cache  = 0.e0_wp
-      d2g_mm_cache = 0.e0_wp
+      ds_m_cache = 0.e0_wp
     else
-      ! Fused: compute dg/dm and d²g/dm² in one pass over gama
-      call deriv_m_and_mm_vec(gama, dg_m_cache, d2g_mm_cache)
-      dr_m_cache  = deriv_m_vec(rho)
+      dg_m_cache = deriv_m_vec(gama)
+      dr_m_cache = deriv_m_vec(rho)
       dww_m_cache = deriv_m_vec(ww)
-      ds_m_cache  = deriv_m_vec(sphi)
+      ds_m_cache = deriv_m_vec(sphi)
     end if
 
-    ! Chain-rule post-processing: d/ds[s(1-s) dg/ds] and (1-μ²) d²g/dμ² - 2μ dg/dμ
     s1 = s_gp * (1.e0_wp - s_gp)
     m1 = 1.e0_wp - mu**2
     one_minus_2s = 1.e0_wp - 2.e0_wp * s_gp
+    d2g_ss_cache = deriv_s_vec(dg_s_cache)
     do m = 1, MDIV
       d2g_ss_cache(:,m) = s1 * d2g_ss_cache(:,m) + one_minus_2s * dg_s_cache(:,m)
     end do
-    if (r_ratio /= 1.e0_wp) then
+    if (r_ratio == 1.e0_wp) then
+      d2g_mm_cache = 0.e0_wp
+    else
+      d2g_mm_cache = deriv_m_vec(dg_m_cache)
       do m = 1, MDIV
         d2g_mm_cache(:,m) = m1(m) * d2g_mm_cache(:,m) - 2.e0_wp * mu(m) * dg_m_cache(:,m)
       end do
@@ -885,48 +750,53 @@ contains
     exp_rsm_mhalf_gsm = exp(rho - 0.5e0_wp * gama)
     sin_theta_inv = 0.e0_wp; where (sin_theta > 1.e-12_wp) sin_theta_inv = 1.e0_wp / sin_theta
 
-    ! sum_rho(s,m) = -exp_mhalf_gsm(s,m) * sum_n D2_rho(s,n)*P_2n(m,n)
-    ! = -exp_mhalf_gsm * [D2_rho(SDIV,LMAX+1) @ P_2n^T(LMAX+1,MDIV)]  — single DGEMM
-    call dgemm('N','T', SDIV, MDIV, LMAX+1, 1.e0_wp, D2_metric_rho, SDIV, P_2n, MDIV, 0.e0_wp, sum_rho, SDIV)
-    sum_rho = -exp_mhalf_gsm * sum_rho
-
+    ! Monopole term (n=0)
+    do m = 1, MDIV
+      sum_rho(:,m) = -exp_mhalf_gsm(:,m) * D2_metric_rho(:,1) * P_2n(m,1)
+    end do
     sum_gama = 0.e0_wp
     sum_gama(:,1:MDIV-1) = -(2.e0_wp/pi) * exp_mhalf_gsm(:,1:MDIV-1) * spread(D2_metric_gama(:,2), 2, MDIV-1)
     sum_gama(:,MDIV) = -(2.e0_wp/pi) * exp_mhalf_gsm(:, MDIV) * D2_metric_gama(:, 2)
     sum_omega = 0.e0_wp
-
     if ( mphi_r > (mphi_tran / l_uni)**2 * KAPPA / 1.e10_wp ) then
-      ! Massive scalar: sum_sphi(s,m) = -exp_mhalf_gsm(s,m) * sum_n (2n+1)*D2_sphi(s,n)*P_2n(m,n)
-      ! Scale D2_sphi columns by (2n+1), then single DGEMM
-      block
-        real(wp) :: D2_sphi_scaled(SDIV, LMAX+1)
-        integer :: nn
-        do nn = 0, LMAX
-          D2_sphi_scaled(:,nn+1) = real(2*nn+1, wp) * D2_metric_sphi(:,nn+1)
-        end do
-        call dgemm('N','T', SDIV, MDIV, LMAX+1, 1.e0_wp, D2_sphi_scaled, SDIV, P_2n, MDIV, 0.e0_wp, sum_sphi, SDIV)
-      end block
-      sum_sphi = -exp_mhalf_gsm * sum_sphi
+      do m = 1, MDIV
+        sum_sphi(:,m) = -exp_mhalf_gsm(:,m) * D2_metric_sphi(:,1) * P_2n(m,1)
+      end do
     else
-      ! Massless scalar: sum_sphi(s,m) = -sum_n D2_sphi(s,n)*P_2n(m,n)
-      call dgemm('N','T', SDIV, MDIV, LMAX+1, -1.e0_wp, D2_metric_sphi, SDIV, P_2n, MDIV, 0.e0_wp, sum_sphi, SDIV)
+      do m = 1, MDIV
+        sum_sphi(:,m) = -D2_metric_sphi(:,1) * P_2n(m,1)
+      end do
     endif
-
-    if (r_ratio == 1.e0_wp) then
+  
+    if (r_ratio == 1.e0_wp) then 
       target_rho  = sum_rho
       target_gama = sum_gama
       target_ww   = sum_omega
       target_sphi = sum_sphi
       return
     endif
-    ! Higher multipoles (n=1 to LMAX) — omega and gama kept as loops
-    ! (special pole treatment at m=MDIV prevents a clean DGEMM)
+    ! Higher multipoles (n=1 to LMAX)
     do n = 1, LMAX
+      do m = 1, MDIV
+        sum_rho(:,m) = sum_rho(:,m) - exp_mhalf_gsm(:,m) * D2_metric_rho(:,n+1) * P_2n(m,n+1)
+      end do
+
       do m = 1, MDIV-1
         sum_omega(:,m) = sum_omega(:,m) - exp_rsm_mhalf_gsm(:,m) * D2_metric_omega(:,n+1) * &
           (P1_2n_1(m,n+1) * sin_theta_inv(m) / (2.e0_wp*n*(2.e0_wp*n-1.e0_wp)))
       end do
       sum_omega(:,MDIV) = sum_omega(:,MDIV) + exp_rsm_mhalf_gsm(:,MDIV) * D2_metric_omega(:,n+1) / 2.e0_wp
+
+      if ( mphi_r > (mphi_tran / l_uni)**2 * KAPPA / 1.e10_wp ) then
+        do m = 1, MDIV
+          sum_sphi(:,m) = sum_sphi(:,m) - exp_mhalf_gsm(:,m) * (2.e0_wp*dble(n)+1.e0_wp) * &
+            D2_metric_sphi(:,n+1) * P_2n(m,n+1)
+        end do
+      else
+        do m = 1, MDIV
+          sum_sphi(:,m) = sum_sphi(:,m) - D2_metric_sphi(:,n+1) * P_2n(m,n+1)
+        end do
+      endif
     end do
 
     do n = 2, LMAX
