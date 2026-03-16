@@ -11,7 +11,15 @@ module ope_eq_mod
   end type gradient_vector
 
   type :: laplacian_operator
+    ! Geometry cached by init(); call op%init() once after r_e is set.
+    ! Allocatable because SDIV/MDIV are runtime variables, not parameters.
+    real(wp), allocatable :: r_phys(:)            ! r = r_e * s / (1-s)
+    real(wp), allocatable :: ds_dr(:), ds_dr_sq(:)! ds/dr, (ds/dr)^2
+    real(wp), allocatable :: d2s_dr2(:)           ! d^2s/dr^2
+    real(wp), allocatable :: inv_r(:), inv_r2(:)  ! 1/r, 1/r^2  (0 at origin)
+    real(wp), allocatable :: m1(:)                ! 1 - mu^2
   contains
+    procedure :: init
     procedure :: deriv_r
     procedure :: deriv_rr
     procedure :: deriv_t
@@ -29,12 +37,33 @@ contains
   ! Public type-bound procedures
   ! -----------------------------------------------------------------------
 
+  ! Must be called once after r_e is known (and again if r_e changes).
+  subroutine init(self)
+    class(laplacian_operator), intent(inout) :: self
+    if (.not. allocated(self%r_phys)) then
+      allocate(self%r_phys(SDIV), self%ds_dr(SDIV), self%ds_dr_sq(SDIV))
+      allocate(self%d2s_dr2(SDIV), self%inv_r(SDIV), self%inv_r2(SDIV))
+      allocate(self%m1(MDIV))
+    end if
+    self%r_phys   = r_e * s_gp / max(1.e-30_wp, 1.e0_wp - s_gp)
+    self%ds_dr    = (1.e0_wp - s_gp)**2 / max(r_e, 1.e-30_wp)
+    self%ds_dr_sq = self%ds_dr**2
+    self%d2s_dr2  = -2.e0_wp * (1.e0_wp - s_gp)**3 / max(r_e**2, 1.e-30_wp)
+    where (self%r_phys >= 1.e-30_wp)
+      self%inv_r = 1.e0_wp / self%r_phys
+    elsewhere
+      self%inv_r = 0.e0_wp
+    end where
+    self%inv_r2 = self%inv_r**2
+    self%m1 = 1.e0_wp - mu**2
+  end subroutine init
+
   function deriv_r(self, f) result(df_dr)
     class(laplacian_operator), intent(in) :: self
     real(wp), intent(in) :: f(:)
     real(wp) :: df_dr(size(f))
     if (size(f) /= SDIV) stop "deriv_r: size mismatch"
-    df_dr = deriv_s_1d(f) * ((1.e0_wp - s_gp)**2) / max(r_e, 1.e-30_wp)
+    df_dr = deriv_s_1d(f) * self%ds_dr
   end function deriv_r
 
   function deriv_rr(self, f) result(df_drr)
@@ -42,12 +71,9 @@ contains
     real(wp), intent(in) :: f(:)
     real(wp) :: df_drr(size(f))
     real(wp) :: df_ds(SDIV), d2f_ds2(SDIV)
-    real(wp) :: ds_dr(SDIV), d2s_dr2(SDIV)
     if (size(f) /= SDIV) stop "deriv_rr: size mismatch"
     call deriv_s_and_ss_1d(f, df_ds, d2f_ds2)
-    ds_dr   = (1.e0_wp - s_gp)**2  / max(r_e,    1.e-30_wp)
-    d2s_dr2 = -2.e0_wp * (1.e0_wp - s_gp)**3 / max(r_e**2, 1.e-30_wp)
-    df_drr  = d2f_ds2 * ds_dr**2 + df_ds * d2s_dr2
+    df_drr = d2f_ds2 * self%ds_dr_sq + df_ds * self%d2s_dr2
   end function deriv_rr
 
   function deriv_t(self, f) result(df_dt)
@@ -55,7 +81,7 @@ contains
     real(wp), intent(in) :: f(:)
     real(wp) :: df_dt(size(f))
     if (size(f) /= MDIV) stop "deriv_t: size mismatch"
-    df_dt = -sqrt(max(0.e0_wp, 1.e0_wp - mu**2)) * deriv_mu_1d(f)
+    df_dt = -sqrt(max(0.e0_wp, self%m1)) * deriv_mu_1d(f)
   end function deriv_t
 
   function deriv_tt(self, f) result(df_dtt)
@@ -65,21 +91,16 @@ contains
     real(wp) :: df_dmu(MDIV), d2f_dmu2(MDIV)
     if (size(f) /= MDIV) stop "deriv_tt: size mismatch"
     call deriv_mu_and_mumu_1d(f, df_dmu, d2f_dmu2)
-    df_dtt = (1.e0_wp - mu**2) * d2f_dmu2 - mu * df_dmu
+    df_dtt = self%m1 * d2f_dmu2 - mu * df_dmu
   end function deriv_tt
 
   function divr(self, f) result(df_over_r)
     class(laplacian_operator), intent(in) :: self
     real(wp), intent(in) :: f(:,:)
     real(wp) :: df_over_r(size(f,1), size(f,2))
-    real(wp) :: r_phys(SDIV)
     if (size(f,1) /= SDIV .or. size(f,2) /= MDIV) stop "divr: size mismatch"
-    r_phys = r_e * s_gp / max(1.e-30_wp, 1.e0_wp - s_gp)
-    where (spread(r_phys, dim=2, ncopies=MDIV) < 1.e-30_wp)
-      df_over_r = 0.e0_wp
-    elsewhere
-      df_over_r = f / spread(r_phys, dim=2, ncopies=MDIV)
-    end where
+    ! inv_r is 0 at origin, so no where-guard needed
+    df_over_r = f * spread(self%inv_r, dim=2, ncopies=MDIV)
   end function divr
 
   function grad(self, f) result(g)
@@ -87,17 +108,15 @@ contains
     real(wp), intent(in) :: f(:,:)
     type(gradient_vector) :: g
     real(wp) :: f_T(MDIV,SDIV)
-    real(wp) :: ds_dr(SDIV)
     integer :: s, m
     if (size(f,1) /= SDIV .or. size(f,2) /= MDIV) stop "grad: size mismatch"
     allocate(g%r(SDIV,MDIV), g%t(SDIV,MDIV))
-    ds_dr = (1.e0_wp - s_gp)**2 / max(r_e, 1.e-30_wp)
     do m = 1, MDIV
-      g%r(:,m) = deriv_s_1d(f(:,m)) * ds_dr
+      g%r(:,m) = deriv_s_1d(f(:,m)) * self%ds_dr
     end do
     f_T = transpose(f)
     do s = 1, SDIV
-      g%t(s,:) = -sqrt(max(0.e0_wp, 1.e0_wp - mu**2)) * deriv_mu_1d(f_T(:,s))
+      g%t(s,:) = -sqrt(max(0.e0_wp, self%m1)) * deriv_mu_1d(f_T(:,s))
     end do
   end function grad
 
@@ -105,97 +124,63 @@ contains
     class(laplacian_operator), intent(in) :: self
     type(gradient_vector), intent(in) :: x, y
     real(wp) :: prod(size(x%r,1), size(x%r,2))
-    real(wp) :: r_phys(SDIV)
     if (.not. allocated(x%r) .or. .not. allocated(x%t)) stop "scal: x gradient not allocated"
     if (.not. allocated(y%r) .or. .not. allocated(y%t)) stop "scal: y gradient not allocated"
     if (size(x%r,1) /= SDIV .or. size(x%r,2) /= MDIV) stop "scal: x%r size mismatch"
     if (size(x%t,1) /= SDIV .or. size(x%t,2) /= MDIV) stop "scal: x%t size mismatch"
     if (size(y%r,1) /= SDIV .or. size(y%r,2) /= MDIV) stop "scal: y%r size mismatch"
     if (size(y%t,1) /= SDIV .or. size(y%t,2) /= MDIV) stop "scal: y%t size mismatch"
-    r_phys = r_e * s_gp / max(1.e-30_wp, 1.e0_wp - s_gp)
-    prod = x%r * y%r
-    where (spread(r_phys**2, dim=2, ncopies=MDIV) >= 1.e-30_wp)
-      prod = prod + x%t * y%t / spread(r_phys**2, dim=2, ncopies=MDIV)
-    end where
+    ! inv_r2 = 0 at origin, handles singularity without where-guard
+    prod = x%r * y%r + x%t * y%t * spread(self%inv_r2, dim=2, ncopies=MDIV)
   end function scal
 
   ! lap2 = f_rr + (1/r) f_r + (1/r²) f_θθ   (KEH operator)
-  ! Optimisations vs. original:
-  !   - one combined radial pass (no separate radial_r / radial_rr temporaries)
-  !   - transpose(f) for cache-friendly angular access
-  !   - precomputed inv_r, inv_r2 (no repeated spread)
   function lap2(self, f) result(lap)
     class(laplacian_operator), intent(in) :: self
     real(wp), intent(in) :: f(:,:)
     real(wp) :: lap(SDIV,MDIV)
-    real(wp) :: r_phys(SDIV), ds_dr(SDIV), d2s_dr2(SDIV), inv_r(SDIV), inv_r2(SDIV)
-    real(wp) :: df_ds(SDIV), d2f_ds2(SDIV)
+    real(wp) :: df_ds(SDIV), d2f_ds2(SDIV), coeff_r(SDIV)
     real(wp) :: df_dmu(MDIV), d2f_dmu2(MDIV)
     real(wp) :: f_T(MDIV,SDIV)
     integer :: s, m
 
     if (size(f,1) /= SDIV .or. size(f,2) /= MDIV) stop "lap2: size mismatch"
 
-    r_phys  = r_e * s_gp / max(1.e-30_wp, 1.e0_wp - s_gp)
-    ds_dr   = (1.e0_wp - s_gp)**2 / max(r_e, 1.e-30_wp)
-    d2s_dr2 = -2.e0_wp * (1.e0_wp - s_gp)**3 / max(r_e**2, 1.e-30_wp)
-    where (r_phys >= 1.e-30_wp)
-      inv_r = 1.e0_wp / r_phys
-    elsewhere
-      inv_r = 0.e0_wp
-    end where
-    inv_r2 = inv_r**2
-
-    ! Radial: f_rr + (1/r) f_r  — one combined pass, no large intermediates
+    coeff_r = self%d2s_dr2 + self%inv_r * self%ds_dr   ! d2s/dr2 + (1/r) ds/dr
     do m = 1, MDIV
       call deriv_s_and_ss_1d(f(:,m), df_ds, d2f_ds2)
-      lap(:,m) = d2f_ds2 * ds_dr**2 + df_ds * (d2s_dr2 + inv_r * ds_dr)
+      lap(:,m) = d2f_ds2 * self%ds_dr_sq + df_ds * coeff_r
     end do
 
-    ! Angular: (1/r²) f_θθ = (1/r²) [(1-μ²) f_μμ - μ f_μ]
-    ! Transpose for contiguous row access (f_T(:,s) is stride-1)
     f_T = transpose(f)
     do s = 1, SDIV
       call deriv_mu_and_mumu_1d(f_T(:,s), df_dmu, d2f_dmu2)
-      lap(s,:) = lap(s,:) + inv_r2(s) * ((1.e0_wp - mu**2) * d2f_dmu2 - mu * df_dmu)
+      lap(s,:) = lap(s,:) + self%inv_r2(s) * (self%m1 * d2f_dmu2 - mu * df_dmu)
     end do
   end function lap2
 
   ! laplacian = f_rr + (2/r) f_r + (1/r²) [(1-μ²) f_μμ - 2μ f_μ]   (full 3D flat)
-  ! Does NOT call lap2 — computes all terms in one radial pass and one angular pass.
   function laplacian(self, f) result(lap)
     class(laplacian_operator), intent(in) :: self
     real(wp), intent(in) :: f(:,:)
     real(wp) :: lap(SDIV,MDIV)
-    real(wp) :: r_phys(SDIV), ds_dr(SDIV), d2s_dr2(SDIV), inv_r(SDIV), inv_r2(SDIV)
-    real(wp) :: df_ds(SDIV), d2f_ds2(SDIV)
+    real(wp) :: df_ds(SDIV), d2f_ds2(SDIV), coeff_r(SDIV)
     real(wp) :: df_dmu(MDIV), d2f_dmu2(MDIV)
     real(wp) :: f_T(MDIV,SDIV)
     integer :: s, m
 
     if (size(f,1) /= SDIV .or. size(f,2) /= MDIV) stop "laplacian: size mismatch"
 
-    r_phys  = r_e * s_gp / max(1.e-30_wp, 1.e0_wp - s_gp)
-    ds_dr   = (1.e0_wp - s_gp)**2 / max(r_e, 1.e-30_wp)
-    d2s_dr2 = -2.e0_wp * (1.e0_wp - s_gp)**3 / max(r_e**2, 1.e-30_wp)
-    where (r_phys >= 1.e-30_wp)
-      inv_r = 1.e0_wp / r_phys
-    elsewhere
-      inv_r = 0.e0_wp
-    end where
-    inv_r2 = inv_r**2
-
-    ! Radial: f_rr + (2/r) f_r  — fused into single stencil evaluation
+    coeff_r = self%d2s_dr2 + 2.e0_wp * self%inv_r * self%ds_dr  ! d2s/dr2 + (2/r) ds/dr
     do m = 1, MDIV
       call deriv_s_and_ss_1d(f(:,m), df_ds, d2f_ds2)
-      lap(:,m) = d2f_ds2 * ds_dr**2 + df_ds * (d2s_dr2 + 2.e0_wp * inv_r * ds_dr)
+      lap(:,m) = d2f_ds2 * self%ds_dr_sq + df_ds * coeff_r
     end do
 
-    ! Angular: (1/r²) [(1-μ²) f_μμ - 2μ f_μ]  (full 3D: f_θθ + cot θ f_θ) / r²
     f_T = transpose(f)
     do s = 1, SDIV
       call deriv_mu_and_mumu_1d(f_T(:,s), df_dmu, d2f_dmu2)
-      lap(s,:) = lap(s,:) + inv_r2(s) * ((1.e0_wp - mu**2) * d2f_dmu2 - 2.e0_wp * mu * df_dmu)
+      lap(s,:) = lap(s,:) + self%inv_r2(s) * (self%m1 * d2f_dmu2 - 2.e0_wp * mu * df_dmu)
     end do
   end function laplacian
 

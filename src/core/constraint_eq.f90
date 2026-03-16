@@ -8,6 +8,8 @@ module constrain_mod
 
   public :: hamiltonian
 
+  type(laplacian_operator) :: op   ! allocated once on first hamiltonian call
+
 contains
 
   subroutine hamiltonian(hamL2)
@@ -20,7 +22,6 @@ contains
     real(wp), dimension(SDIV,MDIV) :: r2_2d, m1_2d
     integer :: unit, ios, s, m
     type(gradient_vector) :: grad_logPsi4, grad_ww, grad_sphi, grad_alp
-    type(laplacian_operator) :: op
 
     r_phys = r_e * s_gp / max(1.e-30_wp, 1.e0_wp - s_gp)
     r2_2d  = spread(r_phys**2, dim=2, ncopies=MDIV)
@@ -32,6 +33,7 @@ contains
     lapsesq= exp(gama + rho) - ww * twist
     rhoH   = (energy + pressure) / (1.e0_wp - velocity_sq) - pressure
     
+    call op%init()
     grad_logPsi4 = op%grad(logPsi4)
     grad_ww      = op%grad(ww)
     grad_sphi    = op%grad(sphi)
@@ -60,17 +62,19 @@ contains
     !write(*,*) " "
     !write(*,'(10es8.1)') 16.e0_wp * pi * rhoH(:,1)
 
-    open(newunit=unit, file="./Cont/hamiltonain.dat", status="replace", action="write", iostat=ios)
-    write(unit,"(2(i0,2X))") SDIV, MDIV
-    if (ios == 0) then
-      do s = 1, SDIV
-        do m = 1, MDIV
-          write(unit, "(3es24.15)") s_gp(s), mu(m), ham(s,m)
+    if (.false.) then
+      open(newunit=unit, file="./Cont/hamiltonain.dat", status="replace", action="write", iostat=ios)
+      write(unit,"(2(i0,2X))") SDIV, MDIV
+      if (ios == 0) then
+        do s = 1, SDIV
+          do m = 1, MDIV
+            write(unit, "(3es24.15)") s_gp(s), mu(m), ham(s,m)
+          end do
         end do
-      end do
-      close(unit)
-    else
-      write(*,*) "hamiltonian: failed to open ./Cont/hamiltonain.dat"
+        close(unit)
+      else
+        write(*,*) "hamiltonian: failed to open ./Cont/hamiltonain.dat"
+      end if
     end if
   end subroutine hamiltonian
 
