@@ -14,6 +14,7 @@ subroutine rotation_solver
   real(wp) :: rho_pole_h, rho_center_h, rho_equator_h, ww_equator_h
   real(wp) :: sphi_pole_h, sphi_center_h, sphi_equator_h
   real(wp) :: root_mphi_re, sqrt_B_coup
+  real(wp) :: hamL2
   logical :: zero_scalar_mode
   character(32) :: fil1, fil2, fil3, fil4, fil5, fil6
 

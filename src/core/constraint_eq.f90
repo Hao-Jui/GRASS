@@ -1,6 +1,6 @@
 module constrain_mod
   use precision_mod, only: wp
-  use para_mod, only: SDIV, MDIV, r_e, s_gp, mu, rho, gama, alpha, ww, &
+  use para_mod, only: SDIV, MDIV, DS, DM, r_e, s_gp, mu, rho, gama, alpha, ww, &
                       energy, pressure, sphi, mphi_r, B_coup, pi, has_scalar, velocity_sq
   use ope_eq_mod, only: laplacian_operator, gradient_vector
   implicit none
@@ -14,7 +14,7 @@ contains
     real(wp), intent(out) :: hamL2
     real(wp), dimension(SDIV,MDIV) :: ham
     real(wp), dimension(SDIV,MDIV) :: logPsi4
-    real(wp), dimension(SDIV,MDIV) :: ricci, ricci_lap, ricci_scal
+    real(wp), dimension(SDIV,MDIV) :: ricci, ricci_lap, ricci_scal, check
     real(wp), dimension(SDIV,MDIV) :: lapsesq, psi4, gurr, twist, KK, rhoH, dphidphi, Vphi
     real(wp), dimension(SDIV) :: r_phys
     real(wp), dimension(SDIV,MDIV) :: r2_2d, m1_2d
@@ -41,6 +41,7 @@ contains
     ricci_scal = 0.25e0_wp * op%scal(grad_logPsi4, grad_logPsi4) + 0.5e0_wp * op%divr(grad_logPsi4%r)
     ricci = -2.e0_wp * gurr * (ricci_lap + ricci_scal )
 
+    check = op%scal(grad_logPsi4, grad_logPsi4) 
     if (has_scalar .and. abs(B_coup) > 1.e-30_wp) then
       dphidphi = op%scal(grad_sphi, grad_sphi) * gurr
       Vphi     = 0.5e0_wp * mphi_r**2 * sphi**2 / B_coup
@@ -53,8 +54,9 @@ contains
     !   / max(r2_2d, 1.e-30_wp) / max(m1_2d, 1.e-30_wp)
     KK = 0.5e0_wp * gurr * exp(-2.e0_wp * rho) * r2_2d * m1_2d * op%scal(grad_ww, grad_ww)
     ham = ricci + KK - 16.e0_wp * pi * rhoH - lapsesq * (dphidphi + 2.e0_wp * Vphi)
-    hamL2 = sqrt(sum(ham**2) / real(SDIV*MDIV, wp))
-    write(*,'(10es8.1)') ricci(:,1)
+    hamL2 = 4.e0_wp * pi * r_e**3 * DS * DM * &
+            sum(ham**2 * spread(s_gp**2 / max(1.e-30_wp, 1.e0_wp - s_gp)**4, dim=2, ncopies=MDIV))
+    !write(*,'(16es8.1)') ricci(:,1)
     !write(*,*) " "
     !write(*,'(10es8.1)') 16.e0_wp * pi * rhoH(:,1)
 
