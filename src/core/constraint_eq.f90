@@ -15,9 +15,9 @@ contains
   subroutine hamiltonian(hamL2)
     real(wp), intent(out) :: hamL2
     real(wp), dimension(SDIV,MDIV) :: ham
-    real(wp), dimension(SDIV,MDIV) :: logPsi4
+    real(wp), dimension(SDIV,MDIV) :: logPsi4, acoup4
     real(wp), dimension(SDIV,MDIV) :: ricci, ricci_lap, ricci_scal, check
-    real(wp), dimension(SDIV,MDIV) :: lapsesq, psi4, gurr, twist, KK, rhoH, dphidphi, Vphi
+    real(wp), dimension(SDIV,MDIV) :: psi4, gutt, gurr, twist, KK, rhoH, dphidphi, Vphi
     real(wp), dimension(SDIV) :: r_phys
     real(wp), dimension(SDIV,MDIV) :: r2_2d, m1_2d
     integer :: unit, ios, s, m
@@ -28,9 +28,10 @@ contains
     m1_2d  = spread(1.e0_wp - mu**2, dim=1, ncopies=SDIV)
     psi4   = exp(gama - rho)
     logPsi4= gama - rho
+    acoup4 = exp(-sphi**2 * B_coup)
     gurr   = exp(-2.e0_wp * alpha)
     twist  = psi4 * r2_2d * m1_2d * ww
-    lapsesq= exp(gama + rho) - ww * twist
+    gutt   = -exp(gama + rho)
     rhoH   = (energy + pressure) / (1.e0_wp - velocity_sq) - pressure
     
     call op%init()
@@ -55,14 +56,17 @@ contains
     !KK = 0.5e0_wp * gurr / psi4 / max(lapsesq, 1.e-30_wp) * op%scal(grad_ww, grad_ww) &
     !   / max(r2_2d, 1.e-30_wp) / max(m1_2d, 1.e-30_wp)
     KK = 0.5e0_wp * gurr * exp(-2.e0_wp * rho) * r2_2d * m1_2d * op%scal(grad_ww, grad_ww)
-    ham = ricci + KK - 16.e0_wp * pi * rhoH - lapsesq * (dphidphi + 2.e0_wp * Vphi)
+    ham = ricci + KK - 16.e0_wp * pi * rhoH * acoup4 - 2.e0_wp * (dphidphi + 2.e0_wp * Vphi)
+
     hamL2 = 4.e0_wp * pi * r_e**3 * DS * DM * &
             sum(ham**2 * spread(s_gp**2 / max(1.e-30_wp, 1.e0_wp - s_gp)**4, dim=2, ncopies=MDIV))
     !write(*,'(16es8.1)') ricci(:,1)
     !write(*,*) " "
-    !write(*,'(10es8.1)') 16.e0_wp * pi * rhoH(:,1)
+    !write(*,'(16es8.1)') 16.e0_wp * pi * rhoH(:,1) * acoup4(:,1)
+    !write(*,*) " "
+    !write(*,'(16es8.1)') Vphi(:,1)
 
-    if (.false.) then
+    if (.true.) then
       open(newunit=unit, file="./Cont/hamiltonain.dat", status="replace", action="write", iostat=ios)
       write(unit,"(2(i0,2X))") SDIV, MDIV
       if (ios == 0) then
