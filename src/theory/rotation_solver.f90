@@ -1,8 +1,22 @@
 module rotation_uniform
-  use precision_mod
+  use precision_mod, only: wp
   use toolkit_mod
-  use para_mod
-  use spin_helper
+  use para_mod, only: active_theory, THEORY_GR, &
+                      rho, gama, alpha, ww, omg, sphi, &
+                      r_e, r_ratio, h_center, MDIV, &
+                      B_coup, mphi_r, F_j, &
+                      sphi_c, sphi_m, Omega_c, Omega_e, &
+                      Fmax_h, n_of_relaxation_steps, timing
+  use spin_helper, only: dif, &
+                         target_rho, target_gama, target_ww, target_sphi, &
+                         dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, &
+                         dww_s_cache, dww_m_cache, ds_s_cache, ds_m_cache, &
+                         d2g_ss_cache, d2g_mm_cache, e_rsm_cache, &
+                         D2_metric_rho, D2_metric_omega, &
+                         allocate_workspace, deallocate_workspace, &
+                         update_equatorial_radius, update_angular_velocity, &
+                         update_eos_and_velocity, get_all_targets, &
+                         relaxation, update_alpha_potential, output_helper
   implicit none
 contains
 

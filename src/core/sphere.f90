@@ -5,7 +5,10 @@
 ! ********************************************* !
 subroutine sphere
   use toolkit_mod, only: interp
-  use para_mod
+  use para_mod, only: SDIV, RDIV, MDIV, KAPPA, C, G, MSUN, KSCALE, &
+                      s_gp, s_pwr, s_e, r_e, mphi_r, &
+                      sphi, rho, gama, alpha, energy, pressure, ww, omg, &
+                      enthalpy, enthalpy_min, mu, velocity_sq, disk_present
     implicit none
     integer :: s, m
     real(8) r_is_s, r_is_final, r_final, m_final, &
@@ -87,7 +90,8 @@ end subroutine sphere
 subroutine TOV(i_check, r_is_gp, lambda_gp, nu_gp, e_d_gp, &
     r_is_final, r_final, m_final)
 
-    use para_mod
+    use para_mod, only: RDIV, KAPPA, C, KSCALE, MB, &
+                        e_surface, p_surface, p_center, e_center
     integer :: i_check, i
     real(8), intent(inout) :: r_is_final
     real(8), intent(out) :: r_final, m_final

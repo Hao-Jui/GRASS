@@ -4,8 +4,8 @@ FC      = gfortran
 
 MODE    ?= Release
 BASE_FFLAGS := -I.
-RELEASE_FFLAGS := -O2 -march=native -ftree-vectorize
-DEBUG_FFLAGS := -O0 -g -fbacktrace -Wall -Wextra -Wimplicit-interface -fcheck=all -ffpe-trap=invalid,zero,overflow -finit-real=snan
+RELEASE_FFLAGS := -O2 -march=native
+DEBUG_FFLAGS := -O0 -g -fbacktrace -Wall -Wextra -Wimplicit-interface -fcheck=all -Wuninitialized -Wconversion -Wuse-without-only -fsanitize=address -ffpe-trap=invalid,zero,overflow -finit-real=snan
 ifeq ($(MODE),Release)
   MODE_FFLAGS := $(RELEASE_FFLAGS)
 else ifeq ($(MODE),Debug)

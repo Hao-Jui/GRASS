@@ -1,6 +1,12 @@
 module starting_model_mod
-  use precision_mod
-  use para_mod
+  use precision_mod, only: wp
+  use para_mod, only: run_mode, MODE_REGRID, &
+                      SDIV, MDIV, e_center, p_center, h_center, &
+                      C, KSCALE, KAPPA, &
+                      solver_type, r_ratio, use_shoot_1d, output, &
+                      active_theory, THEORY_GR, &
+                      mphi_goal, mphi_burn_threshold, &
+                      B_coup, B_goal, mphi_r, l_uni
   use rotation_uniform,  only: rotation_solver
   use miscellaneous_mod, only: print_converged_block
   use scalar_burning_mod, only: perform_scalar_burn
@@ -14,6 +20,7 @@ contains
     select case (run_mode)
     case (MODE_REGRID)
       call regrid_read(SDIV, MDIV, 2)
+      e_center = 4.e15_wp
       e_center = e_center * C * C * KSCALE
       p_center = p_at_e(e_center)
       h_center = h_at_p(p_center)
@@ -31,7 +38,7 @@ contains
       end if
     end select
 
-    if (.not. use_shoot_1d .and. r_ratio == 1.e0_wp) r_ratio = min(r_ratio, 0.9e0_wp)
+    if (.not. use_shoot_1d .and. abs(r_ratio - 1.e0_wp) < epsilon(r_ratio)) r_ratio = min(r_ratio, 0.9e0_wp)
 
     if (active_theory /= THEORY_GR) then
       B_coup  = B_goal

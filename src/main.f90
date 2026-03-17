@@ -1,9 +1,11 @@
 program grass
   use toolkit_mod, only: debug_mod_bessel
-  use para_mod
+  use para_mod, only: wp, initialize_theory, &
+                      has_scalar, mphi_goal, scalarton, B_goal, &
+                      relaxation_scheme, solver_type, A_diff, lambda1, lambda2, &
+                      s_gp, SDIV, MDIV, s_pwr, e_surface, C, KSCALE
   use constrain_mod, only: hamiltonian
   implicit none
-  character(len=64) :: theory_arg
   real(wp) :: hamL2
 
   call initialize_theory()

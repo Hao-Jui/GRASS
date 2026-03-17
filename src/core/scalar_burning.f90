@@ -1,6 +1,9 @@
 module scalar_burning_mod
-  use precision_mod
-  use para_mod
+  use precision_mod, only: wp
+  use para_mod, only: active_theory, THEORY_GR, &
+                      B_coup, B_burn_init, &
+                      mphi_r, mphi_burn_seed, l_uni, KAPPA, &
+                      scalar_burn_max_iter, sphi_c, sphi_m, output
   use rotation_uniform,  only: rotation_solver
   implicit none
 contains

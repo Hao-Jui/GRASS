@@ -1,5 +1,10 @@
 subroutine shoot_v2
-  use para_mod
+  use para_mod, only: wp, h_center, r_ratio, mass, mass_0, mass_p, chi, chi_goal, &
+                      Omega_c, KAPPA, C, KSCALE, MB, MSUN, pi, n_sat, &
+                      I_inertia, Love2, M2, M4, S3, T_kin, &
+                      mphi_goal, B_goal, eos_file, sound_speed, r_circ, &
+                      accuracy, output, use_shoot_1d, start, finish, &
+                      n_of_relaxation_steps
   use shoot_solver_mod
   use shoot_solver_mod_1d
   use rotation_uniform,  only: rotation_solver
@@ -86,8 +91,8 @@ contains
     real(wp) :: Q_bar, T_over_W
     integer  :: unit
     character(16) :: fil1, fil2
-    Q_bar = merge(-1.d0, M2/chi**2, chi==0.d0)
-    T_over_W=merge(-1.d0, T_kin/abs(Mass_p - Mass + T_kin), chi==0.d0)
+    Q_bar = merge(-1.d0, M2/chi**2, chi < 1.e-30_wp)
+    T_over_W=merge(-1.d0, T_kin/abs(Mass_p - Mass + T_kin), chi < 1.e-30_wp)
     write(fil1,"(f10.1)") mphi_goal
     write(fil2,"(es12.1)") B_goal
     open(newunit=unit,file="/Users/horay/Data4Projects/HT/Seq_"//trim(adjustl(eos_file))//".dat",access='append')
@@ -176,7 +181,11 @@ contains
 end subroutine shoot_v2
 
 subroutine print_iter_status(it, rho0, ee, er)
-  use para_mod
+  use para_mod, only: wp, active_theory, THEORY_GR, &
+                      B_coup, mphi_r, sphi_c, l_uni, &
+                      KAPPA, C, KSCALE, rho_uni, MB, MSUN, pi, &
+                      r_ratio, Omega_c, Omega_K, Omega_e, &
+                      mass, mass_0, mass_p, ang_mom, chi, T_kin, r_e, r_circ
   implicit none
   integer, intent(in) :: it
   real(wp), intent(in) :: rho0, ee, er

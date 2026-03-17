@@ -1,5 +1,7 @@
 subroutine loadEos
-    use para_mod
+    use para_mod, only: p_at_PT, eos_file, num_tab, &
+                        log_e, log_p, log_h, log_n0, &
+                        enthalpy_min, C, KSCALE
     implicit none
     integer :: i
 

@@ -1,5 +1,10 @@
 subroutine mass_radius()
-  use para_mod
+  use para_mod, only: wp, SDIV, MDIV, s_gp, s_pwr, s_e, mu, &
+                      gama, rho, alpha, ww, omg, sphi, energy, pressure, velocity_sq, &
+                      r_e, r_ratio, r_circ, &
+                      mass, mass_0, mass_p, T_kin, ang_mom, chi, Omega_K, &
+                      B_coup, mphi_r, pi, KAPPA, C, G, MSUN, &
+                      v_plus, v_minus, V_rr_p, V_rr_m, output
   use toolkit_mod, only: interp, deriv_s_1d, integrate_profiles
   implicit none
   integer :: s
@@ -75,7 +80,7 @@ contains
   real(wp) function Kepler() result(val)
     integer :: s 
     real(wp) :: doe, dge, dre, vek
-    real(wp) :: s_p, gama_pole, rho_pole, gama_equator, rho_equator, ww_equator, sphi_equator, wwe
+    real(wp) :: s_p, gama_pole, rho_pole, gama_equator, rho_equator, sphi_equator, wwe
     s_p = r_ratio**(1.e0_wp/dble(s_pwr)) / (1.e0_wp + r_ratio**(1.e0_wp/dble(s_pwr)))
     do s = 1, SDIV
       d_r_e(s) = deriv_s_1d(rho(:,1),s)
@@ -87,7 +92,7 @@ contains
     call interp(s_gp, gama_mu_0,  SDIV, s_e, gama_equator)
     call interp(s_gp,  rho_mu_0,  SDIV, s_e, rho_equator)
     call interp(s_gp, sphi_mu_0,  SDIV, s_e, sphi_equator)
-    if (r_ratio.eq.1.e0_wp) then
+    if (r_ratio >= 1.e0_wp) then
       wwe = 0.e0_wp
     else
       call interp(s_gp, ww_mu_0, SDIV, s_e, wwe)
@@ -157,35 +162,26 @@ contains
 end subroutine mass_radius
 
 subroutine solution_properties()
-  use para_mod
+  use para_mod, only: wp, SDIV, MDIV, s_gp, s_e, &
+                      gama, rho, alpha, ww, omg, sphi, enthalpy, &
+                      energy, pressure, sound_speed, velocity_sq, &
+                      r_e, r_circ, mass, MSUN, l_uni, I_inertia, Love2, &
+                      pi, mphi_r, B_goal, mphi_goal, h_center, sphi_m, &
+                      B_coup, KAPPA, C, n_sat, KSCALE, output
   use cheb_mod, only: cheb_diff_matrix
   use miscellaneous_mod, only: write_eq_profile, initial_data_for_spec
   use toolkit_mod, only: interp, interp_dual, deriv_s, deriv_s_1d, integrate_profiles
   use ad_mod, only: dual, dual_var
   implicit none
-  integer :: s, m, ifail
-  real(wp) :: s_p, r_p
-  real(wp) :: gama_pole, rho_pole, gama_equator, rho_equator, ww_equator, sphi_equator
-  real(wp) :: doe, dge, dre, vek
-  real(wp) :: sqrt_term
-  real(wp) :: s1, r_h
-  real(wp), dimension(MDIV) :: scal, acoup, vphi, vel_safe
-  real(wp), dimension(MDIV,5) :: mu_integrand_buffer
-  real(wp), dimension(SDIV) :: mass_weight, ang_weight
-  real(wp), dimension(SDIV) :: d_m, d_m0, d_mp, d_j, d_t
-  real(wp), dimension(SDIV) :: d_r_e, d_g_e, d_o_e
-  real(wp), dimension(SDIV) :: dd_r_e, dd_g_e, dd_o_e
+  integer :: s, ifail
+  real(wp), dimension(SDIV) :: d_r_e, d_g_e
   real(wp), dimension(SDIV) :: gama_mu_0, rho_mu_0, ww_mu_0, gama_mu_1, rho_mu_1, sphi_mu_0
   real(wp), dimension(SDIV) :: sound_slope, sphi_deriv, pres_deriv
   real(wp), dimension(SDIV) :: effective_pressure, effective_energy, scal_potential
   real(wp), dimension(SDIV) :: pressure_slope, energy_slope, effective_cs, T_trace
   real(wp), dimension(SDIV) :: susceptibility, suscep_slope
   real(wp), dimension(SDIV,MDIV) :: rho_0
-  real(wp), dimension(SDIV,5) :: integrand_buffer
-  real(wp), dimension(5) :: integral_results, mu_results
-  real(wp) :: l_minus, e_minus
   character(128) :: profile_file, mphi_str, B_str, M_str, sdiv_str, mdiv_str
-  real(wp) :: j_local
   real(wp) :: moi_love(2), cc, yy, dom
   logical :: use_scalar ! local snapshot of the flag
   real(wp), dimension(SDIV)  :: gamj, schwarz, gg, BV
@@ -379,7 +375,8 @@ contains
 end subroutine solution_properties
 
 subroutine prepare_common_data(rho_0, gama_mu_0, rho_mu_0, ww_mu_0, gama_mu_1, rho_mu_1, sphi_mu_0, use_scalar)
-  use para_mod
+  use para_mod, only: wp, SDIV, MDIV, has_scalar, &
+                      gama, rho, ww, sphi, energy, e_surface, MB, KSCALE, C
   implicit none
   real(wp), dimension(SDIV,MDIV), intent(out) :: rho_0
   real(wp), dimension(SDIV), intent(out) :: gama_mu_0, rho_mu_0, ww_mu_0, gama_mu_1, rho_mu_1, sphi_mu_0
@@ -412,7 +409,9 @@ subroutine prepare_common_data(rho_0, gama_mu_0, rho_mu_0, ww_mu_0, gama_mu_1, r
 end subroutine prepare_common_data
   
 function moment_inertia() result(val)
-  use para_mod
+  use para_mod, only: wp, SDIV, s_gp, r_e, KAPPA, &
+                      gama, rho, alpha, sphi, energy, pressure, sound_speed, &
+                      C, KSCALE, rho_uni, prs_uni, pi, has_scalar
   use ad_mod, only: dual, dual_var
   use toolkit_mod, only: interp, interp_dual
   use nag_compat_mod, only: d02pcf
@@ -420,7 +419,7 @@ function moment_inertia() result(val)
   real(wp) :: r_in, r_surf ! in km
   integer, parameter :: neqn = 4
   real(wp) :: relerr = 1.e-8_wp, abserr = 1.e-8_wp
-  real(wp) :: val(2), ec, pc, y(neqn), yp(neqn), s_h, QQ
+  real(wp) :: val(2), ec, pc, y(neqn), yp(neqn)
   integer :: flag, step_count
   logical :: debug = .false.
 
@@ -463,7 +462,7 @@ contains
     implicit none
     real(wp), intent(in) :: t, y(:)
     real(wp), intent(out) :: yp(:)
-    real(wp) :: gama_val, rho_val, s_h, m, e, p, elm, dpdr
+    real(wp) :: gama_val, rho_val, s_h, e, p, elm, dpdr, QQ
     real(wp) :: dalphads, logP, dsphids, vs2
     type(dual) :: s_d, alpha_d, sphi_d
 
