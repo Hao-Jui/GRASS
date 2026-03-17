@@ -13,6 +13,7 @@ contains
 
 subroutine brent_core(x_guess, scale_up, scale_down, tol, return_value, f, small_guess, logfile)
 ! Shared Brent-style solver with adaptive bracketing.
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_nan
   implicit none
   real(8), intent(in) :: x_guess, scale_up, scale_down, tol
   real(8), intent(out) :: return_value
@@ -29,7 +30,7 @@ subroutine brent_core(x_guess, scale_up, scale_down, tol, return_value, f, small
   i_max = 200
   x0 = x_guess
   if (present(small_guess)) then
-    if (x0 == 0.d0) x0 = small_guess
+    if (abs(x0) < epsilon(x0)) x0 = small_guess
   end if
 
   ax = x0
@@ -41,11 +42,11 @@ subroutine brent_core(x_guess, scale_up, scale_down, tol, return_value, f, small
     bx = bx / scale_down
     call f(ax, fa)
     call f(bx, fb)
-    if ( fa.ne.fa ) then 
+    if (ieee_is_nan(fa)) then 
       ax = ax / scale_up
       call f(ax, fa)
     endif
-    if ( fb.ne.fb ) then 
+    if (ieee_is_nan(fb)) then 
       bx = bx * scale_down
       call f(bx, fb)
     endif
@@ -109,13 +110,13 @@ subroutine brent_core(x_guess, scale_up, scale_down, tol, return_value, f, small
 
     tol1 = 2.d0 * zeps *abs(b) + 0.5d0 * tol ! convergence check
     xm = (c-b) / 2.d0
-    if ( abs(xm) <= tol1 .or. fb == 0.d0 ) then
+    if ( abs(xm) <= tol1 .or. abs(fb) < epsilon(fb) ) then
       return_value = b
       return
     endif
     if ( abs(e) >= tol1 .and. abs(fa) > abs(fb) ) then ! Attempt inverse quadratic interpolation
       s = fb/fa
-      if (a==c) then
+      if (abs(a - c) < epsilon(a)) then
         p = 2.d0 * xm * s
         q = 1.d0 - s
       else
@@ -157,7 +158,12 @@ subroutine find_omege_e(x_guess, re, rho_h, g_h, w_h, rho_p, g_p, tol, return_va
   implicit none
   real(8), intent(in) :: x_guess, re, rho_h, g_h, w_h, rho_p, g_p, tol
   real(8), intent(out):: return_value
-  external f
+  interface
+    subroutine f(x, fx, re, rho_h, g_h, w_h, rho_p, g_p)
+      real(8), intent(in)  :: x, re, rho_h, g_h, w_h, rho_p, g_p
+      real(8), intent(out) :: fx
+    end subroutine f
+  end interface
 
   call brent_core(x_guess, 1.2d0, 1.1d0, tol, return_value, wrapped, logfile="./Cont/diff_rotation.dat")
 
@@ -175,7 +181,12 @@ subroutine zbrent_rot(x_guess, re, rho_p, ww_p, sgp, mugp, tol, return_value, f)
   implicit none
   real(8), intent(in) :: x_guess, re, rho_p, ww_p, sgp, mugp, tol
   real(8), intent(out):: return_value
-  external f
+  interface
+    subroutine f(x, fx, re, rho_p, ww_p, sgp, mugp)
+      real(8), intent(in)  :: x, re, rho_p, ww_p, sgp, mugp
+      real(8), intent(out) :: fx
+    end subroutine f
+  end interface
 
   call brent_core(x_guess, 1.1d0, 1.1d0, tol, return_value, wrapped, small_guess=1.d-4, logfile="./Cont/rotation_law.dat")
 

@@ -38,7 +38,7 @@ contains
     end if
 
     first_step = x(2) - x(1)
-    if (first_step == 0.d0) then
+    if (abs(first_step) < epsilon(first_step)) then
       ifail = 3
       return
     end if
@@ -160,7 +160,7 @@ contains
     if (n > 2) then
       do i = 2, n - 1
         l(i) = 2.d0 * (x(i+1) - x(i-1)) - h(i-1) * mu(i-1)
-        if (l(i) == 0.d0) then
+        if (abs(l(i)) < epsilon(l(i))) then
           info = 3
           deallocate(h, alpha, l, mu, z, c_full)
           return
@@ -221,7 +221,7 @@ contains
       end if
     end do
 
-    if (aint == bint) return
+    if (abs(aint - bint) < epsilon(aint)) return
 
     lower = min(aint, bint)
     upper = max(aint, bint)
@@ -301,7 +301,7 @@ contains
     end if
 
     distance = tout - t
-    if (distance == 0.d0) then
+    if (abs(distance) < epsilon(distance)) then
       call f(t, y, yp)
       flag = 2
       return

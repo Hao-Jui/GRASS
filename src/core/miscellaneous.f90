@@ -164,7 +164,7 @@ contains
 end subroutine print_converged_block
   
   subroutine initial_data_for_spec(file_name, var1, var2, var3, var4, var5, var6)
-    use para_mod, only : s_gp, mu, s_pwr, SDIV,MDIV, l_uni, ang_mom, mass_0, mass
+    use para_mod, only : s_gp, mu, SDIV,MDIV, l_uni, ang_mom, mass_0, mass
     implicit none
     character(*), intent(in) :: file_name
     real(8), intent(in) :: var1(:,:), var2(:,:), var3(:,:), var4(:,:), var5(:,:), var6(:,:)
@@ -199,7 +199,7 @@ end subroutine print_converged_block
 
     min_Vrr = 1.d10
     i_isco_m = 1
-    do i = res, res*5/3
+    do i = res, int(5.d0 * dble(res) / 3.d0)
       if (min_Vrr > abs(V_rr_m(i))) then
         i_isco_m = i
         min_Vrr = abs(V_rr_m(i))
@@ -208,7 +208,7 @@ end subroutine print_converged_block
 
     min_Vrr = 1.d10
     i_isco_p = 1
-    do i = res, res*5/3
+    do i = res, int(5.d0 * dble(res) / 3.d0)
       if (min_Vrr > abs(V_rr_p(i))) then
         i_isco_p = i
         min_Vrr = abs(V_rr_p(i))
@@ -300,7 +300,8 @@ end subroutine print_converged_block
     log_slope_sum = 0.d0
     slope_count   = 0
     do idx = 2, count
-      if (field_samples(idx-1) == 0.d0 .or. field_samples(idx) == 0.d0) cycle
+      if (abs(field_samples(idx-1)) < epsilon(field_samples(idx-1)) .or. &
+          abs(field_samples(idx)) < epsilon(field_samples(idx))) cycle
       if (field_samples(idx-1) * field_samples(idx) > 0.d0) then
         denom_log = log(radii_samples(idx)) - log(radii_samples(idx-1))
         if (abs(denom_log) <= tiny(1.d0)) cycle
