@@ -1,5 +1,9 @@
 subroutine MRcurve
-  use para_mod
+  use para_mod, only: wp, h_center, mass, mass_0, mass_p, r_ratio, r_circ, &
+                      sphi, sphi_c, B_coup, Omega_e, KAPPA, &
+                      MB, MSUN, C, KSCALE, rho_uni, n_sat, &
+                      I_inertia, Love2, M2, M4, S3, chi, T_kin, &
+                      mphi_goal, B_goal, eos_file, sound_speed
   use rotation_uniform,  only: rotation_solver
   use starting_model_mod, only: initialize_starting_model
   implicit none

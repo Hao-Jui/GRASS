@@ -1,8 +1,19 @@
 module spin_helper
-  use para_mod
+  use para_mod, only: wp, SDIV, MDIV, LMAX, &
+                      s_gp, mu, sin_theta, s_e, s_pwr, DM, &
+                      rho, gama, alpha, ww, omg, sphi, &
+                      energy, pressure, enthalpy, velocity_sq, F_j, &
+                      P_2n, P1_2n_1, sin_2n_1_theta, &
+                      r_ratio, r_e, h_center, enthalpy_min, &
+                      Omega_c, Omega_e, M2, S3, M4, sphi_m, &
+                      has_scalar, B_coup, mphi_r, &
+                      l_uni, KAPPA, C, G, MSUN, MB, pi, KSCALE, &
+                      mass, mass_0, ang_mom, &
+                      A_diff, lambda1, lambda2, Fmax_h, F_equator_h, &
+                      solver_type, relaxation_scheme, output, timing, eos_file
   use brent_mod, only : find_omege_e, zbrent_rot
   use toolkit_mod, only : deriv_sm, deriv_s, deriv_m, besseli, besselk, interp, interp_log_h_to_p, interp_log_p_to_e
-  use simpson_mod
+  use simpson_mod, only: simpson_1d
   use nag_compat_mod, only : d01gaf
   implicit none
   interface
@@ -145,7 +156,6 @@ contains
     real(wp), intent(out)   :: sphi_center_h, gama_center_h, rho_center_h
     real(wp) :: s_p, r_e_new_sq, grgr
     real(wp), dimension(SDIV) :: gama_mu_1, gama_mu_0, rho_mu_1, rho_mu_0, ww_mu_0, sphi_mu_0, sphi_mu_1
-    integer :: s
 
     rho_mu_0  = rho(:,1);    gama_mu_0 = gama(:,1);    sphi_mu_0 = sphi(:,1);    ww_mu_0 = ww(:,1)
     rho_mu_1  = rho(:,MDIV); gama_mu_1 = gama(:,MDIV); sphi_mu_1 = sphi(:,MDIV)
@@ -183,7 +193,8 @@ contains
 
   subroutine update_angular_velocity(r_e_new, gama_pole_h, rho_pole_h, gama_equator_h, rho_equator_h, &
                                      sphi_pole_h, sphi_equator_h, ww_equator_h)
-    use rotation_law_mod
+    use rotation_law_mod, only: diff_rotation_const_j, rotation_law_const_j, &
+                                diff_rotation_uryu, rotation_law_uryu
     real(wp), intent(in) :: r_e_new, gama_pole_h, rho_pole_h, gama_equator_h, rho_equator_h
     real(wp), intent(in) :: sphi_pole_h, sphi_equator_h, ww_equator_h
     real(wp) :: metric_diff, term_in_Omega_h
@@ -1108,7 +1119,7 @@ contains
     real(wp) :: r_inf, rho_0
     character(32) :: fil1, fil2, fil3, fil4, fil5, fil6, fil7, fil8
     character(64) :: tail_fmt
-    integer :: s, m, unit, ios, sig_digits, field_width
+    integer :: s, unit, ios, sig_digits, field_width
     real(wp), external :: n0_at_e
 
     r_inf = r_e * sqrt(KAPPA) * (s_gp(SDIV - 1) / ( 1.e0_wp - s_gp(SDIV - 1) ))**s_pwr

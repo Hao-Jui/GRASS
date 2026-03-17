@@ -150,7 +150,7 @@ contains
 end module shoot_solver_mod_1d
 
 module shoot_newton_helpers_1d
-  use para_mod
+  use para_mod, only: h_center, r_ratio, Mass, Mass_0, MSUN, M_goal, Mb_goal, FIX1
   use newton_types_mod
   use shoot_solver_mod_1d, only: from_solver_coord_1d
   use rotation_uniform, only: rotation_solver

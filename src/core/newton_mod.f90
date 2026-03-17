@@ -186,7 +186,7 @@ module shoot_newton_helpers
   use para_mod, only: r_ratio, h_center, Mass, MSUN, M_goal, Mass_0, Mb_goal, &
                       J_goal, ang_mom, chi, chi_goal, Omega_c, omc_goal, &
                       Omega_K, C, kappa, Omega_e, FIX1, FIX2
-  use shoot_solver_mod
+  use shoot_solver_mod, only: newton_state, from_solver_coords
   use rotation_uniform,  only: rotation_solver
   implicit none
 contains

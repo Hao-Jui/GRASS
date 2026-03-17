@@ -1,5 +1,5 @@
 subroutine make_grid
-  use para_mod
+  use para_mod, only: SDIV, MDIV, s_gp, mu, DS, DM, pi
   implicit none
   integer :: m, s, i, n
   real(8) :: x, x_prev, p_n, dp_n
@@ -92,7 +92,7 @@ end subroutine legendre_and_deriv
 !===============================================================================
 subroutine GridTrig
   use toolkit_mod, only: legendre, plgndr
-  use para_mod
+  use para_mod, only: MDIV
   implicit none
   
   ! Local variables
@@ -118,7 +118,7 @@ end subroutine GridTrig
 !   Initializes all grid arrays to zero before computation.
 !===============================================================================
 subroutine initialize_grid_arrays()
-  use para_mod
+  use para_mod, only: P_2n, P1_2n_1, sin_2n_1_theta
   implicit none
   
   P_2n(:,:)           = 0.0d0
@@ -142,7 +142,7 @@ end subroutine initialize_grid_arrays
 !===============================================================================
 subroutine compute_angular_basis_functions(theta)
   use toolkit_mod, only: legendre, plgndr
-  use para_mod
+  use para_mod, only: MDIV, LMAX, mu, sin_theta, P_2n, P1_2n_1, sin_2n_1_theta
   implicit none
   
   real(8), intent(out) :: theta(MDIV)
