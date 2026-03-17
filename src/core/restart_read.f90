@@ -41,7 +41,17 @@ subroutine regrid_read(target_sdiv, target_mdiv, interpolation_order)
   real(8) :: ws, wm
   integer :: interp_order
   logical :: use_quadratic
-  external :: make_grid, GridTrig
+  interface
+    subroutine parse_restart_line(line, vals)
+      implicit none
+      character(len=*), intent(in) :: line
+      real(8), intent(out) :: vals(13)
+    end subroutine parse_restart_line
+    subroutine make_grid
+    end subroutine make_grid
+    subroutine GridTrig
+    end subroutine GridTrig
+  end interface
 
   if (target_sdiv < 2 .or. target_mdiv < 2) then
     stop "regrid_read: target resolution must be >= 2"

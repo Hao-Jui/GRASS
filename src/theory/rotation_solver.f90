@@ -93,7 +93,7 @@ subroutine rotation_solver
     ! Fourth equation (alpha), reuse caches where possible
     ! ---------------------------------------------------------------
 
-    if (r_ratio == 1.e0_wp) then 
+    if (abs(r_ratio - 1.e0_wp) < epsilon(r_ratio)) then 
       call impose_rigid_rotation()
     else
       call update_alpha_potential(r_e_new, dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, dww_s_cache, dww_m_cache, &
@@ -154,4 +154,3 @@ contains
   end subroutine impose_rigid_rotation
 end subroutine rotation_solver
 end module rotation_uniform
-

@@ -44,11 +44,11 @@ subroutine MRcurve
 contains
   subroutine output_seq()
     traceT = 3.e0_wp*pp*1.80171810e-39_wp/KSCALE - ee*rho_uni/(C * C * KSCALE)
-    Q_bar = merge(-1.d0, M2/chi**2, chi==0.d0)
-    T_over_W=merge(-1.d0, T_kin/abs(Mass_p - Mass + T_kin), chi==0.d0)
+    Q_bar = merge(-1.d0, M2/chi**2, abs(chi) < epsilon(chi))
+    T_over_W=merge(-1.d0, T_kin/abs(Mass_p - Mass + T_kin), abs(chi) < epsilon(chi))
     write(fil1,"(f10.1)") mphi_goal
     write(fil2,"(es12.1)") B_goal
-    if (r_ratio /= 1.e0_wp) then
+    if (abs(r_ratio - 1.e0_wp) >= epsilon(r_ratio)) then
       open(newunit=unit,file="/Users/horay/Data4Projects/crazy/Seq/"//trim(adjustl(eos_file))// &
             "/mphi"//trim(adjustl(fil1))//"_B"//trim(adjustl(fil2))//"_spin.dat",access='append')
     else

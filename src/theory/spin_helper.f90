@@ -1093,11 +1093,16 @@ contains
 
   subroutine output_helper(D2_metric_rho, D2_metric_omega)
     real(wp), intent(in) :: D2_metric_rho(SDIV,LMAX+1), D2_metric_omega(SDIV,LMAX+1)
+    interface
+      pure elemental real(wp) function n0_at_e(ee)
+        use precision_mod, only: wp
+        real(wp), intent(in) :: ee
+      end function n0_at_e
+    end interface
     real(wp) :: r_inf, rho_0
     character(32) :: fil1, fil2, fil3, fil4, fil5, fil6, fil7, fil8
     character(64) :: tail_fmt
     integer :: s, unit, ios, sig_digits, field_width
-    real(wp), external :: n0_at_e
 
     r_inf = r_e * sqrt(KAPPA) * (s_gp(SDIV - 1) / ( 1.e0_wp - s_gp(SDIV - 1) ))**s_pwr
     M2 = - D2_metric_rho  (SDIV-1,1+1 ) / 2.e0_wp * r_inf**3 * ( C**2 / G / Mass )**3
@@ -1155,7 +1160,12 @@ contains
     integer :: sig_digits, exp_digits, field_width
     real(wp) :: rho_0_val
     character(len=256) :: header_fmt, data_fmt
-    real(wp), external :: n0_at_e
+    interface
+      pure elemental real(wp) function n0_at_e(ee)
+        use precision_mod, only: wp
+        real(wp), intent(in) :: ee
+      end function n0_at_e
+    end interface
 
     ! Build format strings from precision/range so real128 has enough exponent digits.
     sig_digits = precision(1.0_wp) - 1

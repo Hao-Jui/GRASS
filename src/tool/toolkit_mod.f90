@@ -74,7 +74,7 @@ contains
   end subroutine interp
 
   pure subroutine interp_pt(xp,yp,np, xb,yb)
-    use para_mod, only: p_at_PT, C, KSCALE
+    use para_mod, only: p_at_PT
     implicit none
     integer,intent(in) :: np
     integer :: n_nearest_pt, ii, kk, ir
@@ -530,7 +530,7 @@ contains
     end if
 
     xx = abs(x)
-    if (xx == 0.d0) then
+    if (abs(xx) < epsilon(xx)) then
       besselk = 0.d0
       return
     end if

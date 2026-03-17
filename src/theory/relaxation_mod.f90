@@ -2,7 +2,28 @@ module anderson_optimized
   use precision_mod, only: wp
   use para_mod, only: SDIV, MDIV
   implicit none
-  
+  interface
+    subroutine dgemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc)
+      character(len=1), intent(in) :: transa, transb
+      integer, intent(in) :: m, n, k, lda, ldb, ldc
+      double precision, intent(in) :: alpha, beta
+      double precision, intent(in) :: a(lda, *), b(ldb, *)
+      double precision, intent(inout) :: c(ldc, *)
+    end subroutine dgemm
+    subroutine dgemv(trans, m, n, alpha, a, lda, x, incx, beta, y, incy)
+      character(len=1), intent(in) :: trans
+      integer, intent(in) :: m, n, lda, incx, incy
+      double precision, intent(in) :: alpha, beta
+      double precision, intent(in) :: a(lda, *), x(*)
+      double precision, intent(inout) :: y(*)
+    end subroutine dgemv
+    subroutine dposv(uplo, n, nrhs, a, lda, b, ldb, info)
+      character(len=1), intent(in) :: uplo
+      integer, intent(in) :: n, nrhs, lda, ldb
+      integer, intent(out) :: info
+      double precision, intent(inout) :: a(lda, *), b(ldb, *)
+    end subroutine dposv
+  end interface
 contains
 
   subroutine anderson_accel_optimized(current_field, target_field, history_f, iter, m_hist)

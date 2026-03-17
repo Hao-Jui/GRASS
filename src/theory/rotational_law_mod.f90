@@ -74,7 +74,7 @@ contains
     real(8), intent(in) :: x, F_at_x
     real(8) :: aa, bb
 
-    if ( x == 0.d0 .and. F_at_x == 0.d0 ) then
+    if ( abs(x) < epsilon(x) .and. abs(F_at_x) < epsilon(F_at_x) ) then
       intF = 0.d0
     else
       aa = AA_h( F_equator_h, Fmax_h )

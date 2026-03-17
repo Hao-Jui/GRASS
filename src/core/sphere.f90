@@ -10,12 +10,31 @@ subroutine sphere
                       sphi, rho, gama, alpha, energy, pressure, ww, omg, &
                       enthalpy, enthalpy_min, mu, velocity_sq, disk_present
     implicit none
+    interface
+      subroutine TOV(i_check, r_is_gp, lambda_gp, nu_gp, e_d_gp, r_is_final, r_final, m_final)
+        use para_mod, only: RDIV
+        implicit none
+        integer, intent(in) :: i_check
+        real(8), intent(inout) :: r_is_final
+        real(8), intent(out) :: r_final, m_final
+        real(8), intent(out), dimension(RDIV) :: r_is_gp, lambda_gp, e_d_gp, nu_gp
+      end subroutine TOV
+      subroutine set_disk(r_eq)
+        implicit none
+        real(8), intent(in) :: r_eq
+      end subroutine set_disk
+      pure elemental real(8) function p_at_h(hh)
+        real(8), intent(in) :: hh
+      end function p_at_h
+      pure elemental real(8) function e_at_h(hh)
+        real(8), intent(in) :: hh
+      end function e_at_h
+    end interface
     integer :: s, m
     real(8) r_is_s, r_is_final, r_final, m_final, &
            lambda_s, nu_s, e_s, gama_eq, rho_eq
     real(8), dimension(SDIV) :: gama_mu_0, rho_mu_0
     real(8), dimension(RDIV) :: r_is_gp, lambda_gp, nu_gp, e_d_gp
-    real(8) :: p_at_h, e_at_h
 
     write(*,*) " "
     write(*,*) "Configurating spherical guess ..."
@@ -92,7 +111,8 @@ subroutine TOV(i_check, r_is_gp, lambda_gp, nu_gp, e_d_gp, &
 
     use para_mod, only: RDIV, KAPPA, C, KSCALE, MB, &
                         e_surface, p_surface, p_center, e_center
-    integer :: i_check, i
+    integer, intent(in) :: i_check
+    integer :: i
     real(8), intent(inout) :: r_is_final
     real(8), intent(out) :: r_final, m_final
     real(8), intent(out), dimension(RDIV) :: r_is_gp, lambda_gp, e_d_gp
@@ -102,8 +122,29 @@ subroutine TOV(i_check, r_is_gp, lambda_gp, nu_gp, e_d_gp, &
             e_d, p, h, m, nu_s, hh, rho_0, &
             a1,a2,a3,a4,b1,b2,b3,b4,c1,c2,c3,c4, &
             k_rescale
-    real(8) :: dm_dr_is, dp_dr_is, dr_dr_is
-    real(8) :: h_at_p, p_at_e, e_at_p, n0_at_e
+    interface
+      real(8) function dm_dr_is(r_is, r, m, p)
+        real(8), intent(in) :: r_is, r, m, p
+      end function dm_dr_is
+      real(8) function dp_dr_is(r_is, r, m, p)
+        real(8), intent(in) :: r_is, r, m, p
+      end function dp_dr_is
+      real(8) function dr_dr_is(r_is, r, m)
+        real(8), intent(in) :: r_is, r, m
+      end function dr_dr_is
+      pure elemental real(8) function h_at_p(pp)
+        real(8), intent(in) :: pp
+      end function h_at_p
+      pure elemental real(8) function p_at_e(ee)
+        real(8), intent(in) :: ee
+      end function p_at_e
+      pure elemental real(8) function e_at_p(pp)
+        real(8), intent(in) :: pp
+      end function e_at_p
+      pure elemental real(8) function n0_at_e(ee)
+        real(8), intent(in) :: ee
+      end function n0_at_e
+    end interface
 
     ! use estimate of r to set the step size h
     if (i_check == 1) then
@@ -220,7 +261,13 @@ real(8) function dm_dr_is(r_is,r,m,p)
 
   use para_mod, only : p_surface,tov_rmin,e_center,pi
   implicit none
-  real(8) r_is,r,m,p, e_d,e_at_p
+  interface
+    pure elemental real(8) function e_at_p(pp)
+      real(8), intent(in) :: pp
+    end function e_at_p
+  end interface
+  real(8), intent(in) :: r_is, r, m, p
+  real(8) :: e_d
   
   if(p < p_surface) then
       e_d = 0.d0
@@ -239,8 +286,14 @@ real(8) function dp_dr_is(r_is,r,m,p)
 
   use para_mod, only : p_surface,tov_rmin,e_center,pi
   implicit none
-  real(8) r_is,r,m,p, e_d,e_at_p
-  
+  interface
+    pure elemental real(8) function e_at_p(pp)
+      real(8), intent(in) :: pp
+    end function e_at_p
+  end interface
+  real(8), intent(in) :: r_is, r, m, p
+  real(8) :: e_d
+
   if(p<p_surface) then
     e_d = 0.d0
   else
@@ -258,7 +311,7 @@ real(8) function dr_dr_is(r_is,r,m)
 
   use para_mod, only : tov_rmin
   implicit none
-  real(8) r_is,r,m
+  real(8), intent(in) :: r_is, r, m
   
   if(r_is < tov_rmin) then
     dr_dr_is = 1.d0
