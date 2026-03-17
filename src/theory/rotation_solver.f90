@@ -1,6 +1,5 @@
 module rotation_uniform
   use precision_mod, only: wp
-  use toolkit_mod
   use para_mod, only: active_theory, THEORY_GR, &
                       rho, gama, alpha, ww, omg, sphi, &
                       r_e, r_ratio, h_center, MDIV, &
@@ -22,19 +21,14 @@ contains
 
 subroutine rotation_solver
   implicit none
-  integer :: m, s, n_of_it
+  integer :: n_of_it
   real(wp) :: r_e_old, r_e_new, r_e_new_sq
   real(wp) :: gama_pole_h, gama_center_h, gama_equator_h
   real(wp) :: rho_pole_h, rho_center_h, rho_equator_h, ww_equator_h
   real(wp) :: sphi_pole_h, sphi_center_h, sphi_equator_h
   real(wp) :: root_mphi_re, sqrt_B_coup
-  real(wp) :: hamL2
   real(wp) :: t0, t1, dt_alpha, dt_relaxation
   logical :: zero_scalar_mode
-  character(32) :: fil1, fil2, fil3, fil4, fil5, fil6
-
-  ! externs used in precompute
-  real(wp) :: n0_at_e
 
   zero_scalar_mode = merge(.true., .false., active_theory == THEORY_GR)
   sqrt_B_coup = sqrt(B_coup)

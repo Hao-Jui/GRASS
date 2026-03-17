@@ -211,7 +211,6 @@ subroutine solution_properties()
   if (use_scalar) then
     do s = 1, SDIV
       call interp_dual(s_gp, sphi(:,1), SDIV, dual_var(s_gp(s)), sphi_dual)
-      ! seeded with dual_var(s_gp)
       sphi_deriv(s) = sphi_dual%der
     end do
     effective_pressure = sphi_deriv**2 / (8.e0_wp * pi) - mphi_r * sphi_mu_0**2 / (4.e0_wp * pi)
@@ -225,15 +224,10 @@ subroutine solution_properties()
 
   do s = 1, SDIV
     if (energy(s,1) > 0.e0_wp) then
-      energy_dual = dual_var(energy(s,1)) ! seeded with dual_var(energy)
+      energy_dual = dual_var(energy(s,1))
       pressure_dual = p_at_e_dual(energy_dual)
       pres_deriv(s) = pressure_dual%der
-      ! The code builds energy_dual = dual_var(energy(s,1)), and dual_var fixes its derivative to 1. 
-      ! When p_at_e_dual is evaluated on that dual number, the derivative component it returns 
-      ! (pressure_dual%der) is literally (dp/de) * energy_dual%der = dp/de. 
-      ! Dividing by energy_dual%der would just give the same result, since it is 1. 
-      sound_speed(s) = pressure_dual%der !/ energy_dual%der
-
+      sound_speed(s) = pressure_dual%der
       pressure_slope(s) = deriv_s_1d(effective_pressure, s)
       energy_slope(s)   = deriv_s_1d(energy(:,1),        s)
       effective_cs(s)   = pressure_slope(s) / energy_slope(s)
@@ -244,7 +238,7 @@ subroutine solution_properties()
       energy_slope(s) = 0.e0_wp
     end if
   end do
-  do s = 1, SDIV 
+  do s = 1, SDIV
     sound_slope (s) = deriv_s_1d(sound_speed, s)
     suscep_slope(s) = deriv_s_1d(susceptibility, s)
   enddo
@@ -401,21 +395,35 @@ subroutine prepare_common_data(rho_0, gama_mu_0, rho_mu_0, ww_mu_0, gama_mu_1, r
   ww_mu_0 (:)  = ww  (:,1)
   sphi_mu_0(:) = merge( sphi(:,1), 0.e0_wp, use_scalar )
 
-  where (energy > e_surface)
-    rho_0 = n0_at_e(energy) * MB * KSCALE * C**2
-  elsewhere
-    rho_0 = 0.e0_wp
-  end where
+  block
+    integer :: s_, m_
+    real(wp) :: n0_val
+    do m_ = 1, MDIV
+      do s_ = 1, SDIV
+        if (energy(s_,m_) > e_surface) then
+          n0_val = n0_at_e(energy(s_,m_))
+          rho_0(s_,m_) = n0_val * MB * KSCALE * C**2
+        else
+          rho_0(s_,m_) = 0.e0_wp
+        end if
+      end do
+    end do
+  end block
 end subroutine prepare_common_data
   
 function moment_inertia() result(val)
-  use para_mod, only: wp, SDIV, s_gp, r_e, KAPPA, &
-                      gama, rho, alpha, sphi, energy, pressure, sound_speed, &
-                      C, KSCALE, rho_uni, prs_uni, pi, has_scalar
-  use ad_mod, only: dual, dual_var
-  use toolkit_mod, only: interp, interp_dual
+  use para_mod, only: wp, s_gp, r_e, KAPPA, energy, pressure, &
+                      C, KSCALE, rho_uni, prs_uni, pi
   use nag_compat_mod, only: d02pcf
   implicit none
+  interface
+    subroutine deriv(t, y, yp)
+      use precision_mod, only: wp
+      implicit none
+      real(wp), intent(in) :: t, y(:)
+      real(wp), intent(out) :: yp(:)
+    end subroutine deriv
+  end interface
   real(wp) :: r_in, r_surf ! in km
   integer, parameter :: neqn = 4
   real(wp) :: relerr = 1.e-8_wp, abserr = 1.e-8_wp
@@ -425,27 +433,18 @@ function moment_inertia() result(val)
 
   r_surf = r_e * sqrt(KAPPA) / 1.e5_wp
   r_in = r_surf * s_gp(2) / ( 1.e0_wp - s_gp(2) )
-  
-  ec = energy(1,1) / (C*C*KSCALE) * rho_uni 
+  ec = energy(1,1) / (C*C*KSCALE) * rho_uni
   pc = pressure(1,1) / KSCALE * prs_uni
-  
-  ! r(r_is)
+
   y(1) = r_in - pi * ec * r_in**3
-
-  ! I(r) ~ 8π/15(ρc+pc)r^5 + O(r^7)
   y(2) = 8.e0_wp * pi / 15.e0_wp * y(1)**5 * (ec+pc)
-  
-  ! m(r) ~ ell 
   y(3) = 4.e0_wp * pi * ec * y(1)**2 * (1.e0_wp + 4.e0_wp * pi * ec * y(1)**2 / 3.e0_wp)
-
-  ! y(r) ~ ell 
   y(4) = 2.e0_wp
-   
   yp(1)= 1 - 3.e0_wp * pi * ec * r_in**2
   yp(2)= 8.e0_wp * pi / 3.e0_wp * y(1)**4 * (ec+pc)
   yp(3)= 8.e0_wp * pi * ec * y(1) * (1.e0_wp + 2.e0_wp * pi * ec * y(1)**2)
   yp(4)= 0.e0_wp
-  
+
   flag = 1
   call d02pcf(deriv, neqn, y, yp, r_in, r_surf, relerr, abserr, flag, step_count, debug)
   if (abs(flag) /= 2) then
@@ -457,50 +456,57 @@ function moment_inertia() result(val)
   !write(*,"('Double check Schwarzschild radius:',es18.9,'  ADM mass:',es18.9, '  RK45 steps :', i5)") &
   !  abs(1.e0_wp-r_circ/1.e5_wp/y(1)), abs(1.e0_wp-y(3)/l_uni/(mass/MSUN)), step_count
 
-contains
-  subroutine deriv(t, y, yp)
-    implicit none
-    real(wp), intent(in) :: t, y(:)
-    real(wp), intent(out) :: yp(:)
-    real(wp) :: gama_val, rho_val, s_h, e, p, elm, dpdr, QQ
-    real(wp) :: dalphads, logP, dsphids, vs2
-    type(dual) :: s_d, alpha_d, sphi_d
-
-    s_h = t / ( t + r_surf )
-    call interp(s_gp, gama(:,1)     , SDIV, s_h, gama_val)
-    call interp(s_gp, rho(:,1)      , SDIV, s_h,  rho_val)
-    call interp(s_gp, energy(:,1)   , SDIV, s_h,        e)
-    call interp(s_gp, pressure(:,1) , SDIV, s_h,        p)
-    call interp(s_gp, sound_speed   , SDIV, s_h,      vs2)
-    s_d = dual_var(s_h)
-    call interp_dual(s_gp, alpha(:,1), SDIV, s_d, alpha_d)
-    call interp_dual(s_gp, sphi(:,1),  SDIV, s_d,  sphi_d)
-    dalphads = alpha_d%der
-    dsphids  = sphi_d%der
-    
-    logP = ( 4.e0_wp * alpha_d%val + gama_val - rho_val ) / 12.e0_wp
-
-    e = e / (C*C*KSCALE) * rho_uni 
-    p = p / KSCALE * prs_uni
-
-    elm = 1.e0_wp / ( 1.e0_wp + s_h * (1.e0_wp - s_h) * dalphads )**2 ! =1 / (1-2m/r)
-    dpdr= - (e+p) * (y(3) + 4.e0_wp * pi * y(1)**3 * p) / (y(1) * (y(1) - 2.e0_wp * y(3)))
-
-    yp(1) = exp(2.e0_wp * logP) * ( 1.e0_wp + s_h * (1.e0_wp - s_h) * dalphads )
-    yp(2) = 8.e0_wp / 3.e0_wp * pi * y(1)**4 * (e+p) * ( 1.e0_wp - 5.e0_wp * y(2) / 2.e0_wp / y(1)**3 + y(2)**2 / y(1)**6 ) * elm
-    yp(3) = 4.e0_wp * pi * y(1)**2 * e
-
-    QQ  = -dble((1+1)*(1+2)) * elm / y(1)**2 - dpdr**2 &
-        + 4.e0_wp * pi * elm * (5.e0_wp * e + 9.e0_wp * p + (e+p) / vs2)
-    yp(4) = -y(4)**2 / y(1) - y(4) * elm / y(1) * (1.e0_wp + 4.e0_wp * pi * y(1)**2 * (p-e)) - QQ * y(1)
-    
-    if (has_scalar) then
-      yp(2) = yp(2) + y(2) * y(1) * ( 1.e0_wp - 2.e0_wp * y(2) / y(1)**3 ) / yp(1)**2 &
-            * ( (1.e0_wp - s_h)**2 / r_surf * dsphids )**2
-    endif
-
-    yp(2) = yp(2) * yp(1)
-    yp(3) = yp(3) * yp(1)
-    yp(4) = yp(4) * yp(1)
-  end subroutine deriv
 end function moment_inertia
+
+subroutine deriv(t, y, yp)
+  use precision_mod, only: wp
+  use para_mod, only: SDIV, KAPPA, r_e, s_gp, &
+                      gama, rho, alpha, sphi, energy, pressure, sound_speed, &
+                      C, KSCALE, rho_uni, prs_uni, pi, has_scalar
+  use ad_mod, only: dual, dual_var
+  use toolkit_mod, only: interp, interp_dual
+  implicit none
+  real(wp), intent(in) :: t, y(:)
+  real(wp), intent(out) :: yp(:)
+  real(wp) :: gama_val, rho_val, s_h, e, p, elm, dpdr, QQ
+  real(wp) :: dalphads, logP, dsphids, vs2, r_surf
+  type(dual) :: s_d, alpha_d, sphi_d
+
+  r_surf = r_e * sqrt(KAPPA) / 1.e5_wp
+  s_h = t / ( t + r_surf )
+  call interp(s_gp, gama(:,1)     , SDIV, s_h, gama_val)
+  call interp(s_gp, rho(:,1)      , SDIV, s_h,  rho_val)
+  call interp(s_gp, energy(:,1)   , SDIV, s_h,        e)
+  call interp(s_gp, pressure(:,1) , SDIV, s_h,        p)
+  call interp(s_gp, sound_speed   , SDIV, s_h,      vs2)
+  s_d = dual_var(s_h)
+  call interp_dual(s_gp, alpha(:,1), SDIV, s_d, alpha_d)
+  call interp_dual(s_gp, sphi(:,1),  SDIV, s_d,  sphi_d)
+  dalphads = alpha_d%der
+  dsphids  = sphi_d%der
+
+  logP = ( 4.e0_wp * alpha_d%val + gama_val - rho_val ) / 12.e0_wp
+
+  e = e / (C*C*KSCALE) * rho_uni
+  p = p / KSCALE * prs_uni
+
+  elm = 1.e0_wp / ( 1.e0_wp + s_h * (1.e0_wp - s_h) * dalphads )**2
+  dpdr= - (e+p) * (y(3) + 4.e0_wp * pi * y(1)**3 * p) / (y(1) * (y(1) - 2.e0_wp * y(3)))
+
+  yp(1) = exp(2.e0_wp * logP) * ( 1.e0_wp + s_h * (1.e0_wp - s_h) * dalphads )
+  yp(2) = 8.e0_wp / 3.e0_wp * pi * y(1)**4 * (e+p) * ( 1.e0_wp - 5.e0_wp * y(2) / 2.e0_wp / y(1)**3 + y(2)**2 / y(1)**6 ) * elm
+  yp(3) = 4.e0_wp * pi * y(1)**2 * e
+
+  QQ  = -dble((1+1)*(1+2)) * elm / y(1)**2 - dpdr**2 &
+      + 4.e0_wp * pi * elm * (5.e0_wp * e + 9.e0_wp * p + (e+p) / vs2)
+  yp(4) = -y(4)**2 / y(1) - y(4) * elm / y(1) * (1.e0_wp + 4.e0_wp * pi * y(1)**2 * (p-e)) - QQ * y(1)
+
+  if (has_scalar) then
+    yp(2) = yp(2) + y(2) * y(1) * ( 1.e0_wp - 2.e0_wp * y(2) / y(1)**3 ) / yp(1)**2 &
+          * ( (1.e0_wp - s_h)**2 / r_surf * dsphids )**2
+  endif
+
+  yp(2) = yp(2) * yp(1)
+  yp(3) = yp(3) * yp(1)
+  yp(4) = yp(4) * yp(1)
+end subroutine deriv

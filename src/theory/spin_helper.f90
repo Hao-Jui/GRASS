@@ -524,8 +524,14 @@ contains
     D1_metric_gama = 0.e0_wp
     D1_metric_omega = 0.e0_wp
     if (LMAX > 0) then
-      call dgemm('T', 'T', LMAX, SDIV, MDIV, 1.e0_wp, weighted_gama_basis, MDIV, S_metric_gama, SDIV, 0.e0_wp, D1_metric_gama(2:LMAX+1,:), LMAX)
-      call dgemm('T', 'T', LMAX, SDIV, MDIV, 1.e0_wp, weighted_omega_basis, MDIV, S_metric_omega, SDIV, 0.e0_wp, D1_metric_omega(2:LMAX+1,:), LMAX)
+      ! The block construct keeps the temporaries scoped and stack-allocated without needing new subroutine arguments. The dgemm writes into contiguous tmp_* arrays, then the section assignment copies to the correct rows.
+      block
+        real(wp) :: tmp_gama(LMAX, SDIV), tmp_omega(LMAX, SDIV)
+        call dgemm('T', 'T', LMAX, SDIV, MDIV, 1.e0_wp, weighted_gama_basis, MDIV, S_metric_gama, SDIV, 0.e0_wp, tmp_gama, LMAX)
+        call dgemm('T', 'T', LMAX, SDIV, MDIV, 1.e0_wp, weighted_omega_basis, MDIV, S_metric_omega, SDIV, 0.e0_wp, tmp_omega, LMAX)
+        D1_metric_gama(2:LMAX+1,:) = tmp_gama
+        D1_metric_omega(2:LMAX+1,:) = tmp_omega
+      end block
     end if
   end subroutine angular_integration
 

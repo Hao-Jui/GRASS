@@ -28,7 +28,7 @@ module newton_types_mod
 end module newton_types_mod
 
 module shoot_solver_mod_1d
-  use newton_types_mod
+  use newton_types_mod, only: newton_state_1d
   implicit none
   real(8), parameter :: max_step_1d = 1.d0  ! trust-region style clamp on log(h) step; smaller to be less aggressive
 
@@ -95,7 +95,7 @@ contains
 
   subroutine line_search_1d(x_current, F_current, delta_x, rep, evaluate_func, final_delta, J_est, success)
     ! Armijo backtracking on phi = 0.5*F^2; uses Jacobian estimate when supplied for slope
-    use newton_types_mod
+    use newton_types_mod, only: evaluation_function_1d
     real(8), intent(in)    :: x_current, F_current, delta_x, rep
     real(8), intent(out)   :: final_delta
     procedure(evaluation_function_1d) :: evaluate_func
@@ -151,7 +151,7 @@ end module shoot_solver_mod_1d
 
 module shoot_newton_helpers_1d
   use para_mod, only: h_center, r_ratio, Mass, Mass_0, MSUN, M_goal, Mb_goal, FIX1
-  use newton_types_mod
+  use newton_types_mod, only: newton_state_1d, evaluation_function_1d
   use shoot_solver_mod_1d, only: from_solver_coord_1d
   use rotation_uniform, only: rotation_solver
   implicit none

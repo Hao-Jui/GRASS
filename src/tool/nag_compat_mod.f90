@@ -274,12 +274,12 @@ contains
     real(8), intent(in), optional :: max_step
 
     real(8) :: distance, direction, h, hmin, hmax
-    real(8) :: err, fac, new_h, scale, tol_small
+    real(8) :: err, fac, scale, tol_small
     integer :: max_steps, max_evals, nfe, i
     logical :: eval_limit
     real(8) :: y4(neqn), y5(neqn)
     real(8) :: k1(neqn), k2(neqn), k3(neqn), k4(neqn), k5(neqn), k6(neqn)
-    real(8) :: ytemp(neqn)
+
 
     max_steps = 200000
     max_evals = 6 * max_steps
@@ -316,8 +316,8 @@ contains
     end if
 
     hmin = 1.d-12
-    if (present(max_step) .and. max_step > 0.d0) then
-      hmax = min(abs(distance), max_step)
+    if (present(max_step)) then
+      hmax = merge(min(abs(distance), max_step), abs(distance), max_step > 0.d0)
     else
       hmax = abs(distance)
     end if
@@ -338,7 +338,6 @@ contains
         flag = 6
         return
       end if
-
       call rkf45_step(f, neqn, t, y, h, y4, y5, k1, k2, k3, k4, k5, k6, eval_limit, max_evals, nfe)
       if (eval_limit) then
         flag = 4
