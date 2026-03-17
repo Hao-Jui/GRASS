@@ -1,5 +1,10 @@
 module miscellaneous_mod
-  use para_mod
+  use para_mod, only: i_isco_m, i_isco_p, res, &
+                      V_rr_m, V_rr_p, v_minus, v_plus, &
+                      eos_file, chi, pi, C, KAPPA, MSUN, &
+                      Omega_c, Omega_e, Omega_K, &
+                      s_gp, s_pwr, SDIV, &
+                      r_e, mass, Mb_goal, sphi_c
   use nag_compat_mod, only: e02baf, e02bbf
   implicit none
 
@@ -92,7 +97,12 @@ contains
   end subroutine write_eq_profile
 
   subroutine print_converged_block(rho0, ee)
-  use para_mod
+  use para_mod, only: has_scalar, rho_uni, MB, C, KSCALE, &
+                      r_ratio, Omega_c, pi, KAPPA, Omega_e, Omega_K, &
+                      mass, mass_0, ang_mom, chi, B_coup, &
+                      mphi_r, l_uni, sphi_c, sphi_m, &
+                      I_inertia, M2, S3, M4, T_kin, mass_p, &
+                      r_e, r_circ, Fmax_h, h_center
   implicit none
   real(8), intent(in) :: rho0, ee
   integer :: i, prop_unit, out_unit, ios
@@ -154,7 +164,7 @@ contains
 end subroutine print_converged_block
   
   subroutine initial_data_for_spec(file_name, var1, var2, var3, var4, var5, var6)
-    use para_mod, only : s_gp, mu, s_pwr, SDIV,MDIV, l_uni
+    use para_mod, only : s_gp, mu, s_pwr, SDIV,MDIV, l_uni, ang_mom, mass_0, mass
     implicit none
     character(*), intent(in) :: file_name
     real(8), intent(in) :: var1(:,:), var2(:,:), var3(:,:), var4(:,:), var5(:,:), var6(:,:)

@@ -9,7 +9,7 @@ program grass
   real(wp) :: hamL2
 
   call initialize_theory()
-
+  
   print *, " "
   print *, " "
   if (has_scalar) then

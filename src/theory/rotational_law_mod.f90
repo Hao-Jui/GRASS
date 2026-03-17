@@ -27,7 +27,7 @@ contains
 
   subroutine diff_rotation_uryu(x, fx, re, rho_h, g_h, w_h, rho_p, g_p)
   ! Compute Omega_e
-    use para_mod, only: lambda1, lambda2, uyru_p, uyru_q, Fmax_h
+    use para_mod, only: lambda2, Fmax_h
     implicit none
     real(8), intent(in) :: x, re, rho_h, g_h, w_h, rho_p, g_p
     real(8), intent(out):: fx
@@ -128,7 +128,8 @@ contains
   end subroutine set_shoot_context
 
   subroutine shoot_Fmax(current_Fmax_h, diff_sq)
-    use para_mod
+    use para_mod, only: Fmax_h, Omega_e, Omega_c, r_e, rho, ww, F_equator_h, &
+                        SDIV, s_gp, lambda1, lambda2
     use brent_mod, only: find_omege_e, zbrent_rot
     real(8), intent(in)  :: current_Fmax_h
     real(8), intent(out) :: diff_sq

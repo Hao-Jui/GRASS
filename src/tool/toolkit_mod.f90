@@ -3,7 +3,7 @@ module toolkit_mod
 
 contains
   pure elemental function interp_log_h_to_p(x) result(y)
-    use para_mod
+    use para_mod, only: log_h, log_p, num_tab
     implicit none
     real(8), intent(in) :: x
     real(8) :: y
@@ -25,7 +25,7 @@ contains
   end function interp_log_h_to_p
 
   pure elemental function interp_log_p_to_e(x) result(y)
-    use para_mod
+    use para_mod, only: log_p, log_e, num_tab
     implicit none
     real(8), intent(in) :: x
     real(8) :: y
@@ -118,7 +118,7 @@ contains
   end subroutine interp_pt
 
   pure subroutine interp_dual(xp, yp, np, xb, yb)
-    use ad_mod
+    use ad_mod, only: dual, dual_const, operator(+), operator(-), operator(*), operator(/)
     implicit none
     integer, intent(in) :: np
     real(8), intent(in) :: xp(np), yp(np)

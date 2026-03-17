@@ -2,7 +2,7 @@ subroutine set_disk(r_eq)
   use toolkit_mod, only: interp
   use para_mod, only: SDIV, MDIV, res, s_pwr, &
                       s_gp, mu, s_inner, j_disk, &
-                      rho, gama, ww, omg, sphi, &
+                      rho, gama, ww, omg, &
                       enthalpy, enthalpy_min, pressure, energy, velocity_sq
   implicit none
   real(8), intent(in) :: r_eq

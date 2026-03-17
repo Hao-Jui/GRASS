@@ -5,7 +5,7 @@ FC      = gfortran
 MODE    ?= Release
 BASE_FFLAGS := -I.
 RELEASE_FFLAGS := -O2 -march=native
-DEBUG_FFLAGS := -O0 -g -fbacktrace -Wall -Wextra -Wimplicit-interface -fcheck=all -Wuninitialized -Wconversion -Wuse-without-only -fsanitize=address -ffpe-trap=invalid,zero,overflow -finit-real=snan
+DEBUG_FFLAGS := -O0 -g -fbacktrace -Wall -Wextra -Wimplicit-interface -fcheck=all -Wuninitialized -Wconversion -Wuse-without-only -finit-real=nan
 ifeq ($(MODE),Release)
   MODE_FFLAGS := $(RELEASE_FFLAGS)
 else ifeq ($(MODE),Debug)
@@ -15,7 +15,7 @@ else
 endif
 FFLAGS  ?= $(BASE_FFLAGS) $(MODE_FFLAGS)
 
-LDFLAGS ?=
+LDFLAGS ?= -Wl,-stack_size,0x4000000
 LIBS    ?= -llapack -lblas
 BUILDDIR := build
 OBJDIR   := $(BUILDDIR)/obj

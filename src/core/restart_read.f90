@@ -12,7 +12,13 @@ subroutine parse_restart_line(line, vals)
 end subroutine parse_restart_line
 
 subroutine regrid_read(target_sdiv, target_mdiv, interpolation_order)
-  use para_mod
+  use para_mod, only: r_e, e_center, r_ratio, Omega_e, Omega_c, &
+                      KAPPA, C, KSCALE, s_pwr, &
+                      SDIV, MDIV, DS, DM, SMAX, &
+                      alpha, gama, rho, ww, pressure, energy, &
+                      enthalpy, velocity_sq, omg, sphi, &
+                      s_gp, mu, sin_theta, P_2n, P1_2n_1, sin_2n_1_theta, &
+                      B_goal, has_scalar, allocate_fields
   implicit none
   integer, intent(in) :: target_sdiv, target_mdiv
   integer, intent(in), optional :: interpolation_order

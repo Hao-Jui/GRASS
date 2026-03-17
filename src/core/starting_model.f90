@@ -20,7 +20,6 @@ contains
     select case (run_mode)
     case (MODE_REGRID)
       call regrid_read(SDIV, MDIV, 2)
-      e_center = 4.e15_wp
       e_center = e_center * C * C * KSCALE
       p_center = p_at_e(e_center)
       h_center = h_at_p(p_center)

@@ -45,8 +45,10 @@ contains
     if (present(use_x_history)) use_x = use_x_history
 
     ! Allocate/resize delta buffer (persists across calls, size N x m_hist)
-    if (.not. allocated(delta) .or. size(delta,1) /= N .or. size(delta,2) /= m_hist) then
-      if (allocated(delta)) deallocate(delta)
+    if (.not. allocated(delta)) then
+      allocate(delta(N, m_hist))
+    else if (size(delta,1) /= N .or. size(delta,2) /= m_hist) then
+      deallocate(delta)
       allocate(delta(N, m_hist))
     end if
 
@@ -118,7 +120,7 @@ contains
     real(wp), dimension(SDIV,MDIV), intent(in)    :: target_field
     integer, intent(in) :: iter
     
-    real(wp) :: residual_norm, improvement, omega_new
+    real(wp) :: residual_norm, improvement
     real(wp), parameter :: omega_min = 0.1e0_wp, omega_max = 1.9e0_wp
     real(wp), parameter :: target_improvement = 0.1e0_wp
     
@@ -288,8 +290,8 @@ end module aitken_acceleration
 module hybrid_relaxation
   use precision_mod, only: wp
   use para_mod, only: SDIV, MDIV
-  use anderson_optimized
-  use aitken_acceleration
+  use anderson_optimized, only: anderson_accel_optimized
+  use aitken_acceleration, only: aitken_update
   implicit none
 
 contains
