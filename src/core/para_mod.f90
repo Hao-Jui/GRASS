@@ -7,8 +7,6 @@ module para_mod
   integer :: active_theory = THEORY_ST
 
   ! hybrid / anderson
-  character(len=20) :: relaxation_scheme = "hybrid"
-
   ! -- Running option --------------------------------------------------------
   integer, parameter :: MODE_REGRID  = 1
   integer, parameter :: MODE_DEFAULT = 2

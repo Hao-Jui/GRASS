@@ -2,7 +2,7 @@ program grass
   use toolkit_mod, only: debug_mod_bessel
   use para_mod, only: wp, initialize_theory, &
                       has_scalar, mphi_goal, scalarton, B_goal, &
-                      relaxation_scheme, solver_type, A_diff, lambda1, lambda2, &
+                      solver_type, A_diff, lambda1, lambda2, &
                       s_gp, SDIV, MDIV, s_pwr, e_surface, C, KSCALE
   use constrain_mod, only: hamiltonian
   implicit none
@@ -18,15 +18,7 @@ program grass
   else
     write(*,*) "Theory: General Relativity"
   end if
-  if ( relaxation_scheme == "anderson" ) then
-    write(*,*) "Relaxation scheme: Anderson"
-  elseif ( relaxation_scheme == "newton" ) then
-    write(*,*) "Relaxation scheme: Newton"
-  elseif ( relaxation_scheme == "hybrid" ) then
-    write(*,*) "Relaxation scheme: Hybrid"
-  else
-    stop "Unknown relaxation scheme"
-  end if
+  write(*,*) "Relaxation scheme: Anderson"
 
   call loadEos
 

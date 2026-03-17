@@ -1,20 +1,3 @@
-!===============================================================================
-! Advanced Relaxation Schemes for Neutron Star Field Equations
-!
-! Performance comparison for typical NS problems:
-! 1. Optimized Anderson: Good convergence, O(m²) cost per iteration
-! 2. DIIS (Direct Inversion): Similar to Anderson, better for smooth problems
-! 3. Broyden: O(m) cost, better for large systems
-! 4. Adaptive Successive Over-Relaxation: Near-zero overhead, surprisingly effective
-! 5. L-BFGS: Monitors residual norms over a window to decide: 
-!    early simple averaging, Aitken if converging fast, adaptive SOR if residual
-!    is still large, and Anderson for final polishing. Keeps a small residual history
-!    to decide switches
-!===============================================================================
-
-!===============================================================================
-! METHOD 1: Optimized Anderson
-!===============================================================================
 module anderson_optimized
   use precision_mod, only: wp
   use para_mod, only: SDIV, MDIV
@@ -22,14 +5,11 @@ module anderson_optimized
   
 contains
 
-  subroutine anderson_accel_optimized(current_field, target_field, history_f, &
-                                      history_x, iter, m_hist, use_x_history)
+  subroutine anderson_accel_optimized(current_field, target_field, history_f, iter, m_hist)
     real(wp), dimension(SDIV,MDIV), intent(inout) :: current_field
     real(wp), dimension(SDIV,MDIV), intent(in)    :: target_field
     real(wp), dimension(SDIV,MDIV,m_hist), intent(inout) :: history_f
-    real(wp), dimension(SDIV,MDIV,m_hist), intent(inout), optional :: history_x
     integer, intent(in) :: iter, m_hist
-    logical, intent(in), optional :: use_x_history
     
     real(wp), dimension(m_hist) :: gamma
     real(wp), dimension(m_hist, m_hist) :: F_mat
@@ -37,12 +17,9 @@ contains
     integer :: k, i, info, idx_curr, idx, N
     real(wp), parameter :: blend = 0.1e0_wp, damping = 0.8e0_wp
     integer, parameter :: conservative_steps = 3
-    logical :: use_x
     real(wp), allocatable, save :: delta(:,:)
 
     N = SDIV*MDIV
-    use_x = .false.
-    if (present(use_x_history)) use_x = use_x_history
 
     ! Allocate/resize delta buffer (persists across calls, size N x m_hist)
     if (.not. allocated(delta)) then
@@ -59,14 +36,12 @@ contains
     ! Early iterations: simple damping, but still seed valid history.
     if (iter < conservative_steps) then
       history_f(:,:,idx_curr) = residual            ! store pre-update residual
-      if (use_x) history_x(:,:,idx_curr) = current_field
       current_field = 0.5e0_wp * current_field + 0.5e0_wp * target_field
       return
     end if
 
     ! Store current residual
     history_f(:,:,idx_curr) = residual
-    if (use_x) history_x(:,:,idx_curr) = current_field
 
     ! Determine history depth
     k = min(iter - conservative_steps + 1, m_hist)
@@ -99,312 +74,3 @@ contains
   end subroutine anderson_accel_optimized
 
 end module anderson_optimized
-
-
-!===============================================================================
-! METHOD 2: Adaptive Successive Over-Relaxation (FASTEST for many problems)
-!===============================================================================
-module adaptive_sor
-  use precision_mod, only: wp
-  use para_mod, only: SDIV, MDIV
-  implicit none
-  
-  real(wp), save :: omega = 1.0e0_wp           ! Relaxation parameter
-  real(wp), save :: residual_old = 1.0e30_wp
-  integer, save :: stagnation_count = 0
-  
-contains
-
-  subroutine asor_update(current_field, target_field, iter)
-    real(wp), dimension(SDIV,MDIV), intent(inout) :: current_field
-    real(wp), dimension(SDIV,MDIV), intent(in)    :: target_field
-    integer, intent(in) :: iter
-    
-    real(wp) :: residual_norm, improvement
-    real(wp), parameter :: omega_min = 0.1e0_wp, omega_max = 1.9e0_wp
-    real(wp), parameter :: target_improvement = 0.1e0_wp
-    
-    ! Compute residual norm
-    residual_norm = sqrt(sum((current_field - target_field)**2))
-    
-    ! Adaptive omega adjustment
-    if (iter > 1) then
-      improvement = (residual_old - residual_norm) / max(residual_old, 1.0e-30_wp)
-      
-      if (improvement < target_improvement) then
-        ! Slow convergence: reduce omega
-        stagnation_count = stagnation_count + 1
-        if (stagnation_count > 3) then
-          omega = max(omega_min, omega * 0.9e0_wp)
-          stagnation_count = 0
-        end if
-      else if (improvement > 2.0e0_wp * target_improvement) then
-        ! Fast convergence: can afford to increase omega
-        omega = min(omega_max, omega * 1.05e0_wp)
-        stagnation_count = 0
-      end if
-    end if
-    
-    ! SOR update
-    current_field = (1.0e0_wp - omega) * current_field + omega * target_field
-    
-    residual_old = residual_norm
-    
-  end subroutine asor_update
-  
-  subroutine reset_asor()
-    omega = 1.0e0_wp
-    residual_old = 1.0e30_wp
-    stagnation_count = 0
-  end subroutine reset_asor
-
-end module adaptive_sor
-
-
-!===============================================================================
-! METHOD 3: Limited-Memory Broyden (Better scaling than Anderson)
-!===============================================================================
-module broyden_method
-  use precision_mod, only: wp
-  use para_mod, only: SDIV, MDIV
-  implicit none
-  
-contains
-
-  subroutine broyden_update(current_field, target_field, history_f, history_x, &
-                           iter, m_hist)
-    real(wp), dimension(SDIV,MDIV), intent(inout) :: current_field
-    real(wp), dimension(SDIV,MDIV), intent(in)    :: target_field
-    real(wp), dimension(SDIV,MDIV,m_hist), intent(inout) :: history_f, history_x
-    integer, intent(in) :: iter, m_hist
-    
-    real(wp) :: residual(SDIV,MDIV), dx(SDIV,MDIV), df(SDIV,MDIV)
-    real(wp) :: update(SDIV,MDIV)
-    integer :: k, i, idx_curr, idx_prev
-    real(wp) :: alpha, denominator
-    real(wp), parameter :: damping = 0.5e0_wp
-    integer, parameter :: warmup = 2
-    
-    residual = current_field - target_field
-    
-    ! Warmup iterations
-    if (iter <= warmup) then
-      current_field = 0.5e0_wp * current_field + 0.5e0_wp * target_field
-      idx_curr = modulo(iter - 1, m_hist) + 1
-      history_f(:,:,idx_curr) = residual
-      history_x(:,:,idx_curr) = current_field
-      return
-    end if
-    
-    idx_curr = modulo(iter - 1, m_hist) + 1
-    idx_prev = modulo(iter - 2, m_hist) + 1
-    
-    ! Compute differences
-    dx = current_field - history_x(:,:,idx_prev)
-    df = residual - history_f(:,:,idx_prev)
-    
-    ! Store history
-    history_f(:,:,idx_curr) = residual
-    history_x(:,:,idx_curr) = current_field
-    
-    ! Broyden update direction
-    k = min(iter - warmup, m_hist)
-    update = -residual
-    
-    ! Apply limited-memory Broyden corrections
-    do i = 1, k
-      idx_prev = modulo(iter - i - 1, m_hist) + 1
-      dx = history_x(:,:,idx_curr) - history_x(:,:,idx_prev)
-      df = history_f(:,:,idx_curr) - history_f(:,:,idx_prev)
-      
-      denominator = sum(df * df)
-      if (denominator > 1.0e-20_wp) then
-        alpha = sum(df * update) / denominator
-        update = update - alpha * df + alpha * dx
-      end if
-    end do
-    
-    ! Apply damped update
-    current_field = current_field + damping * update
-    
-  end subroutine broyden_update
-
-end module broyden_method
-
-
-!===============================================================================
-! METHOD 4: Nonlinear Aitken Acceleration (Very simple, often effective)
-!===============================================================================
-module aitken_acceleration
-  use precision_mod, only: wp
-  use para_mod, only: SDIV, MDIV
-  implicit none
-
-contains
-
-  subroutine aitken_update(current_field, target_field, history_x, iter, m_hist)
-    real(wp), dimension(SDIV,MDIV), intent(inout) :: current_field
-    real(wp), dimension(SDIV,MDIV), intent(in)    :: target_field
-    real(wp), dimension(SDIV,MDIV,m_hist), intent(in) :: history_x
-    integer, intent(in) :: iter, m_hist
-    
-    real(wp) :: d1(SDIV,MDIV), d2(SDIV,MDIV), lambda
-    real(wp) :: numerator, denominator
-    real(wp), parameter :: lambda_min = 0.1e0_wp, lambda_max = 2.0e0_wp
-    integer :: idx_prev, idx_prev2
-
-    if (iter < 3) then
-      current_field = 0.5e0_wp * current_field + 0.5e0_wp * target_field
-      return
-    end if
-
-    idx_prev = modulo(iter - 2, m_hist) + 1
-    idx_prev2 = modulo(iter - 3, m_hist) + 1
-    
-    ! Compute differences
-    d1 = current_field - history_x(:,:,idx_prev)
-    d2 = history_x(:,:,idx_prev) - history_x(:,:,idx_prev2)
-    
-    ! Aitken acceleration parameter
-    numerator = sum(d1 * (d1 - d2))
-    denominator = sum((d1 - d2)**2)
-    
-    if (abs(denominator) > 1.0e-20_wp) then
-      lambda = -numerator / denominator
-      lambda = max(lambda_min, min(lambda_max, lambda))
-    else
-      lambda = 1.0e0_wp
-    end if
-    
-    ! Update with acceleration
-    current_field = target_field + lambda * (current_field - target_field)
-    
-  end subroutine aitken_update
-
-end module aitken_acceleration
-
-
-!===============================================================================
-! METHOD 5: Hybrid Scheme (Anderson-first with occasional rescue)
-!===============================================================================
-module hybrid_relaxation
-  use precision_mod, only: wp
-  use para_mod, only: SDIV, MDIV
-  use anderson_optimized, only: anderson_accel_optimized
-  use aitken_acceleration, only: aitken_update
-  implicit none
-
-contains
-
-  subroutine hybrid_update(current_field, target_field, history_f, history_x, &
-                          iter, m_hist)
-    real(wp), dimension(SDIV,MDIV), intent(inout) :: current_field
-    real(wp), dimension(SDIV,MDIV), intent(in)    :: target_field
-    real(wp), dimension(SDIV,MDIV,m_hist), intent(inout) :: history_f, history_x
-    integer, intent(in) :: iter, m_hist
-    
-    real(wp) :: residual_norm, prev_residual_norm, prevprev_residual_norm, ratio, prev_ratio
-    real(wp), parameter :: diverge_ratio = 1.15e0_wp
-    real(wp), parameter :: stall_ratio   = 0.995e0_wp
-    integer :: idx_prev, idx_prev2
-    logical :: has_prev, repeated_diverge, repeated_stall
-
-    ! Early iterations: stabilize before acceleration.
-    if (iter < 3) then
-      current_field = 0.5e0_wp * current_field + 0.5e0_wp * target_field
-      call store_history(current_field, target_field, history_f, history_x, iter, m_hist)
-      return
-    end if
-
-    residual_norm = sqrt(sum((current_field - target_field)**2))
-    has_prev = (iter > 1)
-    if (has_prev) then
-      idx_prev = modulo(iter - 2, m_hist) + 1
-      prev_residual_norm = sqrt(sum(history_f(:,:,idx_prev)**2))
-      ratio = residual_norm / max(prev_residual_norm, 1.e-30_wp)
-    else
-      ratio = 1.e0_wp
-    end if
-
-    repeated_diverge = .false.
-    repeated_stall = .false.
-    if (iter > 2) then
-      idx_prev2 = modulo(iter - 3, m_hist) + 1
-      prevprev_residual_norm = sqrt(sum(history_f(:,:,idx_prev2)**2))
-      prev_ratio = prev_residual_norm / max(prevprev_residual_norm, 1.e-30_wp)
-      repeated_diverge = (ratio > diverge_ratio) .and. (prev_ratio > diverge_ratio)
-      repeated_stall = (ratio > stall_ratio) .and. (prev_ratio > stall_ratio)
-    end if
-
-    ! Anderson-first policy: keep its speed, use lightweight rescue only when needed.
-    if (has_prev .and. repeated_diverge .and. iter > 6) then
-      current_field = 0.35e0_wp * current_field + 0.65e0_wp * target_field
-      call store_history(current_field, target_field, history_f, history_x, iter, m_hist)
-    else if (has_prev .and. repeated_stall .and. iter > 8) then
-      call aitken_update(current_field, target_field, history_x, iter, m_hist)
-      call store_history(current_field, target_field, history_f, history_x, iter, m_hist)
-    else
-      call anderson_accel_optimized(current_field, target_field, history_f, &
-                                    history_x, iter, m_hist, .true.)
-    end if
-    
-  end subroutine hybrid_update
-
-  subroutine store_history(current_field, target_field, history_f, history_x, iter, m_hist)
-    real(wp), dimension(SDIV,MDIV), intent(in) :: current_field, target_field
-    real(wp), dimension(SDIV,MDIV,m_hist), intent(inout) :: history_f, history_x
-    integer, intent(in) :: iter, m_hist
-    integer :: idx_curr
-
-    idx_curr = modulo(iter - 1, m_hist) + 1
-    history_f(:,:,idx_curr) = current_field - target_field
-    history_x(:,:,idx_curr) = current_field
-  end subroutine store_history
-
-end module hybrid_relaxation
-
-
-!===============================================================================
-! Performance Comparison and Recommendations
-!===============================================================================
-!
-! Computational Cost per Iteration:
-!   1. Adaptive SOR:  O(N) - FASTEST
-!   2. Aitken:        O(N) - Very fast
-!   3. Broyden:       O(N*m) - Fast
-!   4. Anderson:      O(N*m + m³) - Moderate (m³ can be expensive)
-!   5. Hybrid:        Adaptive based on convergence
-!
-! Memory Requirements:
-!   1. Adaptive SOR:  ~2*N - Minimal
-!   2. Aitken:        ~3*N - Minimal
-!   3. Broyden:       ~2*N*m - Moderate
-!   4. Anderson:      ~N*m - Moderate
-!   5. Hybrid:        ~N*(m+2) - Moderate
-!
-! Convergence Speed (typical NS problems):
-!   1. Hybrid:        BEST (adaptive)
-!   2. Anderson:      Very good (smooth problems)
-!   3. Broyden:       Good (large systems)
-!   4. Aitken:        Good (simple problems)
-!   5. Adaptive SOR:  Moderate (but cost-effective)
-!
-! RECOMMENDATIONS:
-!
-! FOR YOUR NEUTRON STAR CODE:
-!   1st choice: Hybrid scheme - automatically adapts to problem
-!   2nd choice: Adaptive SOR - if memory is tight or m is large
-!   3rd choice: Optimized Anderson - if convergence speed is critical
-!
-! USAGE PATTERN:
-!   - Use Hybrid for automated best performance
-!   - Use Adaptive SOR for low memory / fast iterations
-!   - Use Anderson only if you know your problem is very smooth
-!
-! TYPICAL SPEEDUPS vs original Anderson:
-!   - Adaptive SOR:  2-5x faster per iteration
-!   - Aitken:        2-3x faster per iteration
-!   - Broyden:       1.5-2x faster per iteration
-!   - Hybrid:        Best overall time-to-solution
-!
-!===============================================================================
