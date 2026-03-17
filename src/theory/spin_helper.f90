@@ -1,4 +1,5 @@
 module spin_helper
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_nan
   use para_mod, only: wp, SDIV, MDIV, LMAX, &
                       s_gp, mu, sin_theta, s_e, s_pwr, DM, &
                       rho, gama, alpha, ww, omg, sphi, &
@@ -10,7 +11,7 @@ module spin_helper
                       l_uni, KAPPA, C, G, MSUN, MB, pi, KSCALE, &
                       mass, mass_0, ang_mom, &
                       A_diff, lambda1, lambda2, Fmax_h, F_equator_h, &
-                      solver_type, relaxation_scheme, output, timing, eos_file
+                      solver_type, output, timing, eos_file
   use brent_mod, only : find_omege_e, zbrent_rot
   use toolkit_mod, only : deriv_sm, deriv_s, deriv_m, besseli, besselk, interp, interp_log_h_to_p, interp_log_p_to_e
   use simpson_mod, only: simpson_1d
@@ -100,7 +101,7 @@ contains
     real(wp), dimension(SDIV,MDIV), intent(in) :: f
     real(wp), dimension(SDIV,MDIV) :: df_dm
     real(wp) :: inv60DM
-    if (r_ratio == 1.e0_wp) then
+    if (abs(r_ratio - 1.e0_wp) < epsilon(r_ratio)) then
       df_dm = 0.e0_wp
       return
     end if
@@ -331,7 +332,8 @@ contains
 
     sgp_term = spread(s_gp / (1.e0_wp - s_gp), 2, MDIV)
     sin_theta_2d = spread(sin_theta, 1, SDIV)
-    velocity_sq = merge(0.e0_wp, ((Omg - ww) * sgp_term * sin_theta_2d * exp(-rho * r_e_new**2))**2, r_ratio == 1.e0_wp)
+    velocity_sq = merge(0.e0_wp, ((Omg - ww) * sgp_term * sin_theta_2d * exp(-rho * r_e_new**2))**2, &
+                        abs(r_ratio - 1.e0_wp) < epsilon(r_ratio))
 
     where (velocity_sq > 1.e0_wp) velocity_sq = 0.e0_wp
 
@@ -398,7 +400,7 @@ contains
     dr_s_cache = deriv_s_vec(rho)
     dww_s_cache = deriv_s_vec(ww)
     ds_s_cache = deriv_s_vec(sphi)
-    if (r_ratio == 1.e0_wp) then
+    if (abs(r_ratio - 1.e0_wp) < epsilon(r_ratio)) then
       dg_m_cache = 0.e0_wp
       dr_m_cache = 0.e0_wp
       dww_m_cache = 0.e0_wp
@@ -417,7 +419,7 @@ contains
     do m = 1, MDIV
       d2g_ss_cache(:,m) = s1 * d2g_ss_cache(:,m) + one_minus_2s * dg_s_cache(:,m)
     end do
-    if (r_ratio == 1.e0_wp) then
+    if (abs(r_ratio - 1.e0_wp) < epsilon(r_ratio)) then
       d2g_mm_cache = 0.e0_wp
     else
       d2g_mm_cache = deriv_m_vec(dg_m_cache)
@@ -484,7 +486,7 @@ contains
         + gama(:,m) * 0.5e0_wp * (source_common_col - 0.5e0_wp * dg_s_scaled_col**2 &
         - 0.5e0_wp * dg_m_scaled_col * dg_m_cache(:,m)) )
     
-      if (r_ratio == 1.e0_wp) then
+      if (abs(r_ratio - 1.e0_wp) < epsilon(r_ratio)) then
         S_metric_omega(:,m) = 0.e0_wp
       else
         omega_matter_col = (one_plus_vsq_col * esm_col + 2.e0_wp * vsq_col * psm_col) * vel_fac_col
@@ -792,7 +794,7 @@ contains
       call dgemm('N','T', SDIV, MDIV, LMAX+1, -1.e0_wp, D2_metric_sphi, SDIV, P_2n, MDIV, 0.e0_wp, sum_sphi, SDIV)
     endif
 
-    if (r_ratio == 1.e0_wp) then
+    if (abs(r_ratio - 1.e0_wp) < epsilon(r_ratio)) then
       target_rho  = sum_rho
       target_gama = sum_gama
       target_ww   = sum_omega
@@ -839,7 +841,7 @@ contains
     real(wp) :: adj_const(SDIV)
 
     alpha(:,:) = 0.e0_wp
-    if (r_ratio == 1.e0_wp) then
+    if (abs(r_ratio - 1.e0_wp) < epsilon(r_ratio)) then
       return
     else
       sgp_ratio_cache = s_gp / (1.e0_wp-s_gp)
@@ -904,7 +906,6 @@ contains
     real(wp), intent(in) :: root_mphi_re
     real(wp), intent(out) :: out_target_rho(SDIV,MDIV), out_target_gama(SDIV,MDIV), out_target_ww(SDIV,MDIV), out_target_sphi(SDIV,MDIV)
     real(wp) :: t0, t1, dt_precompute, dt_build, dt_angular, dt_radial, dt_sum
-    integer :: m
     integer, parameter :: timing_calls = 5
     integer, save :: target_call_count = 0
     real(wp), save :: sum_dt_precompute = 0.e0_wp, sum_dt_build = 0.e0_wp, sum_dt_angular = 0.e0_wp
@@ -980,7 +981,6 @@ contains
   end subroutine get_all_targets
 
   subroutine relaxation(r_e_new, target_rho, target_gama, target_ww, target_sphi, root_mphi_re, n_of_it)
-    use hybrid_relaxation, only: hybrid_update
     use anderson_optimized, only: anderson_accel_optimized
     real(wp), intent(in) :: r_e_new
     real(wp), intent(in) :: target_rho(SDIV,MDIV), target_gama(SDIV,MDIV)
@@ -993,10 +993,6 @@ contains
     real(wp), allocatable, save :: hist_f_gama(:,:,:)
     real(wp), allocatable, save :: hist_f_ww(:,:,:)
     real(wp), allocatable, save :: hist_f_sphi(:,:,:)
-    real(wp), allocatable, save :: hist_x_rho(:,:,:)
-    real(wp), allocatable, save :: hist_x_gama(:,:,:)
-    real(wp), allocatable, save :: hist_x_ww(:,:,:)
-    real(wp), allocatable, save :: hist_x_sphi(:,:,:)
     logical :: need_reset_history
 
     need_reset_history = (n_of_it == 0)
@@ -1009,48 +1005,23 @@ contains
     if (need_reset_history) then
       if (allocated(hist_f_rho)) then
         deallocate(hist_f_rho, hist_f_gama, hist_f_ww, hist_f_sphi)
-        deallocate(hist_x_rho, hist_x_gama, hist_x_ww, hist_x_sphi)
       end if
     end if
 
-    select case (trim(relaxation_scheme))
-    case ('anderson')
-        if (.not. allocated(hist_f_rho)) then
-          allocate(hist_f_rho(SDIV,MDIV,m_hist), source=0.e0_wp)
-          allocate(hist_f_gama(SDIV,MDIV,m_hist), source=0.e0_wp)
-          allocate(hist_f_ww(SDIV,MDIV,m_hist), source=0.e0_wp)
-          allocate(hist_f_sphi(SDIV,MDIV,m_hist), source=0.e0_wp)
-          allocate(hist_x_rho(SDIV,MDIV,m_hist), source=0.e0_wp)
-          allocate(hist_x_gama(SDIV,MDIV,m_hist), source=0.e0_wp)
-          allocate(hist_x_ww(SDIV,MDIV,m_hist), source=0.e0_wp)
-          allocate(hist_x_sphi(SDIV,MDIV,m_hist), source=0.e0_wp)
-        end if
-        call anderson_accel_optimized(rho,  target_rho,  hist_f_rho,  hist_x_rho,  n_of_it, m_hist, .true.)
-        call anderson_accel_optimized(gama, target_gama, hist_f_gama, hist_x_gama, n_of_it, m_hist, .true.)
-        call anderson_accel_optimized(ww,   target_ww,   hist_f_ww,   hist_x_ww,   n_of_it, m_hist, .true.)
-        call anderson_accel_optimized(sphi, target_sphi, hist_f_sphi, hist_x_sphi, n_of_it, m_hist, .true.)
-    case ('hybrid')
-        if (.not. allocated(hist_f_rho)) then
-          allocate(hist_f_rho(SDIV,MDIV,m_hist), source=0.e0_wp)
-          allocate(hist_f_gama(SDIV,MDIV,m_hist), source=0.e0_wp)
-          allocate(hist_f_ww(SDIV,MDIV,m_hist), source=0.e0_wp)
-          allocate(hist_f_sphi(SDIV,MDIV,m_hist), source=0.e0_wp)
-          allocate(hist_x_rho(SDIV,MDIV,m_hist), source=0.e0_wp)
-          allocate(hist_x_gama(SDIV,MDIV,m_hist), source=0.e0_wp)
-          allocate(hist_x_ww(SDIV,MDIV,m_hist), source=0.e0_wp)
-          allocate(hist_x_sphi(SDIV,MDIV,m_hist), source=0.e0_wp)
-        end if
-        call hybrid_update(rho,  target_rho,  hist_f_rho,  hist_x_rho,  n_of_it, m_hist)
-        call hybrid_update(gama, target_gama, hist_f_gama, hist_x_gama, n_of_it, m_hist)
-        call hybrid_update(ww,   target_ww,   hist_f_ww,   hist_x_ww,   n_of_it, m_hist)
-        call hybrid_update(sphi, target_sphi, hist_f_sphi, hist_x_sphi, n_of_it, m_hist)
-    case default
-        stop "Unknown relaxation scheme specified"
-    end select
+    if (.not. allocated(hist_f_rho)) then
+      allocate(hist_f_rho(SDIV,MDIV,m_hist), source=0.e0_wp)
+      allocate(hist_f_gama(SDIV,MDIV,m_hist), source=0.e0_wp)
+      allocate(hist_f_ww(SDIV,MDIV,m_hist), source=0.e0_wp)
+      allocate(hist_f_sphi(SDIV,MDIV,m_hist), source=0.e0_wp)
+    end if
+    call anderson_accel_optimized(rho,  target_rho,  hist_f_rho,  n_of_it, m_hist)
+    call anderson_accel_optimized(gama, target_gama, hist_f_gama, n_of_it, m_hist)
+    call anderson_accel_optimized(ww,   target_ww,   hist_f_ww,   n_of_it, m_hist)
+    call anderson_accel_optimized(sphi, target_sphi, hist_f_sphi, n_of_it, m_hist)
 
-    where(sphi .ne. sphi) sphi = 0.e0_wp
+    where(ieee_is_nan(sphi)) sphi = 0.e0_wp
 
-    if ( mphi_r == 0.e0_wp ) return
+    if ( abs(mphi_r) < epsilon(mphi_r) ) return
     
     do m=1,MDIV
       do s=2,SDIV
