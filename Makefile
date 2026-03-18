@@ -2,7 +2,7 @@ PROG    := a.out
 .DEFAULT_GOAL := all
 FC      = gfortran
 
-MODE    ?= Release
+MODE    ?= Debug
 BASE_FFLAGS := -I.
 RELEASE_FFLAGS := -O3 -march=native
 DEBUG_FFLAGS := -O0 -g -fbacktrace -Wall -Wextra -Wimplicit-interface -fcheck=all -Wuninitialized -Wconversion -Wuse-without-only -finit-real=nan
@@ -80,7 +80,7 @@ $(OBJDIR)/$(SRC_CORE)/sphere.o: $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/$(
 $(OBJDIR)/$(SRC_CORE)/restart_read.o: $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_CORE)/grid.o
 $(OBJDIR)/$(SRC_CORE)/analysis_v2.o: $(OBJDIR)/$(SRC_TOOL)/ad_mod.o $(OBJDIR)/$(SRC_TOOL)/cheb_mod.o $(OBJDIR)/$(SRC_TOOL)/nag_compat_mod.o $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/$(SRC_CORE)/miscellaneous.o $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_CORE)/eos.o
 $(OBJDIR)/$(SRC_CORE)/scalar_burning.o: $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_THEORY)/rotation_solver.o
-$(OBJDIR)/$(SRC_CORE)/starting_model.o: $(OBJDIR)/$(SRC_THEORY)/rotation_solver.o $(OBJDIR)/$(SRC_CORE)/miscellaneous.o $(OBJDIR)/$(SRC_CORE)/scalar_burning.o $(OBJDIR)/$(SRC_CORE)/eos.o $(OBJDIR)/$(SRC_CORE)/analysis_v2.o $(OBJDIR)/$(SRC_CORE)/restart_read.o
+$(OBJDIR)/$(SRC_CORE)/starting_model.o: $(OBJDIR)/$(SRC_THEORY)/rotation_solver.o $(OBJDIR)/$(SRC_CORE)/miscellaneous.o $(OBJDIR)/$(SRC_CORE)/scalar_burning.o $(OBJDIR)/$(SRC_CORE)/eos.o $(OBJDIR)/$(SRC_CORE)/analysis_v2.o $(OBJDIR)/$(SRC_CORE)/restart_read.o $(OBJDIR)/$(SRC_CORE)/sphere.o
 $(OBJDIR)/$(SRC_CORE)/shoot_v2.o: $(OBJDIR)/$(SRC_CORE)/starting_model.o $(OBJDIR)/$(SRC_CORE)/eos.o $(OBJDIR)/$(SRC_CORE)/analysis_v2.o
 $(OBJDIR)/$(SRC_CORE)/MRcurve.o: $(OBJDIR)/$(SRC_THEORY)/rotation_solver.o $(OBJDIR)/$(SRC_CORE)/starting_model.o $(OBJDIR)/$(SRC_CORE)/eos.o $(OBJDIR)/$(SRC_CORE)/analysis_v2.o
 $(OBJDIR)/$(SRC_CORE)/set_disk.o: $(OBJDIR)/$(SRC_CORE)/eos.o

@@ -82,10 +82,10 @@ subroutine rotation_solver
 
     root_mphi_re = sqrt(mphi_r * r_e_new_sq)
 
-    call get_all_targets(r_e_new, gama_pole_h, rho_pole_h, sphi_pole_h, root_mphi_re, &
-                         target_rho, target_gama, target_ww, target_sphi)
+    call get_all_targets(r_e_new, root_mphi_re, &
+         target_rho, target_gama, target_ww, target_sphi)
     if (timing) call cpu_time(t0)
-    call relaxation(r_e_new, target_rho, target_gama, target_ww, target_sphi, root_mphi_re, n_of_it)
+    call relaxation(target_rho, target_gama, target_ww, target_sphi, root_mphi_re, n_of_it)
     if (timing) then
       call cpu_time(t1); dt_relaxation = t1 - t0; call cpu_time(t0)
     end if

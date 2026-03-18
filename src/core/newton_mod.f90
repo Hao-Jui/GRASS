@@ -5,6 +5,14 @@
 module shoot_solver_mod
   use precision_mod, only: wp
   implicit none
+  interface
+    subroutine dgesv(n, nrhs, a, lda, ipiv, b, ldb, info)
+      import :: wp
+      integer, intent(in) :: n, nrhs, lda, ldb
+      integer, intent(out) :: ipiv(*), info
+      real(wp), intent(inout) :: a(lda, *), b(ldb, *)
+    end subroutine dgesv
+  end interface
   real(wp), parameter :: r_eps = 1.e-8_wp
   real(wp), parameter :: r_min_ratio = 0.35e0_wp
   real(wp), parameter :: max_step = 0.5e0_wp
