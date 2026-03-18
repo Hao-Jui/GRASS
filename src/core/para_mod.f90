@@ -4,18 +4,18 @@ module para_mod
   ! -- Theory selection ------------------------------------------------------
   integer, parameter :: THEORY_GR = 0
   integer, parameter :: THEORY_ST = 1
-  integer :: active_theory = THEORY_ST
+  integer :: active_theory = THEORY_GR
 
   ! hybrid / anderson
   ! -- Running option --------------------------------------------------------
   integer, parameter :: MODE_REGRID  = 1
   integer, parameter :: MODE_DEFAULT = 2
 
-  integer :: run_mode = MODE_REGRID
+  integer :: run_mode = MODE_DEFAULT
 
   ! -- Rotation configuration ------------------------------------------------
   ! uniform / const_j / uryu
-  character(len=20) :: solver_type = "uniform"
+  character(len=20) :: solver_type = "uryu"
 
   ! -- Solver state ----------------------------------------------------------
   logical :: output = .false.
@@ -27,8 +27,8 @@ module para_mod
   ! -- Resolutions -----------------------------------------------------------
   integer, parameter :: res  = 10
   integer, parameter :: s_pwr = 1
-  integer :: SDIV = 640 * res + 1
-  integer :: MDIV = 4 * res + 1
+  integer :: SDIV = 60 * res + 1
+  integer :: MDIV = 10 * res + 1
 
   ! -- Target quantities -----------------------------------------------------
   character(len=128) :: eos_file = "MPA1"
@@ -38,8 +38,8 @@ module para_mod
   real(wp) :: chi_goal = 0.1e0_wp
   real(wp) :: omc_goal = 30.e0_wp
 
-  real(wp) :: B_goal   = 152.e0_wp
-  real(wp) :: mphi_goal = .1e0_wp
+  real(wp) :: B_goal   = 4.e3_wp
+  real(wp) :: mphi_goal = 1.e0_wp
 
   ! -- Rotation-law parameters (KEH, Uryu enabled) --------------------------
   real(wp) :: A_diff  = 0.5e0_wp

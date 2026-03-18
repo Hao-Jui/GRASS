@@ -17,28 +17,29 @@ module anderson_optimized
       double precision, intent(in) :: a(lda, *), x(*)
       double precision, intent(inout) :: y(*)
     end subroutine dgemv
-    subroutine dposv(uplo, n, nrhs, a, lda, b, ldb, info)
-      character(len=1), intent(in) :: uplo
-      integer, intent(in) :: n, nrhs, lda, ldb
-      integer, intent(out) :: info
-      double precision, intent(inout) :: a(lda, *), b(ldb, *)
-    end subroutine dposv
   end interface
 contains
 
-  subroutine anderson_accel_optimized(current_field, target_field, history_f, iter, m_hist)
+  subroutine anderson_accel_optimized(current_field, target_field, history_f, iter, m_hist, dif)
     real(wp), dimension(SDIV,MDIV), intent(inout) :: current_field
     real(wp), dimension(SDIV,MDIV), intent(in)    :: target_field
     real(wp), dimension(SDIV,MDIV,m_hist), intent(inout) :: history_f
     integer, intent(in) :: iter, m_hist
+    real(wp), intent(in) :: dif
     
-    real(wp), dimension(m_hist) :: gamma
+    real(wp), dimension(m_hist) :: gamma, svals
     real(wp), dimension(m_hist, m_hist) :: F_mat
     real(wp) :: residual(SDIV,MDIV), accel_field(SDIV,MDIV)
-    integer :: k, i, info, idx_curr, idx, N
-    real(wp), parameter :: blend = 0.1e0_wp, damping = 0.8e0_wp
+    real(wp) :: work_ls(10*m_hist)
+    integer :: k, i, info, idx_curr, idx, N, rank_out
+    real(wp), parameter :: blend = 0.3e0_wp, damping = 0.3e0_wp
     integer, parameter :: conservative_steps = 3
     real(wp), allocatable, save :: delta(:,:)
+
+    !if ( dif < 1.e-6_wp) then
+    !  current_field = damping * current_field + (1.0e0_wp - damping) * target_field
+    !  return
+    !end if
 
     N = SDIV*MDIV
 
@@ -56,8 +57,8 @@ contains
 
     ! Early iterations: simple damping, but still seed valid history.
     if (iter < conservative_steps) then
-      history_f(:,:,idx_curr) = residual            ! store pre-update residual
-      current_field = 0.5e0_wp * current_field + 0.5e0_wp * target_field
+      history_f(:,:,idx_curr) = residual  ! store pre-update residual
+      current_field = damping * current_field + (1.0e0_wp - damping) * target_field
       return
     end if
 
@@ -82,13 +83,15 @@ contains
 
     call DPOSV('U', k, 1, F_mat, m_hist, gamma, m_hist, info)
 
-    if (info == 0) then
+    if (info == 0 .and. dif < 1.e-6_wp) then
       ! accel_field = target_field - delta(:,1:k) @ gamma(1:k)
+      write(*,*) "Anderson"
       accel_field = target_field
       call dgemv('N', N, k, -1.e0_wp, delta, N, gamma, 1, 1.e0_wp, accel_field(1,1), 1)
-      current_field = damping * accel_field + (1.0e0_wp - damping) * current_field
+      !current_field = damping * accel_field + (1.0e0_wp - damping) * current_field
+      current_field = blend * current_field + (1.0e0_wp - blend) * accel_field
     else
-      ! Fallback to damped Picard
+      !write(*,*) "Fallback to damped Picard"
       current_field = blend * current_field + (1.0e0_wp - blend) * target_field
     end if
     
