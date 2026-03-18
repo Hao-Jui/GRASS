@@ -4,6 +4,7 @@
 !
 ! ********************************************* !
 subroutine sphere
+  use eos_mod, only: p_at_h, e_at_h
   use toolkit_mod, only: interp
   use para_mod, only: SDIV, RDIV, MDIV, KAPPA, C, G, MSUN, KSCALE, &
                       s_gp, s_pwr, s_e, r_e, mphi_r, &
@@ -23,12 +24,6 @@ subroutine sphere
         implicit none
         real(8), intent(in) :: r_eq
       end subroutine set_disk
-      pure elemental real(8) function p_at_h(hh)
-        real(8), intent(in) :: hh
-      end function p_at_h
-      pure elemental real(8) function e_at_h(hh)
-        real(8), intent(in) :: hh
-      end function e_at_h
     end interface
     integer :: s, m
     real(8) r_is_s, r_is_final, r_final, m_final, &
@@ -109,6 +104,7 @@ end subroutine sphere
 subroutine TOV(i_check, r_is_gp, lambda_gp, nu_gp, e_d_gp, &
     r_is_final, r_final, m_final)
 
+    use eos_mod, only: h_at_p, p_at_e, e_at_p, n0_at_e
     use para_mod, only: RDIV, KAPPA, C, KSCALE, MB, &
                         e_surface, p_surface, p_center, e_center
     integer, intent(in) :: i_check
@@ -132,18 +128,6 @@ subroutine TOV(i_check, r_is_gp, lambda_gp, nu_gp, e_d_gp, &
       real(8) function dr_dr_is(r_is, r, m)
         real(8), intent(in) :: r_is, r, m
       end function dr_dr_is
-      pure elemental real(8) function h_at_p(pp)
-        real(8), intent(in) :: pp
-      end function h_at_p
-      pure elemental real(8) function p_at_e(ee)
-        real(8), intent(in) :: ee
-      end function p_at_e
-      pure elemental real(8) function e_at_p(pp)
-        real(8), intent(in) :: pp
-      end function e_at_p
-      pure elemental real(8) function n0_at_e(ee)
-        real(8), intent(in) :: ee
-      end function n0_at_e
     end interface
 
     ! use estimate of r to set the step size h
@@ -259,13 +243,9 @@ end subroutine TOV
 
 real(8) function dm_dr_is(r_is,r,m,p)
 
+  use eos_mod, only: e_at_p
   use para_mod, only : p_surface,tov_rmin,e_center,pi
   implicit none
-  interface
-    pure elemental real(8) function e_at_p(pp)
-      real(8), intent(in) :: pp
-    end function e_at_p
-  end interface
   real(8), intent(in) :: r_is, r, m, p
   real(8) :: e_d
   
@@ -284,13 +264,9 @@ end function dm_dr_is
 
 real(8) function dp_dr_is(r_is,r,m,p)
 
+  use eos_mod, only: e_at_p
   use para_mod, only : p_surface,tov_rmin,e_center,pi
   implicit none
-  interface
-    pure elemental real(8) function e_at_p(pp)
-      real(8), intent(in) :: pp
-    end function e_at_p
-  end interface
   real(8), intent(in) :: r_is, r, m, p
   real(8) :: e_d
 

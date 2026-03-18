@@ -1,4 +1,5 @@
 subroutine shoot_v2
+  use eos_mod, only: n0_at_h, e_at_h
   use para_mod, only: wp, h_center, r_ratio, mass, mass_0, mass_p, chi, chi_goal, &
                       Omega_c, KAPPA, C, KSCALE, MB, MSUN, pi, n_sat, &
                       I_inertia, Love2, M2, M4, S3, T_kin, &
@@ -17,7 +18,6 @@ subroutine shoot_v2
   use shoot_newton_helpers, only: evaluate_solution, build_jacobian
   use shoot_newton_helpers_1d, only: evaluate_solution_1d, build_jacobian_1d
   implicit none
-  real(wp) :: p_at_e, h_at_p, n0_at_h, e_at_h
   integer :: it, i_idx, iteration_cap
   real(wp) :: er, rho0, ee
   real(wp) :: F(2), x(2), delta_x(2), rhs(2), h_new, r_new
@@ -26,9 +26,7 @@ subroutine shoot_v2
   type(newton_state_1d) :: solver_state_1d
   logical :: step_ok, need_cycle
   real(wp) :: prev_er1d, prev_er2d
-  external :: p_at_e, h_at_p, n0_at_h, e_at_h
-
-  call initialize_starting_model(p_at_e, h_at_p, n0_at_h, e_at_h)
+  call initialize_starting_model()
   ! Always initialize 2D state since the run can switch from 1D to 2D mid-sequence.
   call init_newton_state(solver_state, 2)
 

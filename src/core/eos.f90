@@ -1,3 +1,6 @@
+module eos_mod
+  implicit none
+contains
 subroutine loadEos
     use para_mod, only: p_at_PT, eos_file, num_tab, &
                         log_e, log_p, log_h, log_n0, &
@@ -284,3 +287,5 @@ subroutine loadEos
       end do
     end subroutine fornberg_weights
   end subroutine pressure_derivative_n
+
+end module eos_mod

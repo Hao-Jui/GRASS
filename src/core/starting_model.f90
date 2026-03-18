@@ -1,5 +1,6 @@
 module starting_model_mod
   use precision_mod, only: wp
+  use eos_mod, only: p_at_e, h_at_p, n0_at_h, e_at_h
   use para_mod, only: run_mode, MODE_REGRID, &
                       SDIV, MDIV, e_center, p_center, h_center, &
                       C, KSCALE, KAPPA, &
@@ -12,8 +13,7 @@ module starting_model_mod
   use scalar_burning_mod, only: perform_scalar_burn
   implicit none
 contains
-  subroutine initialize_starting_model(p_at_e, h_at_p, n0_at_h, e_at_h)
-    real(wp), external :: p_at_e, h_at_p, n0_at_h, e_at_h
+  subroutine initialize_starting_model()
     external :: sphere, restart_read, refine_read, regrid_read
     real(wp) :: target_mphi
 

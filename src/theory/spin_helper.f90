@@ -1,5 +1,6 @@
 module spin_helper
   use, intrinsic :: ieee_arithmetic, only: ieee_is_nan
+  use eos_mod, only: n0_at_e
   use para_mod, only: wp, SDIV, MDIV, LMAX, &
                       s_gp, mu, sin_theta, s_e, s_pwr, DM, &
                       rho, gama, alpha, ww, omg, sphi, &
@@ -1093,12 +1094,6 @@ contains
 
   subroutine output_helper(D2_metric_rho, D2_metric_omega)
     real(wp), intent(in) :: D2_metric_rho(SDIV,LMAX+1), D2_metric_omega(SDIV,LMAX+1)
-    interface
-      pure elemental real(wp) function n0_at_e(ee)
-        use precision_mod, only: wp
-        real(wp), intent(in) :: ee
-      end function n0_at_e
-    end interface
     real(wp) :: r_inf, rho_0
     character(32) :: fil1, fil2, fil3, fil4, fil5, fil6, fil7, fil8
     character(64) :: tail_fmt
@@ -1160,12 +1155,6 @@ contains
     integer :: sig_digits, exp_digits, field_width
     real(wp) :: rho_0_val
     character(len=256) :: header_fmt, data_fmt
-    interface
-      pure elemental real(wp) function n0_at_e(ee)
-        use precision_mod, only: wp
-        real(wp), intent(in) :: ee
-      end function n0_at_e
-    end interface
 
     ! Build format strings from precision/range so real128 has enough exponent digits.
     sig_digits = precision(1.0_wp) - 1
