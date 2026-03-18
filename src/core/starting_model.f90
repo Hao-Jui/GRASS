@@ -2,6 +2,7 @@ module starting_model_mod
   use analysis_mod, only: solution_properties
   use precision_mod, only: wp
   use eos_mod, only: p_at_e, h_at_p, n0_at_h, e_at_h
+  use regrid_mod, only: regrid_read
   use para_mod, only: run_mode, MODE_REGRID, &
                       SDIV, MDIV, e_center, p_center, h_center, &
                       C, KSCALE, KAPPA, &
@@ -15,7 +16,7 @@ module starting_model_mod
   implicit none
 contains
   subroutine initialize_starting_model()
-    external :: sphere, restart_read, refine_read, regrid_read
+    external :: sphere, restart_read, refine_read
     real(wp) :: target_mphi
 
     select case (run_mode)

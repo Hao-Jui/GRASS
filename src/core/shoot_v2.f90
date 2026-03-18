@@ -1,3 +1,6 @@
+module shoot_mod
+contains
+
 subroutine shoot_v2
   use analysis_mod, only: solution_properties
   use eos_mod, only: n0_at_h, e_at_h
@@ -219,3 +222,5 @@ subroutine print_iter_status(it, rho0, ee, er)
   write(*,'(1X,A)') repeat('=', 36)
   write(*, *) " "
 end subroutine print_iter_status
+
+end module shoot_mod
