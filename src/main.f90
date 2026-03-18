@@ -1,5 +1,7 @@
 program grass
   use eos_mod, only: loadEos
+  use grid_mod, only: make_grid, GridTrig
+  use shoot_mod, only: shoot_v2
   use toolkit_mod, only: debug_mod_bessel
   use para_mod, only: wp, initialize_theory, &
                       has_scalar, mphi_goal, scalarton, B_goal, &

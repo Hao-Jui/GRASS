@@ -1,16 +1,11 @@
+module grid_mod
+contains
+
 subroutine make_grid
   use para_mod, only: SDIV, MDIV, s_gp, mu, DS, DM, pi
   implicit none
   integer :: m, s, i, n
   real(8) :: x, x_prev, p_n, dp_n
-
-  interface
-    subroutine legendre_and_deriv(n, x, p, dp)
-      integer, intent(in) :: n
-      real(8), intent(in) :: x
-      real(8), intent(out) :: p, dp
-    end subroutine legendre_and_deriv
-  end interface
 
   do s = 1, SDIV
     s_gp(s) = (dble(s)-1.d0) * DS
@@ -96,3 +91,5 @@ subroutine GridTrig
   end do
 
 end subroutine GridTrig
+
+end module grid_mod

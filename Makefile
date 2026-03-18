@@ -77,14 +77,14 @@ $(OBJDIR)/$(SRC_CORE)/newton1d_mod.o: $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)
 $(OBJDIR)/$(SRC_CORE)/eos.o: $(OBJDIR)/$(SRC_TOOL)/ad_mod.o $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o
 $(OBJDIR)/$(SRC_CORE)/grid.o: $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o
 $(OBJDIR)/$(SRC_CORE)/sphere.o: $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_CORE)/eos.o $(OBJDIR)/$(SRC_CORE)/set_disk.o
-$(OBJDIR)/$(SRC_CORE)/restart_read.o: $(OBJDIR)/$(SRC_CORE)/para_mod.o
+$(OBJDIR)/$(SRC_CORE)/restart_read.o: $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_CORE)/grid.o
 $(OBJDIR)/$(SRC_CORE)/analysis_v2.o: $(OBJDIR)/$(SRC_TOOL)/ad_mod.o $(OBJDIR)/$(SRC_TOOL)/cheb_mod.o $(OBJDIR)/$(SRC_TOOL)/nag_compat_mod.o $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/$(SRC_CORE)/miscellaneous.o $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_CORE)/eos.o
 $(OBJDIR)/$(SRC_CORE)/scalar_burning.o: $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_THEORY)/rotation_solver.o
-$(OBJDIR)/$(SRC_CORE)/starting_model.o: $(OBJDIR)/$(SRC_THEORY)/rotation_solver.o $(OBJDIR)/$(SRC_CORE)/miscellaneous.o $(OBJDIR)/$(SRC_CORE)/scalar_burning.o $(OBJDIR)/$(SRC_CORE)/eos.o $(OBJDIR)/$(SRC_CORE)/analysis_v2.o
+$(OBJDIR)/$(SRC_CORE)/starting_model.o: $(OBJDIR)/$(SRC_THEORY)/rotation_solver.o $(OBJDIR)/$(SRC_CORE)/miscellaneous.o $(OBJDIR)/$(SRC_CORE)/scalar_burning.o $(OBJDIR)/$(SRC_CORE)/eos.o $(OBJDIR)/$(SRC_CORE)/analysis_v2.o $(OBJDIR)/$(SRC_CORE)/restart_read.o
 $(OBJDIR)/$(SRC_CORE)/shoot_v2.o: $(OBJDIR)/$(SRC_CORE)/starting_model.o $(OBJDIR)/$(SRC_CORE)/eos.o $(OBJDIR)/$(SRC_CORE)/analysis_v2.o
 $(OBJDIR)/$(SRC_CORE)/MRcurve.o: $(OBJDIR)/$(SRC_THEORY)/rotation_solver.o $(OBJDIR)/$(SRC_CORE)/starting_model.o $(OBJDIR)/$(SRC_CORE)/eos.o $(OBJDIR)/$(SRC_CORE)/analysis_v2.o
 $(OBJDIR)/$(SRC_CORE)/set_disk.o: $(OBJDIR)/$(SRC_CORE)/eos.o
-$(OBJDIR)/src/main.o: $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_CORE)/constraint_eq.o $(OBJDIR)/$(SRC_CORE)/eos.o
+$(OBJDIR)/src/main.o: $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_CORE)/constraint_eq.o $(OBJDIR)/$(SRC_CORE)/eos.o $(OBJDIR)/$(SRC_CORE)/grid.o $(OBJDIR)/$(SRC_CORE)/shoot_v2.o
 
 .PHONY: all clean release debug
 
