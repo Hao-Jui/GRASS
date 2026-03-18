@@ -150,6 +150,7 @@ contains
 end module shoot_solver_mod_1d
 
 module shoot_newton_helpers_1d
+  use eos_mod, only: n0_at_h, e_at_h
   use para_mod, only: h_center, r_ratio, Mass, Mass_0, MSUN, M_goal, Mb_goal, FIX1
   use newton_types_mod, only: newton_state_1d, evaluation_function_1d
   use shoot_solver_mod_1d, only: from_solver_coord_1d
@@ -159,8 +160,6 @@ contains
   subroutine evaluate_solution_1d(hc, rep, F, rho0, ee)
     real(8), intent(in)  :: hc, rep
     real(8), intent(out) :: F, rho0, ee
-    real(8) :: n0_at_h, e_at_h
-    external :: n0_at_h, e_at_h
     external :: mass_radius
     real(8) :: devi
 
@@ -214,5 +213,4 @@ contains
   end subroutine build_jacobian_1d
 
 end module shoot_newton_helpers_1d
-
 

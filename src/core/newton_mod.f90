@@ -183,6 +183,7 @@ end module shoot_solver_mod
 module shoot_newton_helpers
   use precision_mod, only: wp
   use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+  use eos_mod, only: n0_at_h, e_at_h
   use para_mod, only: r_ratio, h_center, Mass, MSUN, M_goal, Mass_0, Mb_goal, &
                       J_goal, ang_mom, chi, chi_goal, Omega_c, omc_goal, &
                       Omega_K, C, kappa, Omega_e, FIX1, FIX2
@@ -193,8 +194,6 @@ contains
   subroutine evaluate_solution(hc, rep, F, rho0, ee, er)
     real(wp), intent(in)  :: hc, rep
     real(wp), intent(out) :: F(2), rho0, ee, er
-    real(wp) :: n0_at_h, e_at_h
-    external :: n0_at_h, e_at_h
     external :: mass_radius
     real(wp) :: deviA, deviB
 
@@ -274,4 +273,3 @@ contains
   end subroutine build_jacobian
 
 end module shoot_newton_helpers
-

@@ -162,6 +162,7 @@ contains
 end subroutine mass_radius
 
 subroutine solution_properties()
+  use eos_mod, only: p_at_e_dual, pressure_derivative_n
   use para_mod, only: wp, SDIV, MDIV, s_gp, s_e, &
                       gama, rho, alpha, ww, omg, sphi, enthalpy, &
                       energy, pressure, sound_speed, velocity_sq, &
@@ -196,12 +197,15 @@ subroutine solution_properties()
   type(dual) :: energy_dual, pressure_dual, sphi_dual
 
   interface
-    function p_at_e_dual(ee) result(res)
-      import :: dual
+    subroutine prepare_common_data(rho_0, gama_mu_0, rho_mu_0, ww_mu_0, gama_mu_1, rho_mu_1, sphi_mu_0, use_scalar)
+      import :: wp, SDIV, MDIV
       implicit none
-      type(dual), intent(in) :: ee
-      type(dual) :: res
-    end function p_at_e_dual
+      real(wp), dimension(SDIV,MDIV), intent(out) :: rho_0
+      real(wp), dimension(SDIV), intent(out) :: gama_mu_0, rho_mu_0, ww_mu_0, gama_mu_1, rho_mu_1, sphi_mu_0
+      logical, intent(out) :: use_scalar
+    end subroutine prepare_common_data
+    subroutine mass_radius()
+    end subroutine mass_radius
   end interface
 
   call prepare_common_data(rho_0, gama_mu_0, rho_mu_0, ww_mu_0, gama_mu_1, rho_mu_1, sphi_mu_0, use_scalar)
@@ -268,6 +272,17 @@ contains
     real(wp) :: scale
     real(wp) :: vl_dummy(1,1), vr_dummy(1,1)
     integer :: N, i, info, unit, ios, LWORK
+    interface
+      subroutine dgeev(jobvl, jobvr, n, a, lda, wr, wi, vl, ldvl, vr, ldvr, work, lwork, info)
+        import :: wp
+        implicit none
+        character(len=1), intent(in) :: jobvl, jobvr
+        integer, intent(in) :: n, lda, ldvl, ldvr, lwork
+        integer, intent(out) :: info
+        real(wp), intent(inout) :: a(lda, *)
+        real(wp), intent(out) :: wr(*), wi(*), vl(ldvl, *), vr(ldvr, *), work(*)
+      end subroutine dgeev
+    end interface
     
     scale = 2.e0_wp / max(s_e, 1.e-12_wp)
 
@@ -369,21 +384,13 @@ contains
 end subroutine solution_properties
 
 subroutine prepare_common_data(rho_0, gama_mu_0, rho_mu_0, ww_mu_0, gama_mu_1, rho_mu_1, sphi_mu_0, use_scalar)
+  use eos_mod, only: n0_at_e
   use para_mod, only: wp, SDIV, MDIV, has_scalar, &
                       gama, rho, ww, sphi, energy, e_surface, MB, KSCALE, C
   implicit none
   real(wp), dimension(SDIV,MDIV), intent(out) :: rho_0
   real(wp), dimension(SDIV), intent(out) :: gama_mu_0, rho_mu_0, ww_mu_0, gama_mu_1, rho_mu_1, sphi_mu_0
   logical, intent(out) :: use_scalar
-
-  interface
-    pure elemental function n0_at_e(ee)
-      import :: wp
-      implicit none
-      real(wp), intent(in) :: ee
-      real(wp) :: n0_at_e
-    end function n0_at_e
-  end interface
 
   use_scalar = has_scalar
 

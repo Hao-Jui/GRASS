@@ -1,4 +1,5 @@
 program grass
+  use eos_mod, only: loadEos
   use toolkit_mod, only: debug_mod_bessel
   use para_mod, only: wp, initialize_theory, &
                       has_scalar, mphi_goal, scalarton, B_goal, &

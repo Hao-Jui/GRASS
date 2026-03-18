@@ -1,4 +1,5 @@
 subroutine MRcurve
+  use eos_mod, only: p_at_e, n0_at_h, e_at_h
   use para_mod, only: wp, h_center, mass, mass_0, mass_p, r_ratio, r_circ, &
                       sphi, sphi_c, B_coup, Omega_e, KAPPA, &
                       MB, MSUN, C, KSCALE, rho_uni, n_sat, &
@@ -7,14 +8,13 @@ subroutine MRcurve
   use rotation_uniform,  only: rotation_solver
   use starting_model_mod, only: initialize_starting_model
   implicit none
-  real(wp), external :: p_at_e, h_at_p, n0_at_h, e_at_h
   integer :: it, unit
   real(wp) :: rho0, ee, pp, sphi_max, mass_prev
   real(wp) :: Q_bar, T_over_W, traceT
   character(16) :: fil1, fil2
   logical :: ascending = .false.
 
-  call initialize_starting_model(p_at_e, h_at_p, n0_at_h, e_at_h)
+  call initialize_starting_model()
   rho0 = n0_at_h(h_center); mass_prev = mass
   r_ratio  = 1.e0_wp
 
