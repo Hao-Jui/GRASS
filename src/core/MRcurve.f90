@@ -1,4 +1,5 @@
 subroutine MRcurve
+  use analysis_mod, only: solution_properties
   use eos_mod, only: p_at_e, n0_at_h, e_at_h
   use para_mod, only: wp, h_center, mass, mass_0, mass_p, r_ratio, r_circ, &
                       sphi, sphi_c, B_coup, Omega_e, KAPPA, &

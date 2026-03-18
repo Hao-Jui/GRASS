@@ -1,4 +1,5 @@
 subroutine shoot_v2
+  use analysis_mod, only: solution_properties
   use eos_mod, only: n0_at_h, e_at_h
   use para_mod, only: wp, h_center, r_ratio, mass, mass_0, mass_p, chi, chi_goal, &
                       Omega_c, KAPPA, C, KSCALE, MB, MSUN, pi, n_sat, &

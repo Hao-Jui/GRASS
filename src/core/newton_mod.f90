@@ -181,6 +181,7 @@ contains
 end module shoot_solver_mod
 
 module shoot_newton_helpers
+  use analysis_mod, only: mass_radius
   use precision_mod, only: wp
   use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
   use eos_mod, only: n0_at_h, e_at_h
@@ -194,7 +195,6 @@ contains
   subroutine evaluate_solution(hc, rep, F, rho0, ee, er)
     real(wp), intent(in)  :: hc, rep
     real(wp), intent(out) :: F(2), rho0, ee, er
-    external :: mass_radius
     real(wp) :: deviA, deviB
 
     r_ratio  = rep

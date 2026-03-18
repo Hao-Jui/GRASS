@@ -1,3 +1,6 @@
+module analysis_mod
+contains
+
 subroutine mass_radius()
   use para_mod, only: wp, SDIV, MDIV, s_gp, s_pwr, s_e, mu, &
                       gama, rho, alpha, ww, omg, sphi, energy, pressure, velocity_sq, &
@@ -187,26 +190,7 @@ subroutine solution_properties()
   logical :: use_scalar ! local snapshot of the flag
   real(wp), dimension(SDIV)  :: gamj, schwarz, gg, BV
   real(wp) :: delt = 0.005
-  interface
-    function moment_inertia() result(val)
-      import :: wp
-      implicit none
-      real(wp) :: val(2)
-    end function moment_inertia
-  end interface
   type(dual) :: energy_dual, pressure_dual, sphi_dual
-
-  interface
-    subroutine prepare_common_data(rho_0, gama_mu_0, rho_mu_0, ww_mu_0, gama_mu_1, rho_mu_1, sphi_mu_0, use_scalar)
-      import :: wp, SDIV, MDIV
-      implicit none
-      real(wp), dimension(SDIV,MDIV), intent(out) :: rho_0
-      real(wp), dimension(SDIV), intent(out) :: gama_mu_0, rho_mu_0, ww_mu_0, gama_mu_1, rho_mu_1, sphi_mu_0
-      logical, intent(out) :: use_scalar
-    end subroutine prepare_common_data
-    subroutine mass_radius()
-    end subroutine mass_radius
-  end interface
 
   call prepare_common_data(rho_0, gama_mu_0, rho_mu_0, ww_mu_0, gama_mu_1, rho_mu_1, sphi_mu_0, use_scalar)
 
@@ -423,14 +407,6 @@ function moment_inertia() result(val)
                       C, KSCALE, rho_uni, prs_uni, pi
   use nag_compat_mod, only: d02pcf
   implicit none
-  interface
-    subroutine deriv(t, y, yp)
-      use precision_mod, only: wp
-      implicit none
-      real(wp), intent(in) :: t, y(:)
-      real(wp), intent(out) :: yp(:)
-    end subroutine deriv
-  end interface
   real(wp) :: r_in, r_surf ! in km
   integer, parameter :: neqn = 4
   real(wp) :: relerr = 1.e-8_wp, abserr = 1.e-8_wp
@@ -517,3 +493,5 @@ subroutine deriv(t, y, yp)
   yp(3) = yp(3) * yp(1)
   yp(4) = yp(4) * yp(1)
 end subroutine deriv
+
+end module analysis_mod

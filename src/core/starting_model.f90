@@ -1,4 +1,5 @@
 module starting_model_mod
+  use analysis_mod, only: solution_properties
   use precision_mod, only: wp
   use eos_mod, only: p_at_e, h_at_p, n0_at_h, e_at_h
   use para_mod, only: run_mode, MODE_REGRID, &
