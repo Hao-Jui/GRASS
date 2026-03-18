@@ -49,7 +49,7 @@ program grass
   call shoot_v2
 
   call hamiltonian(hamL2)
-  write(*,"(A18,es12.4)") "Ham L2:", hamL2
+  write(*,"(A18,es27.16)") "Ham L2:", hamL2
   write(*,*) " "
   write(*,*) "Completed!"
 

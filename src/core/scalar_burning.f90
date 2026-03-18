@@ -1,7 +1,7 @@
 module scalar_burning_mod
   use precision_mod, only: wp
   use para_mod, only: active_theory, THEORY_GR, &
-                      B_coup, B_burn_init, &
+                      B_coup, B_burn_init, n_of_relaxation_steps, &
                       mphi_r, mphi_burn_seed, l_uni, KAPPA, &
                       scalar_burn_max_iter, sphi_c, sphi_m, output
   use rotation_uniform,  only: rotation_solver
@@ -9,7 +9,7 @@ module scalar_burning_mod
 contains
   subroutine perform_scalar_burn(target_mphi)
     real(wp), intent(in) :: target_mphi
-    real(wp) :: current_mphi
+    real(wp) :: current_mphi, t0, t1
     integer :: burn_iter
     character(100) :: string
 
@@ -24,7 +24,7 @@ contains
     print *, " "
     print *, "scalar burn stage:  (B, mphi, sphi_c, sphi_m)"
 
-    burn_iter = 0
+    burn_iter = 0; n_of_relaxation_steps = 0; call cpu_time(t0)
     do while (current_mphi < target_mphi .and. burn_iter < scalar_burn_max_iter)
       call rotation_solver()
 
@@ -45,8 +45,9 @@ contains
       end if
       burn_iter = burn_iter + 1
     end do
-    output = .true.; call rotation_solver(); output = .false.
+    output = .true.; call rotation_solver(); output = .false.; call cpu_time(t1)
     
+    write(*,'("Total iterations: ",i0,"  Elapsed time [s]:", f10.4)') n_of_relaxation_steps, t1-t0
     write(*,"(A)") " ", " Solution saved for restart after burning.", " "
     write(string,"(f12.4)") sphi_m
     if (burn_iter >= scalar_burn_max_iter .and. current_mphi < target_mphi) then

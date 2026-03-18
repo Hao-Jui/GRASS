@@ -107,7 +107,7 @@ subroutine rotation_solver
     n_of_it = n_of_it + 1
     if ( n_of_it > 2000 ) stop "Probably won't converge"
   enddo
-  write(*,*) r_ratio, h_center, n_of_it
+  !write(*,*) r_ratio, h_center, n_of_it
   n_of_relaxation_steps = n_of_relaxation_steps + n_of_it
   ! --- End of iteration
 

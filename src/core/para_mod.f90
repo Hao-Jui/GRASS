@@ -25,21 +25,21 @@ module para_mod
   character(len=20) :: FIX2 = "chi_goal"
 
   ! -- Resolutions -----------------------------------------------------------
-  integer, parameter :: res  = 100
+  integer, parameter :: res  = 10
   integer, parameter :: s_pwr = 1
-  integer :: SDIV = 2 * res + 1
-  integer :: MDIV = 2 * res + 1
+  integer :: SDIV = 360 * res + 1
+  integer :: MDIV = 4 * res + 1
 
   ! -- Target quantities -----------------------------------------------------
   character(len=128) :: eos_file = "MPA1"
   real(wp) :: M_goal   = 1.2e0_wp
-  real(wp) :: Mb_goal  = 2.5e0_wp
+  real(wp) :: Mb_goal  = 1.8e0_wp
   real(wp) :: J_goal   = 1.6e0_wp
   real(wp) :: chi_goal = 0.1e0_wp
   real(wp) :: omc_goal = 30.e0_wp
 
-  real(wp) :: B_goal   = 3.e2_wp
-  real(wp) :: mphi_goal = 1.e0_wp
+  real(wp) :: B_goal   = 150.e0_wp
+  real(wp) :: mphi_goal = .1e0_wp
 
   ! -- Rotation-law parameters (KEH, Uryu enabled) --------------------------
   real(wp) :: A_diff  = 0.5e0_wp
