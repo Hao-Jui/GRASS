@@ -1,4 +1,5 @@
 module rotation_uniform
+  use analysis_mod, only: mass_radius
   use precision_mod, only: wp
   use para_mod, only: active_theory, THEORY_GR, &
                       rho, gama, alpha, ww, omg, sphi, &
