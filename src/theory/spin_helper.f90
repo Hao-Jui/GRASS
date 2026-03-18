@@ -370,13 +370,13 @@ contains
     sphi  = sphi  * r_e_new
   end subroutine update_eos_and_velocity
 
-  subroutine precompute_derivatives_and_bessels(r_e_new, root_mphi_re, mr_cache, wfac_cache, besseli_cache, besselk_cache, &
+  subroutine precompute_derivatives_and_bessels(r_e_new, root_mphi_re, mr_cache, besseli_cache, besselk_cache, &
                                                 dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, dww_s_cache, dww_m_cache, &
                                                 ds_s_cache, ds_m_cache, d2g_ss_cache, d2g_mm_cache, e_gsm_cache, e_rsm_cache, &
                                                 e2alpha_r2_cache, Acoup4_cache)
     real(wp), intent(in)  :: r_e_new
     real(wp), intent(in)  :: root_mphi_re
-    real(wp), intent(out) :: mr_cache(:), wfac_cache(:), besseli_cache(:,:), besselk_cache(:,:)
+    real(wp), intent(out) :: mr_cache(:), besseli_cache(:,:), besselk_cache(:,:)
     real(wp), intent(out) :: dg_s_cache(:,:), dg_m_cache(:,:), dr_s_cache(:,:), dr_m_cache(:,:), dww_s_cache(:,:), dww_m_cache(:,:)
     real(wp), intent(out) :: ds_s_cache(:,:), ds_m_cache(:,:)
     real(wp), intent(out) :: d2g_ss_cache(:,:), d2g_mm_cache(:,:), e_gsm_cache(:,:), e_rsm_cache(:,:)
@@ -901,9 +901,9 @@ contains
     ww = ww / r_e_new
   end subroutine update_alpha_potential
 
-  subroutine get_all_targets(r_e_new, gama_pole_h, rho_pole_h, sphi_pole_h, root_mphi_re, &
+  subroutine get_all_targets(r_e_new, root_mphi_re, &
                              out_target_rho, out_target_gama, out_target_ww, out_target_sphi)
-    real(wp), intent(in) :: r_e_new, gama_pole_h, rho_pole_h, sphi_pole_h
+    real(wp), intent(in) :: r_e_new
     real(wp), intent(in) :: root_mphi_re
     real(wp), intent(out) :: out_target_rho(SDIV,MDIV), out_target_gama(SDIV,MDIV), out_target_ww(SDIV,MDIV), out_target_sphi(SDIV,MDIV)
     real(wp) :: t0, t1, dt_precompute, dt_build, dt_angular, dt_radial, dt_sum
@@ -928,7 +928,7 @@ contains
       dt_sum = 0.e0_wp
       call cpu_time(t0)
     end if
-    call precompute_derivatives_and_bessels(r_e_new, root_mphi_re, mr_cache, wfac_cache, besseli_cache, besselk_cache, &
+    call precompute_derivatives_and_bessels(r_e_new, root_mphi_re, mr_cache, besseli_cache, besselk_cache, &
          dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, dww_s_cache, dww_m_cache, ds_s_cache, ds_m_cache, &
          d2g_ss_cache, d2g_mm_cache, e_gsm_cache, e_rsm_cache, e2alpha_r2_cache, Acoup4_cache)
     if (timing) then
@@ -981,9 +981,8 @@ contains
     end if
   end subroutine get_all_targets
 
-  subroutine relaxation(r_e_new, target_rho, target_gama, target_ww, target_sphi, root_mphi_re, n_of_it)
+  subroutine relaxation(target_rho, target_gama, target_ww, target_sphi, root_mphi_re, n_of_it)
     use anderson_optimized, only: anderson_accel_optimized
-    real(wp), intent(in) :: r_e_new
     real(wp), intent(in) :: target_rho(SDIV,MDIV), target_gama(SDIV,MDIV)
     real(wp), intent(in) :: target_ww(SDIV,MDIV),  target_sphi(SDIV,MDIV)
     real(wp), intent(in) :: root_mphi_re

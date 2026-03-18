@@ -25,15 +25,15 @@ module para_mod
   character(len=20) :: FIX2 = "chi_goal"
 
   ! -- Resolutions -----------------------------------------------------------
-  integer, parameter :: res  = 10
+  integer, parameter :: res  = 100
   integer, parameter :: s_pwr = 1
-  integer :: SDIV = 100 * res + 1
-  integer :: MDIV = 4 * res + 1
+  integer :: SDIV = 2 * res + 1
+  integer :: MDIV = 2 * res + 1
 
   ! -- Target quantities -----------------------------------------------------
   character(len=128) :: eos_file = "MPA1"
   real(wp) :: M_goal   = 1.2e0_wp
-  real(wp) :: Mb_goal  = 2.1e0_wp
+  real(wp) :: Mb_goal  = 2.5e0_wp
   real(wp) :: J_goal   = 1.6e0_wp
   real(wp) :: chi_goal = 0.1e0_wp
   real(wp) :: omc_goal = 30.e0_wp
@@ -103,7 +103,7 @@ module para_mod
   real(wp) :: sphi_m     = 0.e0_wp
   real(wp) :: r_sphi_max = 0.e0_wp  ! physical equatorial radius at max(sphi)
 
-  real(wp) :: B_burn_init = 15.e0_wp
+  real(wp) :: B_burn_init = 13.e0_wp
   real(wp) :: mphi_burn_seed = 0.05e0_wp
   integer, parameter :: scalar_burn_max_iter = 200
   real(wp), parameter :: mphi_burn_threshold = 0.05e0_wp

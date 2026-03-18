@@ -1,3 +1,6 @@
+module MRcurve_mod
+contains
+
 subroutine MRcurve
   use analysis_mod, only: solution_properties
   use eos_mod, only: p_at_e, n0_at_h, e_at_h
@@ -64,4 +67,6 @@ contains
     close(unit)
   end subroutine output_seq
 end subroutine MRcurve 
+
+end module MRcurve_mod
 

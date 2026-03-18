@@ -3,6 +3,7 @@ module starting_model_mod
   use precision_mod, only: wp
   use eos_mod, only: p_at_e, h_at_p, n0_at_h, e_at_h
   use regrid_mod, only: regrid_read
+  use sphere_mod, only: sphere
   use para_mod, only: run_mode, MODE_REGRID, &
                       SDIV, MDIV, e_center, p_center, h_center, &
                       C, KSCALE, KAPPA, &
@@ -16,7 +17,7 @@ module starting_model_mod
   implicit none
 contains
   subroutine initialize_starting_model()
-    external :: sphere, restart_read, refine_read
+    external :: restart_read, refine_read
     real(wp) :: target_mphi
 
     select case (run_mode)
@@ -27,7 +28,7 @@ contains
       h_center = h_at_p(p_center)
     case default
       r_ratio  = merge(0.9e0_wp, 1.e0_wp, trim(adjustl(solver_type)) == "uryu")
-      e_center = 7.e14_wp
+      e_center = 8.e14_wp
       e_center = e_center * C * C * KSCALE
       p_center = p_at_e(e_center)
       h_center = h_at_p(p_center)
@@ -50,7 +51,7 @@ contains
   contains
     subroutine single_model()
       real(wp) :: ee, rho0
-      !r_ratio = 1.e0_wp
+      !r_ratio = .7e0_wp
       output = .true.
       call rotation_solver
       call solution_properties

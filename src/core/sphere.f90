@@ -1,3 +1,6 @@
+module sphere_mod
+contains
+
 ! ********************************************* !
 !
 !         solving the stellar structure         !
@@ -12,14 +15,6 @@ subroutine sphere
                       enthalpy, enthalpy_min, mu, velocity_sq, disk_present
     implicit none
     interface
-      subroutine TOV(i_check, r_is_gp, lambda_gp, nu_gp, e_d_gp, r_is_final, r_final, m_final)
-        use para_mod, only: RDIV
-        implicit none
-        integer, intent(in) :: i_check
-        real(8), intent(inout) :: r_is_final
-        real(8), intent(out) :: r_final, m_final
-        real(8), intent(out), dimension(RDIV) :: r_is_gp, lambda_gp, e_d_gp, nu_gp
-      end subroutine TOV
       subroutine set_disk(r_eq)
         implicit none
         real(8), intent(in) :: r_eq
@@ -118,18 +113,6 @@ subroutine TOV(i_check, r_is_gp, lambda_gp, nu_gp, e_d_gp, &
             e_d, p, h, m, nu_s, hh, rho_0, &
             a1,a2,a3,a4,b1,b2,b3,b4,c1,c2,c3,c4, &
             k_rescale
-    interface
-      real(8) function dm_dr_is(r_is, r, m, p)
-        real(8), intent(in) :: r_is, r, m, p
-      end function dm_dr_is
-      real(8) function dp_dr_is(r_is, r, m, p)
-        real(8), intent(in) :: r_is, r, m, p
-      end function dp_dr_is
-      real(8) function dr_dr_is(r_is, r, m)
-        real(8), intent(in) :: r_is, r, m
-      end function dr_dr_is
-    end interface
-
     ! use estimate of r to set the step size h
     if (i_check == 1) then
       r_is_est = 1.5d6/sqrt(kappa) ! 15 km
@@ -296,3 +279,5 @@ real(8) function dr_dr_is(r_is,r,m)
   endif
 
 end function dr_dr_is
+
+end module sphere_mod
