@@ -987,16 +987,50 @@ contains
     real(wp), intent(in) :: root_mphi_re, dif
     integer, intent(in) :: n_of_it
     integer :: s, m
-    real(wp) :: w
+    ! Chebyshev-accelerated SOR state (persistent across calls)
+    real(wp), parameter :: rho_spec  = 0.7e0_wp  ! spectral radius estimate
+    real(wp), parameter :: w_picard  = 0.7e0_wp  ! Picard blend when dif >= threshold
+    real(wp), save :: cheb_w = 1.e0_wp
+    real(wp), allocatable, save :: prev_rho(:,:), prev_gama(:,:), prev_ww(:,:), prev_sphi(:,:)
+    real(wp) :: x_k_rho(SDIV,MDIV), x_k_gama(SDIV,MDIV), x_k_ww(SDIV,MDIV), x_k_sphi(SDIV,MDIV)
 
     associate (unused => n_of_it); end associate
 
-    ! Blend weight: aggressive when nearly converged, conservative otherwise
-    w = merge(1.5e0_wp, 0.7e0_wp, dif < 1.e-5_wp)
+    ! Allocate / reset on first call or grid change
+    if (.not. allocated(prev_rho) .or. size(prev_rho,1) /= SDIV .or. size(prev_rho,2) /= MDIV) then
+      if (allocated(prev_rho)) deallocate(prev_rho, prev_gama, prev_ww, prev_sphi)
+      allocate(prev_rho(SDIV,MDIV),  source=rho)
+      allocate(prev_gama(SDIV,MDIV), source=gama)
+      allocate(prev_ww(SDIV,MDIV),   source=ww)
+      allocate(prev_sphi(SDIV,MDIV), source=sphi)
+      cheb_w = 1.e0_wp
+    end if
 
-    rho  = (1.e0_wp - w) * rho  + w * target_rho
-    gama = (1.e0_wp - w) * gama + w * target_gama
-    ww   = (1.e0_wp - w) * ww   + w * target_ww
+    if (dif < 1.e-2_wp) then
+      ! ---------------------------------------------------------------
+      ! Chebyshev-accelerated SOR
+      ! 3-term recurrence: x_{k+1} = x_{k-1} + cheb_w * (g(x_k) - x_{k-1})
+      ! cheb_w recurrence: cheb_w_{k+1} = 1 / (1 - (rho_spec^2/4) * cheb_w_k)
+      ! ---------------------------------------------------------------
+      cheb_w = 1.e0_wp / (1.e0_wp - (rho_spec**2 / 4.e0_wp) * cheb_w)
+      cheb_w = min(cheb_w, 2.e0_wp - 2.e0_wp*epsilon(cheb_w))  ! stability clamp
+
+      x_k_rho  = rho;  x_k_gama = gama;  x_k_ww = ww
+      rho  = prev_rho  + cheb_w * (target_rho  - prev_rho)
+      gama = prev_gama + cheb_w * (target_gama - prev_gama)
+      ww   = prev_ww   + cheb_w * (target_ww   - prev_ww)
+      prev_rho = x_k_rho;  prev_gama = x_k_gama;  prev_ww = x_k_ww
+    else
+      ! ---------------------------------------------------------------
+      ! Conservative Picard; reset cheb_w so Chebyshev restarts cleanly
+      ! ---------------------------------------------------------------
+      cheb_w = 1.e0_wp
+      rho  = (1.e0_wp - w_picard) * rho  + w_picard * target_rho
+      gama = (1.e0_wp - w_picard) * gama + w_picard * target_gama
+      ww   = (1.e0_wp - w_picard) * ww   + w_picard * target_ww
+      prev_rho = rho;  prev_gama = gama;  prev_ww = ww
+    end if
+
 
     ! ---------------------------------------------------------------
     ! Divergence check
@@ -1009,7 +1043,14 @@ contains
 
     if (.not. has_scalar) return
 
-    sphi = (1.e0_wp - w) * sphi + w * target_sphi
+    if (dif < 1.e-5_wp) then
+      x_k_sphi = sphi
+      sphi     = prev_sphi + cheb_w * (target_sphi - prev_sphi)
+      prev_sphi = x_k_sphi
+    else
+      sphi = (1.e0_wp - w_picard) * sphi + w_picard * target_sphi
+      prev_sphi = sphi
+    end if
     where(ieee_is_nan(sphi)) sphi = 0.e0_wp
 
     if (abs(mphi_r) < epsilon(mphi_r)) return
