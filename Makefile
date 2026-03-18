@@ -16,7 +16,8 @@ endif
 FFLAGS  ?= $(BASE_FFLAGS) $(MODE_FFLAGS)
 
 LDFLAGS ?= -Wl,-stack_size,0x4000000
-LIBS    ?= -llapack -lblas
+FFTW_LIBS ?= $(shell pkg-config --libs fftw3 2>/dev/null || echo -lfftw3)
+LIBS    ?= -llapack -lblas $(FFTW_LIBS)
 BUILDDIR := build
 OBJDIR   := $(BUILDDIR)/obj
 MODDIR   := $(BUILDDIR)/mod

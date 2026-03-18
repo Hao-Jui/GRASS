@@ -172,7 +172,7 @@ subroutine solution_properties()
                       r_e, r_circ, mass, MSUN, l_uni, I_inertia, Love2, &
                       pi, mphi_r, B_goal, mphi_goal, h_center, sphi_m, &
                       B_coup, KAPPA, C, n_sat, KSCALE, output
-  use cheb_mod, only: cheb_diff_matrix
+  use cheb_mod, only: cheb_diff_matrix, cheb_std_base, cheb_get_val_point
   use miscellaneous_mod, only: write_eq_profile, initial_data_for_spec
   use toolkit_mod, only: interp, interp_dual, deriv_s, deriv_s_1d, integrate_profiles
   use ad_mod, only: dual, dual_var
@@ -343,6 +343,34 @@ contains
          effective_cs,                            &
          effective_pressure/KSCALE,               & 
          effective_energy/(C*C*KSCALE)  )
+
+    if (.true.) then ! Debug: Chebyshev fit of gama over the stellar interior [s_gp(1), s_gp(res+1)]
+      block
+        integer, parameter :: n_cheb = 39
+        integer :: res, i
+        real(wp) :: coeffs(0:n_cheb)
+        real(wp), allocatable :: Y_cheb(:), Y(:)
+        res = (SDIV-1)/2
+        allocate(Y_cheb(res+1), Y(res+1))
+        Y = alpha(1:res+1,1)
+        call cheb_std_base(n_cheb, res+1, s_gp(1:res+1), Y, s_gp(1), s_gp(res+1), coeffs)
+        do i = 1, res+1
+          Y_cheb(i) = cheb_get_val_point(n_cheb, coeffs, s_gp(1), s_gp(res+1), s_gp(i))
+        end do
+        write(*,'(A,2es12.4)') 'cheb err (abs, rel):', &
+            maxval(abs(Y_cheb - Y)), &
+            maxval(abs(Y_cheb/Y - 1.e0_wp))
+        block
+          integer :: uid
+          open(newunit=uid, file='./Cont/cheb_check.dat', status='replace', action='write')
+          do i = 1, res+1
+            write(uid,'(3es25.16)') s_gp(i), Y_cheb(i), Y(i)
+          end do
+          close(uid)
+        end block
+        deallocate(Y_cheb)
+      end block
+    end if
   end subroutine radial_configuration
 
   subroutine to_alexis()

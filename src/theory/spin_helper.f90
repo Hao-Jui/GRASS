@@ -981,55 +981,22 @@ contains
     end if
   end subroutine get_all_targets
 
-  subroutine relaxation(target_rho, target_gama, target_ww, target_sphi, root_mphi_re, n_of_it)
-    use anderson_optimized, only: anderson_accel_optimized
+  subroutine relaxation(target_rho, target_gama, target_ww, target_sphi, root_mphi_re, n_of_it, dif)
     real(wp), intent(in) :: target_rho(SDIV,MDIV), target_gama(SDIV,MDIV)
     real(wp), intent(in) :: target_ww(SDIV,MDIV),  target_sphi(SDIV,MDIV)
-    real(wp), intent(in) :: root_mphi_re
+    real(wp), intent(in) :: root_mphi_re, dif
     integer, intent(in) :: n_of_it
     integer :: s, m
-    integer, parameter :: m_hist = 6
-    real(wp), allocatable, save :: hist_f_rho(:,:,:)
-    real(wp), allocatable, save :: hist_f_gama(:,:,:)
-    real(wp), allocatable, save :: hist_f_ww(:,:,:)
-    real(wp), allocatable, save :: hist_f_sphi(:,:,:)
-    logical :: need_reset_history
+    real(wp) :: w
 
-    need_reset_history = (n_of_it == 0)
-    if (allocated(hist_f_rho)) then
-      if (size(hist_f_rho,1) /= SDIV .or. size(hist_f_rho,2) /= MDIV .or. size(hist_f_rho,3) /= m_hist) then
-        need_reset_history = .true.
-      end if
-    end if
+    associate (unused => n_of_it); end associate
 
-    if (need_reset_history) then
-      if (allocated(hist_f_rho)) then
-        deallocate(hist_f_rho, hist_f_gama, hist_f_ww, hist_f_sphi)
-      end if
-    end if
+    ! Blend weight: aggressive when nearly converged, conservative otherwise
+    w = merge(1.5e0_wp, 0.7e0_wp, dif < 1.e-5_wp)
 
-    if (.not. allocated(hist_f_rho)) then
-      allocate(hist_f_rho(SDIV,MDIV,m_hist), source=0.e0_wp)
-      allocate(hist_f_gama(SDIV,MDIV,m_hist), source=0.e0_wp)
-      allocate(hist_f_ww(SDIV,MDIV,m_hist), source=0.e0_wp)
-      allocate(hist_f_sphi(SDIV,MDIV,m_hist), source=0.e0_wp)
-    end if
-    call anderson_accel_optimized(rho,  target_rho,  hist_f_rho,  n_of_it, m_hist)
-    call anderson_accel_optimized(gama, target_gama, hist_f_gama, n_of_it, m_hist)
-    call anderson_accel_optimized(ww,   target_ww,   hist_f_ww,   n_of_it, m_hist)
-    call anderson_accel_optimized(sphi, target_sphi, hist_f_sphi, n_of_it, m_hist)
-
-    where(ieee_is_nan(sphi)) sphi = 0.e0_wp
-
-    if ( abs(mphi_r) < epsilon(mphi_r) ) return
-    
-    do m=1,MDIV
-      do s=2,SDIV
-      if (sphi(s,m) < 0.e0_wp) then
-          sphi(s,m) = sphi(s-1,m) * exp(root_mphi_re * (s_gp(s-1)/(1.e0_wp-s_gp(s-1)) - s_gp(s)/(1.e0_wp-s_gp(s))))
-        end if
-      end do
-    end do
+    rho  = (1.e0_wp - w) * rho  + w * target_rho
+    gama = (1.e0_wp - w) * gama + w * target_gama
+    ww   = (1.e0_wp - w) * ww   + w * target_ww
 
     ! ---------------------------------------------------------------
     ! Divergence check
@@ -1039,6 +1006,22 @@ contains
       write(*,"(i5,4es18.9)") n_of_it, rho(2,1), gama(2,1), ww(2,1), sphi(2,1)
       stop "something diverged"
     end if
+
+    if (.not. has_scalar) return
+
+    sphi = (1.e0_wp - w) * sphi + w * target_sphi
+    where(ieee_is_nan(sphi)) sphi = 0.e0_wp
+
+    if (abs(mphi_r) < epsilon(mphi_r)) return
+
+    do m = 1, MDIV
+      do s = 2, SDIV
+        if (sphi(s,m) < 0.e0_wp) then
+          sphi(s,m) = sphi(s-1,m) * exp(root_mphi_re * (s_gp(s-1)/(1.e0_wp-s_gp(s-1)) - s_gp(s)/(1.e0_wp-s_gp(s))))
+        end if
+      end do
+    end do
+
   end subroutine relaxation
 
   subroutine allocate_workspace
