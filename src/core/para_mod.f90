@@ -27,7 +27,7 @@ module para_mod
   ! -- Resolutions -----------------------------------------------------------
   integer, parameter :: res  = 10
   integer, parameter :: s_pwr = 1
-  integer :: SDIV = 360 * res + 1
+  integer :: SDIV = 640 * res + 1
   integer :: MDIV = 4 * res + 1
 
   ! -- Target quantities -----------------------------------------------------
@@ -38,7 +38,7 @@ module para_mod
   real(wp) :: chi_goal = 0.1e0_wp
   real(wp) :: omc_goal = 30.e0_wp
 
-  real(wp) :: B_goal   = 150.e0_wp
+  real(wp) :: B_goal   = 152.e0_wp
   real(wp) :: mphi_goal = .1e0_wp
 
   ! -- Rotation-law parameters (KEH, Uryu enabled) --------------------------
