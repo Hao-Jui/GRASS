@@ -368,25 +368,11 @@ contains
     call deriv_s_and_ss_1d(f, df_ds, d2f_ds2)
   end function deriv_s_1d
 
-  pure function deriv_ss_1d(f) result(d2f_ds2)
-    real(wp), intent(in) :: f(:)
-    real(wp) :: d2f_ds2(size(f))
-    real(wp) :: df_ds(size(f))
-    call deriv_s_and_ss_1d(f, df_ds, d2f_ds2)
-  end function deriv_ss_1d
-
   pure function deriv_mu_1d(f) result(df_dmu)
     real(wp), intent(in) :: f(:)
     real(wp) :: df_dmu(size(f))
     real(wp) :: d2f_dmu2(size(f))
     call deriv_mu_and_mumu_1d(f, df_dmu, d2f_dmu2)
   end function deriv_mu_1d
-
-  pure function deriv_mumu_1d(f) result(d2f_dmu2)
-    real(wp), intent(in) :: f(:)
-    real(wp) :: d2f_dmu2(size(f))
-    real(wp) :: df_dmu(size(f))
-    call deriv_mu_and_mumu_1d(f, df_dmu, d2f_dmu2)
-  end function deriv_mumu_1d
 
 end module ope_eq_mod

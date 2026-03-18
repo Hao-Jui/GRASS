@@ -2,7 +2,7 @@ PROG    := a.out
 .DEFAULT_GOAL := all
 FC      = gfortran
 
-MODE    ?= Debug
+MODE    ?= Release
 BASE_FFLAGS := -I.
 RELEASE_FFLAGS := -O3 -march=native
 DEBUG_FFLAGS := -O0 -g -fbacktrace -Wall -Wextra -Wimplicit-interface -fcheck=all -Wuninitialized -Wconversion -Wuse-without-only -finit-real=nan

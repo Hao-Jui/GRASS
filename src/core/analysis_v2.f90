@@ -235,7 +235,7 @@ subroutine solution_properties()
   !call to_alexis()
   !call to_sizeng()
   call mass_radius()
-  moi_love = moment_inertia()
+  !moi_love = moment_inertia()
   I_inertia = moi_love(1) / (mass/MSUN*l_uni)**3
 
   cc = (mass/MSUN*l_uni) / (r_circ/1.e5_wp)
@@ -333,7 +333,7 @@ contains
     call write_eq_profile(profile_file,(SDIV-1)/2,&
          gama(:,1), rho(:,1), alpha(:,1),         &
          ww(:,1), omg(:,1),                       &
-         enthalpy(:,1),                           &
+         enthalpy(:,1),                           & ! 7
          rho_0(:,1)/(KSCALE*C**2)/ n_sat,         &
          energy(:,1)/(C*C*KSCALE),                &
          pressure(:,1)/KSCALE,                    &
