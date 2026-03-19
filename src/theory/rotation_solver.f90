@@ -66,11 +66,11 @@ subroutine rotation_solver
 
     r_e_new_sq = r_e_new**2
 
-    !if ( n_of_it > 10 .and. mod(n_of_it,10)==0 ) then
+    if ( n_of_it > 50 .and. mod(n_of_it,50)==0 ) then
       write(*,'( (A,i4), (A,es10.3), (A,2es16.8), (A,4es16.8))') 'iter= ', n_of_it, ', diff:', dif, &
         ' sphi:', sphi_center_h*r_e_old*sqrt_B_coup, sphi_m, &
         '  |', gama_center_h, rho_center_h, alpha(1,1), r_e_new
-    !endif
+    endif
 
     ! ---------------------------------------------------------------
     ! Elliptic solver
@@ -84,6 +84,7 @@ subroutine rotation_solver
 
     call get_all_targets(r_e_new, root_mphi_re, &
          target_rho, target_gama, target_ww, target_sphi)
+
     if (timing) call cpu_time(t0)
     call relaxation(target_rho, target_gama, target_ww, target_sphi, root_mphi_re, n_of_it, dif)
     if (timing) then
