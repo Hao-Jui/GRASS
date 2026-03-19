@@ -500,7 +500,8 @@ contains
     logical,  intent(out)   :: fired
 
     real(wp) :: x_k_rho(SDIV,MDIV), x_k_gama(SDIV,MDIV), x_k_ww(SDIV,MDIV), x_k_sphi(SDIV,MDIV)
-    real(wp) :: denom
+    real(wp) :: denom, step_n
+    real(wp), parameter :: MAX_AITKEN_JUMP = 10.e0_wp
     integer  :: s, m
 
     ! Allocate on first call or grid change
@@ -526,26 +527,30 @@ contains
 
       do m = 1, MDIV
         do s = 1, SDIV
-          denom = rho(s,m) - 2.e0_wp*aitk1_rho(s,m) + aitk2_rho(s,m)
-          if (abs(denom) > 1.e-14_wp) &
-            rho(s,m) = rho(s,m) - (rho(s,m) - aitk1_rho(s,m))**2 / denom
+          step_n = rho(s,m) - aitk1_rho(s,m)
+          denom  = rho(s,m) - 2.e0_wp*aitk1_rho(s,m) + aitk2_rho(s,m)
+          if (abs(denom) > 1.e-14_wp .and. abs(step_n) <= MAX_AITKEN_JUMP * abs(denom)) &
+            rho(s,m) = rho(s,m) - step_n**2 / denom
 
-          denom = gama(s,m) - 2.e0_wp*aitk1_gama(s,m) + aitk2_gama(s,m)
-          if (abs(denom) > 1.e-14_wp) &
-            gama(s,m) = gama(s,m) - (gama(s,m) - aitk1_gama(s,m))**2 / denom
+          step_n = gama(s,m) - aitk1_gama(s,m)
+          denom  = gama(s,m) - 2.e0_wp*aitk1_gama(s,m) + aitk2_gama(s,m)
+          if (abs(denom) > 1.e-14_wp .and. abs(step_n) <= MAX_AITKEN_JUMP * abs(denom)) &
+            gama(s,m) = gama(s,m) - step_n**2 / denom
 
-          denom = ww(s,m) - 2.e0_wp*aitk1_ww(s,m) + aitk2_ww(s,m)
-          if (abs(denom) > 1.e-14_wp) &
-            ww(s,m) = ww(s,m) - (ww(s,m) - aitk1_ww(s,m))**2 / denom
+          step_n = ww(s,m) - aitk1_ww(s,m)
+          denom  = ww(s,m) - 2.e0_wp*aitk1_ww(s,m) + aitk2_ww(s,m)
+          if (abs(denom) > 1.e-14_wp .and. abs(step_n) <= MAX_AITKEN_JUMP * abs(denom)) &
+            ww(s,m) = ww(s,m) - step_n**2 / denom
         end do
       end do
 
       if (has_scalar) then
         do m = 1, MDIV
           do s = 1, SDIV
-            denom = sphi(s,m) - 2.e0_wp*aitk1_sphi(s,m) + aitk2_sphi(s,m)
-            if (abs(denom) > 1.e-14_wp) &
-              sphi(s,m) = sphi(s,m) - (sphi(s,m) - aitk1_sphi(s,m))**2 / denom
+            step_n = sphi(s,m) - aitk1_sphi(s,m)
+            denom  = sphi(s,m) - 2.e0_wp*aitk1_sphi(s,m) + aitk2_sphi(s,m)
+            if (abs(denom) > 1.e-14_wp .and. abs(step_n) <= MAX_AITKEN_JUMP * abs(denom)) &
+              sphi(s,m) = sphi(s,m) - step_n**2 / denom
           end do
         end do
       end if
