@@ -992,12 +992,17 @@ contains
     real(wp), parameter :: CHEB_THRESH = 1.e-2_wp   ! Chebyshev below this
     real(wp), parameter :: AND_THRESH  = 1.e-1_wp   ! Anderson above this
     real(wp), parameter :: w_picard    = 0.7e0_wp   ! Picard damping (transition zone)
+    real(wp), parameter :: DEEP_THRESH = 1.e-3_wp   ! deep settling: skip metric update, high-w sphi
+    real(wp), parameter :: w_sphi_deep = 1.e0_wp    ! scalar weight in deep settling (Tier 3)
     integer,  parameter :: M_HIST      = 3           ! Anderson history window
+    integer,  parameter :: N_MONOTONE  = 5           ! consecutive dif-decreases to confirm tail
     ! --- Chebyshev state ---
     real(wp), save :: cheb_w = 1.e0_wp
     real(wp), save :: rho_spec_est  = 0.7e0_wp
     real(wp), save :: prev_res_norm = -1.e0_wp
     real(wp), save :: prev_dif_local = -1.e0_wp  ! for better spectral radius tracking
+    real(wp), save :: dif_prev = -1.e0_wp         ! one-step-back dif for monotone check
+    integer,  save :: n_consec_decrease = 0        ! consecutive dif-decrease counter (Tiers 3,4)
     real(wp), allocatable, save :: prev_rho(:,:), prev_gama(:,:), prev_ww(:,:), prev_sphi(:,:)
     real(wp) :: x_k_rho(SDIV,MDIV), x_k_gama(SDIV,MDIV), x_k_ww(SDIV,MDIV), x_k_sphi(SDIV,MDIV)
     real(wp) :: res_norm, rho_obs
@@ -1018,11 +1023,23 @@ contains
       allocate(hist_gama(SDIV,MDIV,M_HIST), source=0.e0_wp)
       allocate(hist_ww(SDIV,MDIV,M_HIST),   source=0.e0_wp)
       allocate(hist_sphi(SDIV,MDIV,M_HIST), source=0.e0_wp)
-      cheb_w         = 1.e0_wp
-      rho_spec_est   = 0.7e0_wp
-      prev_res_norm  = -1.e0_wp
-      prev_dif_local = -1.e0_wp
+      cheb_w            = 1.e0_wp
+      rho_spec_est      = 0.7e0_wp
+      prev_res_norm     = -1.e0_wp
+      prev_dif_local    = -1.e0_wp
+      dif_prev          = -1.e0_wp
+      n_consec_decrease = 0
     end if
+
+    ! --- Monotone-contraction counter: confirm we are in the contracting tail ---
+    if (dif_prev > 0.e0_wp) then
+      if (dif < dif_prev) then
+        n_consec_decrease = n_consec_decrease + 1
+      else
+        n_consec_decrease = 0   ! drift/oscillation: reset; Tiers 3,4 deactivate
+      end if
+    end if
+    dif_prev = dif
 
     if (dif < CHEB_THRESH) then
       ! ---------------------------------------------------------------
@@ -1082,7 +1099,13 @@ contains
 
     if (dif < CHEB_THRESH) then
       x_k_sphi  = sphi
-      sphi      = prev_sphi + cheb_w * (target_sphi - prev_sphi)
+      if (.not. (dif < DEEP_THRESH .and. n_consec_decrease >= N_MONOTONE)) then
+        ! Normal Chebyshev for sphi (cheb_w set by metric block above)
+        sphi = prev_sphi + cheb_w * (target_sphi - prev_sphi)
+      else
+        ! Tier 3: confirmed contracting tail — high-weight Picard decoupled from r_e-based cheb_w
+        sphi = w_sphi_deep * target_sphi + (1.e0_wp - w_sphi_deep) * x_k_sphi
+      end if
       prev_sphi = x_k_sphi
     else if (dif < AND_THRESH) then
       sphi      = (1.e0_wp - w_picard) * sphi + w_picard * target_sphi
