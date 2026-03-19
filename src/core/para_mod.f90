@@ -4,7 +4,7 @@ module para_mod
   ! -- Theory selection ------------------------------------------------------
   integer, parameter :: THEORY_GR = 0
   integer, parameter :: THEORY_ST = 1
-  integer :: active_theory = THEORY_GR
+  integer :: active_theory = THEORY_ST
 
   ! hybrid / anderson
   ! -- Running option --------------------------------------------------------
@@ -15,7 +15,7 @@ module para_mod
 
   ! -- Rotation configuration ------------------------------------------------
   ! uniform / const_j / uryu
-  character(len=20) :: solver_type = "uryu"
+  character(len=20) :: solver_type = "uniform"
 
   ! -- Solver state ----------------------------------------------------------
   logical :: output = .false.

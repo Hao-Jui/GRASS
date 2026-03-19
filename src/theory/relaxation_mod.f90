@@ -83,9 +83,9 @@ contains
 
     call DPOSV('U', k, 1, F_mat, m_hist, gamma, m_hist, info)
 
-    if (info == 0 .and. dif < 1.e-6_wp) then
+    associate (unused => dif); end associate
+    if (info == 0) then
       ! accel_field = target_field - delta(:,1:k) @ gamma(1:k)
-      write(*,*) "Anderson"
       accel_field = target_field
       call dgemv('N', N, k, -1.e0_wp, delta, N, gamma, 1, 1.e0_wp, accel_field(1,1), 1)
       !current_field = damping * accel_field + (1.0e0_wp - damping) * current_field

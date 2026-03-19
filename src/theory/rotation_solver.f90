@@ -66,11 +66,11 @@ subroutine rotation_solver
 
     r_e_new_sq = r_e_new**2
 
-    if ( n_of_it > 50 .and. mod(n_of_it,50)==0 ) then
+    !if ( n_of_it > 50 .and. mod(n_of_it,50)==0 ) then
       write(*,'( (A,i4), (A,es10.3), (A,2es16.8), (A,4es16.8))') 'iter= ', n_of_it, ', diff:', dif, &
         ' sphi:', sphi_center_h*r_e_old*sqrt_B_coup, sphi_m, &
         '  |', gama_center_h, rho_center_h, alpha(1,1), r_e_new
-    endif
+    !endif
 
     ! ---------------------------------------------------------------
     ! Elliptic solver

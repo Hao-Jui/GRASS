@@ -17,6 +17,7 @@ module spin_helper
   use toolkit_mod, only : deriv_sm, deriv_s, deriv_m, besseli, besselk, interp, interp_log_h_to_p, interp_log_p_to_e
   use simpson_mod, only: simpson_1d
   use nag_compat_mod, only : d01gaf
+  use anderson_optimized, only: anderson_accel_optimized
   implicit none
   interface
     subroutine dgemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc)
@@ -987,30 +988,41 @@ contains
     real(wp), intent(in) :: root_mphi_re, dif
     integer, intent(in) :: n_of_it
     integer :: s, m
-    ! Chebyshev-accelerated SOR state (persistent across calls)
-    real(wp), parameter :: w_picard  = 0.7e0_wp
+    ! --- Threshold constants ---
+    real(wp), parameter :: CHEB_THRESH = 1.e-2_wp   ! Chebyshev below this
+    real(wp), parameter :: AND_THRESH  = 1.e-1_wp   ! Anderson above this
+    real(wp), parameter :: w_picard    = 0.7e0_wp   ! Picard damping (transition zone)
+    integer,  parameter :: M_HIST      = 3           ! Anderson history window
+    ! --- Chebyshev state ---
     real(wp), save :: cheb_w = 1.e0_wp
-    real(wp), save :: rho_spec_est  = 0.7e0_wp   ! adaptive spectral radius estimate
-    real(wp), save :: prev_res_norm = -1.e0_wp    ! -1 = uninitialized
+    real(wp), save :: rho_spec_est  = 0.7e0_wp
+    real(wp), save :: prev_res_norm = -1.e0_wp
     real(wp), allocatable, save :: prev_rho(:,:), prev_gama(:,:), prev_ww(:,:), prev_sphi(:,:)
     real(wp) :: x_k_rho(SDIV,MDIV), x_k_gama(SDIV,MDIV), x_k_ww(SDIV,MDIV), x_k_sphi(SDIV,MDIV)
     real(wp) :: res_norm, rho_obs
+    ! --- Anderson state ---
+    real(wp), allocatable, save :: hist_rho(:,:,:), hist_gama(:,:,:), hist_ww(:,:,:), hist_sphi(:,:,:)
 
     associate (unused => n_of_it); end associate
 
-    ! Allocate / reset on first call or grid change
+    ! --- Allocate / reset on first call or grid change ---
     if (.not. allocated(prev_rho) .or. size(prev_rho,1) /= SDIV .or. size(prev_rho,2) /= MDIV) then
-      if (allocated(prev_rho)) deallocate(prev_rho, prev_gama, prev_ww, prev_sphi)
+      if (allocated(prev_rho))  deallocate(prev_rho, prev_gama, prev_ww, prev_sphi)
+      if (allocated(hist_rho))  deallocate(hist_rho, hist_gama, hist_ww, hist_sphi)
       allocate(prev_rho(SDIV,MDIV),  source=rho)
       allocate(prev_gama(SDIV,MDIV), source=gama)
       allocate(prev_ww(SDIV,MDIV),   source=ww)
       allocate(prev_sphi(SDIV,MDIV), source=sphi)
-      cheb_w       = 1.e0_wp
-      rho_spec_est = 0.7e0_wp
+      allocate(hist_rho(SDIV,MDIV,M_HIST),  source=0.e0_wp)
+      allocate(hist_gama(SDIV,MDIV,M_HIST), source=0.e0_wp)
+      allocate(hist_ww(SDIV,MDIV,M_HIST),   source=0.e0_wp)
+      allocate(hist_sphi(SDIV,MDIV,M_HIST), source=0.e0_wp)
+      cheb_w        = 1.e0_wp
+      rho_spec_est  = 0.7e0_wp
       prev_res_norm = -1.e0_wp
     end if
 
-    if (dif < 1.e-2_wp) then
+    if (dif < CHEB_THRESH) then
       ! ---------------------------------------------------------------
       ! Chebyshev-accelerated SOR using adaptive rho_spec_est
       ! cheb_w recurrence: cheb_w_{k+1} = 1 / (1 - (rho^2/4) * cheb_w_k)
@@ -1023,11 +1035,9 @@ contains
       gama = prev_gama + cheb_w * (target_gama - prev_gama)
       ww   = prev_ww   + cheb_w * (target_ww   - prev_ww)
       prev_rho = x_k_rho;  prev_gama = x_k_gama;  prev_ww = x_k_ww
-    else
+    else if (dif < AND_THRESH) then
       ! ---------------------------------------------------------------
-      ! Picard; measure spectral radius from consecutive residual norms.
-      ! Estimate is frozen once Chebyshev activates (the Chebyshev rate
-      ! is not the Picard spectral radius and would corrupt the estimate).
+      ! Conservative Picard transition zone; update spectral radius estimate
       ! ---------------------------------------------------------------
       res_norm = sqrt(sum((target_rho  - rho )**2 + &
                           (target_gama - gama)**2 + &
@@ -1043,6 +1053,16 @@ contains
       gama = (1.e0_wp - w_picard) * gama + w_picard * target_gama
       ww   = (1.e0_wp - w_picard) * ww   + w_picard * target_ww
       prev_rho = rho;  prev_gama = gama;  prev_ww = ww
+    else
+      ! ---------------------------------------------------------------
+      ! Anderson acceleration (early nonlinear phase, dif >= AND_THRESH)
+      ! Runs per-field; shared history buffers reset on grid change.
+      ! ---------------------------------------------------------------
+      cheb_w = 1.e0_wp;  prev_res_norm = -1.e0_wp
+      call anderson_accel_optimized(rho,  target_rho,  hist_rho,  n_of_it, M_HIST, dif)
+      call anderson_accel_optimized(gama, target_gama, hist_gama, n_of_it, M_HIST, dif)
+      call anderson_accel_optimized(ww,   target_ww,   hist_ww,   n_of_it, M_HIST, dif)
+      prev_rho = rho;  prev_gama = gama;  prev_ww = ww
     end if
 
 
@@ -1057,12 +1077,15 @@ contains
 
     if (.not. has_scalar) return
 
-    if (dif < 1.e-5_wp) then
+    if (dif < CHEB_THRESH) then
       x_k_sphi  = sphi
       sphi      = prev_sphi + cheb_w * (target_sphi - prev_sphi)
       prev_sphi = x_k_sphi
-    else
+    else if (dif < AND_THRESH) then
       sphi      = (1.e0_wp - w_picard) * sphi + w_picard * target_sphi
+      prev_sphi = sphi
+    else
+      call anderson_accel_optimized(sphi, target_sphi, hist_sphi, n_of_it, M_HIST, dif)
       prev_sphi = sphi
     end if
     where(ieee_is_nan(sphi)) sphi = 0.e0_wp
