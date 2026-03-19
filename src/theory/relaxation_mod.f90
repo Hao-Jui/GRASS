@@ -17,29 +17,29 @@ module anderson_optimized
       double precision, intent(in) :: a(lda, *), x(*)
       double precision, intent(inout) :: y(*)
     end subroutine dgemv
+    subroutine dposv(uplo, n, nrhs, a, lda, b, ldb, info)
+      character(len=1), intent(in) :: uplo
+      integer, intent(in) :: n, nrhs, lda, ldb
+      double precision, intent(inout) :: a(lda, *), b(ldb, *)
+      integer, intent(out) :: info
+    end subroutine dposv
   end interface
 contains
 
-  subroutine anderson_accel_optimized(current_field, target_field, history_f, iter, m_hist, dif)
+  subroutine anderson_accel_optimized(current_field, target_field, history_f, iter, m_hist)
     real(wp), dimension(SDIV,MDIV), intent(inout) :: current_field
     real(wp), dimension(SDIV,MDIV), intent(in)    :: target_field
-    real(wp), dimension(SDIV,MDIV,m_hist), intent(inout) :: history_f
+    real(wp), dimension(SDIV,MDIV,m_hist), intent(inout), target :: history_f
     integer, intent(in) :: iter, m_hist
-    real(wp), intent(in) :: dif
-    
-    real(wp), dimension(m_hist) :: gamma, svals
+
+    real(wp), dimension(m_hist) :: gamma
     real(wp), dimension(m_hist, m_hist) :: F_mat
-    real(wp) :: residual(SDIV,MDIV), accel_field(SDIV,MDIV)
-    real(wp) :: work_ls(10*m_hist)
-    integer :: k, i, info, idx_curr, idx, N, rank_out
+    real(wp) :: accel_field(SDIV,MDIV)
+    real(wp), pointer, contiguous :: residual_vec(:), history_vec(:)
+    integer :: k, i, info, idx_curr, idx, N
     real(wp), parameter :: blend = 0.3e0_wp, damping = 0.3e0_wp
     integer, parameter :: conservative_steps = 3
     real(wp), allocatable, save :: delta(:,:)
-
-    !if ( dif < 1.e-6_wp) then
-    !  current_field = damping * current_field + (1.0e0_wp - damping) * target_field
-    !  return
-    !end if
 
     N = SDIV*MDIV
 
@@ -51,19 +51,15 @@ contains
       allocate(delta(N, m_hist))
     end if
 
-    ! Compute residual
-    residual = current_field - target_field
     idx_curr = modulo(iter - 1, m_hist) + 1
+    history_f(:,:,idx_curr) = current_field - target_field
+    residual_vec(1:N) => history_f(:,:,idx_curr)
 
     ! Early iterations: simple damping, but still seed valid history.
     if (iter < conservative_steps) then
-      history_f(:,:,idx_curr) = residual  ! store pre-update residual
       current_field = damping * current_field + (1.0e0_wp - damping) * target_field
       return
     end if
-
-    ! Store current residual
-    history_f(:,:,idx_curr) = residual
 
     ! Determine history depth
     k = min(iter - conservative_steps + 1, m_hist)
@@ -72,26 +68,23 @@ contains
     ! Each history slice is read exactly once (vs k*(k+1)/2 times in the scalar loop)
     do i = 1, k
       idx = modulo(iter - i - 1, m_hist) + 1
-      delta(:,i) = reshape(residual, [N]) - reshape(history_f(:,:,idx), [N])
+      history_vec(1:N) => history_f(:,:,idx)
+      delta(:,i) = residual_vec - history_vec
     end do
 
     ! F_mat(1:k,1:k) = delta(:,1:k)^T @ delta(:,1:k)  — all k^2 dot products in one DGEMM
     call dgemm('T', 'N', k, k, N, 1.e0_wp, delta, N, delta, N, 0.e0_wp, F_mat, m_hist)
 
     ! gamma(1:k) = delta(:,1:k)^T @ residual
-    call dgemv('T', N, k, 1.e0_wp, delta, N, residual(1,1), 1, 0.e0_wp, gamma, 1)
+    call dgemv('T', N, k, 1.e0_wp, delta, N, residual_vec, 1, 0.e0_wp, gamma, 1)
 
     call DPOSV('U', k, 1, F_mat, m_hist, gamma, m_hist, info)
 
-    associate (unused => dif); end associate
     if (info == 0) then
-      ! accel_field = target_field - delta(:,1:k) @ gamma(1:k)
       accel_field = target_field
       call dgemv('N', N, k, -1.e0_wp, delta, N, gamma, 1, 1.e0_wp, accel_field(1,1), 1)
-      !current_field = damping * accel_field + (1.0e0_wp - damping) * current_field
       current_field = blend * current_field + (1.0e0_wp - blend) * accel_field
     else
-      !write(*,*) "Fallback to damped Picard"
       current_field = blend * current_field + (1.0e0_wp - blend) * target_field
     end if
     
@@ -499,9 +492,9 @@ contains
     logical,  intent(in)    :: has_scalar
     logical,  intent(out)   :: fired
 
-    real(wp) :: x_k_rho(SDIV,MDIV), x_k_gama(SDIV,MDIV), x_k_ww(SDIV,MDIV), x_k_sphi(SDIV,MDIV)
-    real(wp) :: denom, step_n
+    real(wp) :: denom, step_n, x_k, hist1_prev, candidate
     real(wp), parameter :: MAX_AITKEN_JUMP = 10.e0_wp
+    logical :: apply_aitken
     integer  :: s, m
 
     ! Allocate on first call or grid change
@@ -519,57 +512,75 @@ contains
       n_aitk_hist = 0
     end if
 
-    fired = .false.
-    x_k_rho = rho;  x_k_gama = gama;  x_k_ww = ww;  x_k_sphi = sphi
+    apply_aitken = (n_rho_locked >= N_RHO_LOCK .and. n_aitk_hist >= 2)
+    fired = apply_aitken
 
-    if (n_rho_locked >= N_RHO_LOCK .and. n_aitk_hist >= 2) then
-      fired = .true.
+    do m = 1, MDIV
+      do s = 1, SDIV
+        x_k = rho(s,m)
+        if (apply_aitken) then
+          step_n = x_k - aitk1_rho(s,m)
+          denom  = x_k - 2.e0_wp*aitk1_rho(s,m) + aitk2_rho(s,m)
+          if (abs(denom) > 1.e-14_wp .and. abs(step_n) <= MAX_AITKEN_JUMP * abs(denom)) then
+            candidate = x_k - step_n**2 / denom
+            if (abs(candidate) <= 100.e0_wp) rho(s,m) = candidate
+          end if
+        end if
+        hist1_prev = aitk1_rho(s,m)
+        aitk1_rho(s,m) = x_k
+        aitk2_rho(s,m) = hist1_prev
 
-      do m = 1, MDIV
-        do s = 1, SDIV
-          step_n = rho(s,m) - aitk1_rho(s,m)
-          denom  = rho(s,m) - 2.e0_wp*aitk1_rho(s,m) + aitk2_rho(s,m)
-          if (abs(denom) > 1.e-14_wp .and. abs(step_n) <= MAX_AITKEN_JUMP * abs(denom)) &
-            rho(s,m) = rho(s,m) - step_n**2 / denom
+        x_k = gama(s,m)
+        if (apply_aitken) then
+          step_n = x_k - aitk1_gama(s,m)
+          denom  = x_k - 2.e0_wp*aitk1_gama(s,m) + aitk2_gama(s,m)
+          if (abs(denom) > 1.e-14_wp .and. abs(step_n) <= MAX_AITKEN_JUMP * abs(denom)) then
+            candidate = x_k - step_n**2 / denom
+            if (abs(candidate) <= 300.e0_wp) gama(s,m) = candidate
+          end if
+        end if
+        hist1_prev = aitk1_gama(s,m)
+        aitk1_gama(s,m) = x_k
+        aitk2_gama(s,m) = hist1_prev
 
-          step_n = gama(s,m) - aitk1_gama(s,m)
-          denom  = gama(s,m) - 2.e0_wp*aitk1_gama(s,m) + aitk2_gama(s,m)
-          if (abs(denom) > 1.e-14_wp .and. abs(step_n) <= MAX_AITKEN_JUMP * abs(denom)) &
-            gama(s,m) = gama(s,m) - step_n**2 / denom
+        x_k = ww(s,m)
+        if (apply_aitken) then
+          step_n = x_k - aitk1_ww(s,m)
+          denom  = x_k - 2.e0_wp*aitk1_ww(s,m) + aitk2_ww(s,m)
+          if (abs(denom) > 1.e-14_wp .and. abs(step_n) <= MAX_AITKEN_JUMP * abs(denom)) then
+            candidate = x_k - step_n**2 / denom
+            if (abs(candidate) <= 100.e0_wp) ww(s,m) = candidate
+          end if
+        end if
+        hist1_prev = aitk1_ww(s,m)
+        aitk1_ww(s,m) = x_k
+        aitk2_ww(s,m) = hist1_prev
 
-          step_n = ww(s,m) - aitk1_ww(s,m)
-          denom  = ww(s,m) - 2.e0_wp*aitk1_ww(s,m) + aitk2_ww(s,m)
-          if (abs(denom) > 1.e-14_wp .and. abs(step_n) <= MAX_AITKEN_JUMP * abs(denom)) &
-            ww(s,m) = ww(s,m) - step_n**2 / denom
-        end do
+        if (has_scalar) then
+          x_k = sphi(s,m)
+          if (apply_aitken) then
+            step_n = x_k - aitk1_sphi(s,m)
+            denom  = x_k - 2.e0_wp*aitk1_sphi(s,m) + aitk2_sphi(s,m)
+            if (abs(denom) > 1.e-14_wp .and. abs(step_n) <= MAX_AITKEN_JUMP * abs(denom)) then
+              candidate = x_k - step_n**2 / denom
+              if (abs(candidate) <= 10.e0_wp) sphi(s,m) = candidate
+            end if
+          end if
+          hist1_prev = aitk1_sphi(s,m)
+          aitk1_sphi(s,m) = x_k
+          aitk2_sphi(s,m) = hist1_prev
+        end if
       end do
+    end do
 
-      if (has_scalar) then
-        do m = 1, MDIV
-          do s = 1, SDIV
-            step_n = sphi(s,m) - aitk1_sphi(s,m)
-            denom  = sphi(s,m) - 2.e0_wp*aitk1_sphi(s,m) + aitk2_sphi(s,m)
-            if (abs(denom) > 1.e-14_wp .and. abs(step_n) <= MAX_AITKEN_JUMP * abs(denom)) &
-              sphi(s,m) = sphi(s,m) - step_n**2 / denom
-          end do
-        end do
-      end if
-
-      where (abs(rho)  > 100.e0_wp) rho  = x_k_rho
-      where (abs(gama) > 300.e0_wp) gama = x_k_gama
-      where (abs(ww)   > 100.e0_wp) ww   = x_k_ww
-      if (has_scalar) where (abs(sphi) > 10.e0_wp) sphi = x_k_sphi
-
+    if (fired) then
       prev_rho = rho;  prev_gama = gama;  prev_ww = ww
       if (has_scalar) prev_sphi = sphi
 
       n_aitk_hist = 0
+    else
+      n_aitk_hist = n_aitk_hist + 1
     end if
-
-    ! Shift history: aitk2 <- aitk1 <- entry values (pre-modification)
-    aitk2_rho  = aitk1_rho;   aitk2_gama = aitk1_gama;  aitk2_ww  = aitk1_ww;   aitk2_sphi = aitk1_sphi
-    aitk1_rho  = x_k_rho;     aitk1_gama = x_k_gama;    aitk1_ww  = x_k_ww;     aitk1_sphi = x_k_sphi
-    if (.not. fired) n_aitk_hist = n_aitk_hist + 1
 
   end subroutine aitken_delta2
 
