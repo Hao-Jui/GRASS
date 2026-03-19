@@ -9,6 +9,7 @@ module rotation_uniform
                       Fmax_h, n_of_relaxation_steps, timing
   use spin_helper, only: dif, &
                          target_rho, target_gama, target_ww, target_sphi, &
+                         metric_method, scalar_method, &
                          dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, &
                          dww_s_cache, dww_m_cache, ds_s_cache, ds_m_cache, &
                          d2g_ss_cache, d2g_mm_cache, e_rsm_cache, &
@@ -61,7 +62,7 @@ subroutine rotation_solver
   allocate(sphi_prev_iter(SDIV,MDIV), source=sphi)
   r_e_prev_iter = r_e_new
   
-  do while( dif > 1.e-8_wp .or. n_of_it < 2 )
+  do while( dif > 1.e-6_wp .or. n_of_it < 2 )
     if (zero_scalar_mode) sphi = 0.e0_wp
     sphi_m   = maxval( sphi(:,1) * sqrt_B_coup )
     call rescale_metric(r_e_new_sq)
@@ -77,12 +78,6 @@ subroutine rotation_solver
          sphi_center_h, gama_center_h, rho_center_h )                    ! output   
 
     r_e_new_sq = r_e_new**2
-
-    !if ( n_of_it > 50 .and. mod(n_of_it,50)==0 ) then
-      write(*,'( (A,i4), (A,es10.3), (A,2es16.8), (A,4es16.8))') 'iter= ', n_of_it, ', diff:', dif, &
-        ' sphi:', sphi_center_h*r_e_old*sqrt_B_coup, sphi_m, &
-        '  |', gama_center_h, rho_center_h, alpha(1,1), r_e_new
-    !endif
 
     ! ---------------------------------------------------------------
     ! Elliptic solver
@@ -130,9 +125,12 @@ subroutine rotation_solver
     q_sphi = contraction_ratio(dsphi_norm, dsphi_prev)
     q_re   = contraction_ratio(dre_norm,   dre_prev)
 
-    write(*,'(A,5(1X,A,ES10.3),A,5(1X,A,F7.3))') 'conv:', &
-      'drho=', drho_norm, 'dgama=', dgama_norm, 'dww=', dww_norm, 'dsphi=', dsphi_norm, 'dre=', dre_norm, &
-      ' |', 'qrho=', q_rho, 'qgama=', q_gama, 'qww=', q_ww, 'qsphi=', q_sphi, 'qre=', q_re
+    !if ( n_of_it > 50 .and. mod(n_of_it,50)==0 ) then
+      write(*,'(A,i4,A,es10.3,A,2es12.4,A,1X,A,1X,A,A,5es12.4)') 'it= ', n_of_it, ', dif:', dif, &
+        ' sphi:', sphi_center_h*r_e_old*sqrt_B_coup, sphi_m, &
+        ' ', trim(metric_method), trim(scalar_method), &
+        '  |', q_rho, q_gama, q_re, q_ww,q_sphi
+    !endif
 
     rho_prev_iter = rho
     gama_prev_iter = gama
