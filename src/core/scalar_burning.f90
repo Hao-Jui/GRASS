@@ -19,10 +19,11 @@ contains
     mphi_r = (mphi_burn_seed / l_uni)**2 * KAPPA / 1.e10_wp
     print *, " "
     write(*,'("Solving for B =",es15.6," and mphi =",es15.6)') B_burn_init, mphi_burn_seed
-    call rotation_solver()
-    current_mphi = sqrt(mphi_r*1.e10_wp/KAPPA) * l_uni
+    call cpu_time(t0); call rotation_solver(); call cpu_time(t1); write(*,"(A, f10.4)") "Elapsed time [s]:", t1-t0
     print *, " "
     print *, "scalar burn stage:  (B, mphi, sphi_c, sphi_m)"
+
+    current_mphi = sqrt(mphi_r*1.e10_wp/KAPPA) * l_uni
 
     burn_iter = 0; n_of_relaxation_steps = 0; call cpu_time(t0)
     do while (current_mphi < target_mphi .and. burn_iter < scalar_burn_max_iter)
