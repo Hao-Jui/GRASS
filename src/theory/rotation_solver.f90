@@ -62,7 +62,7 @@ subroutine rotation_solver
   allocate(sphi_prev_iter(SDIV,MDIV), source=sphi)
   r_e_prev_iter = r_e_new
   
-  do while( dif > 1.e-6_wp .or. n_of_it < 2 )
+  do while( dif > 1.e-8_wp .or. n_of_it < 2 )
     if (zero_scalar_mode) sphi = 0.e0_wp
     sphi_m   = maxval( sphi(:,1) * sqrt_B_coup )
     call rescale_metric(r_e_new_sq)

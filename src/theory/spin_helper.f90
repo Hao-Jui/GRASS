@@ -18,6 +18,7 @@ module spin_helper
   use simpson_mod, only: simpson_1d
   use nag_compat_mod, only : d01gaf
   use anderson_optimized, only: anderson_accel_optimized
+  use aitken_mod,         only: aitken_delta2
   implicit none
   interface
     subroutine dgemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc)
@@ -995,7 +996,6 @@ contains
     real(wp), parameter :: CHEB_THRESH   = 1.e-1_wp
     real(wp), parameter :: w_picard    = 0.7e0_wp   ! Picard damping (transition zone)
     real(wp), parameter :: RHO_LOCK_TOL = 2.e-2_wp
-    real(wp), parameter :: AITKEN_GAIN_MAX = 1.25e0_wp
     integer,  parameter :: M_HIST      = 3           ! Anderson history window
     integer,  parameter :: N_CHEB      = 3           ! consecutive dif-decreases to enable Chebyshev
     integer,  parameter :: N_ANDERSON  = 5           ! consecutive dif-decreases to enable Anderson
@@ -1011,7 +1011,8 @@ contains
     real(wp), allocatable, save :: prev_rho(:,:), prev_gama(:,:), prev_ww(:,:), prev_sphi(:,:)
     real(wp) :: x_k_rho(SDIV,MDIV), x_k_gama(SDIV,MDIV), x_k_ww(SDIV,MDIV), x_k_sphi(SDIV,MDIV)
     real(wp) :: sphi_raw(SDIV,MDIV)
-    real(wp) :: rho_obs, aitken_gain
+    real(wp) :: rho_obs
+    logical  :: aitken_fired
     ! --- Anderson state ---
     real(wp), allocatable, save :: hist_rho(:,:,:), hist_gama(:,:,:), hist_ww(:,:,:), hist_sphi(:,:,:)
 
@@ -1052,6 +1053,15 @@ contains
     end if
     rho_spec_prev = rho_spec_est
 
+    ! --- Aitken delta-squared: element-wise quadratic acceleration ---
+    call aitken_delta2(rho, gama, ww, sphi, prev_rho, prev_gama, prev_ww, prev_sphi, &
+                       n_rho_locked, N_RHO_LOCK, has_scalar, aitken_fired)
+    if (aitken_fired) then
+      metric_method = 'Aitken'
+      if (has_scalar) scalar_method = 'Aitken'
+    end if
+
+    if (.not. aitken_fired) then
     if (dif > PICARD_THRESH .or. n_consec_decrease < N_CHEB) then
       ! ---------------------------------------------------------------
       ! Conservative Picard for the large-residual regime
@@ -1073,7 +1083,7 @@ contains
       ! Chebyshev-accelerated SOR using adaptive rho_spec_est.
       ! cheb_w recurrence: cheb_w_{k+1} = 1 / (1 - (rho^2/4) * cheb_w_k)
       ! ---------------------------------------------------------------
-      metric_method = 'Cheb'
+      metric_method = 'Chebys'
       if (prev_dif_local > 0.e0_wp .and. dif > 0.e0_wp .and. n_consec_decrease >= N_CHEB) then
         rho_obs = min(9.8e-1_wp, max(3.e-1_wp, dif / prev_dif_local))
         rho_spec_est = 0.7e0_wp * rho_spec_est + 0.3e0_wp * rho_obs
@@ -1092,7 +1102,7 @@ contains
       ! ---------------------------------------------------------------
       ! Anderson acceleration in the small-residual regime
       ! ---------------------------------------------------------------
-      metric_method = 'Ander'
+      metric_method = 'Anders'
       cheb_w = 1.e0_wp
       x_k_rho  = rho
       x_k_gama = gama
@@ -1100,16 +1110,9 @@ contains
       call anderson_accel_optimized(rho,  target_rho,  hist_rho,  n_of_it, M_HIST, dif)
       call anderson_accel_optimized(gama, target_gama, hist_gama, n_of_it, M_HIST, dif)
       call anderson_accel_optimized(ww,   target_ww,   hist_ww,   n_of_it, M_HIST, dif)
-      if (n_rho_locked >= N_RHO_LOCK) then
-        aitken_gain = min(AITKEN_GAIN_MAX, 1.e0_wp + 0.75e0_wp * (1.e0_wp - rho_spec_est))
-        rho  = x_k_rho  + aitken_gain * (rho  - x_k_rho)
-        gama = x_k_gama + aitken_gain * (gama - x_k_gama)
-        ww   = x_k_ww   + aitken_gain * (ww   - x_k_ww)
-        metric_method = 'Aitken'
-      end if
       prev_rho = rho;  prev_gama = gama;  prev_ww = ww
     end if
-
+    end if  ! .not. aitken_fired
 
     ! ---------------------------------------------------------------
     ! Divergence check
@@ -1122,26 +1125,23 @@ contains
 
     if (.not. has_scalar) return
 
-    if (dif > PICARD_THRESH .or. n_consec_decrease < N_CHEB) then
-      scalar_method = 'Picard'
-      sphi      = (1.e0_wp - w_picard) * sphi + w_picard * target_sphi
-      prev_sphi = sphi
-    else if (dif > CHEB_THRESH .or. n_consec_decrease < N_ANDERSON) then
-      scalar_method = 'Chebyshev'
-      x_k_sphi  = sphi
-      sphi_raw = prev_sphi + cheb_w * (target_sphi - prev_sphi)
-      sphi = sphi_raw
-      prev_sphi = x_k_sphi
-    else
-      scalar_method = 'Anderson'
-      x_k_sphi = sphi
-      call anderson_accel_optimized(sphi, target_sphi, hist_sphi, n_of_it, M_HIST, dif)
-      if (n_rho_locked >= N_RHO_LOCK) then
-        aitken_gain = min(AITKEN_GAIN_MAX, 1.e0_wp + 0.75e0_wp * (1.e0_wp - rho_spec_est))
-        sphi = x_k_sphi + aitken_gain * (sphi - x_k_sphi)
-        scalar_method = 'Aitken'
+    if (.not. aitken_fired) then
+      if (dif > PICARD_THRESH .or. n_consec_decrease < N_CHEB) then
+        scalar_method = 'Picard'
+        sphi      = (1.e0_wp - w_picard) * sphi + w_picard * target_sphi
+        prev_sphi = sphi
+      else if (dif > CHEB_THRESH .or. n_consec_decrease < N_ANDERSON) then
+        scalar_method = 'Chebys'
+        x_k_sphi  = sphi
+        sphi_raw = prev_sphi + cheb_w * (target_sphi - prev_sphi)
+        sphi = sphi_raw
+        prev_sphi = x_k_sphi
+      else
+        scalar_method = 'Anders'
+        x_k_sphi = sphi
+        call anderson_accel_optimized(sphi, target_sphi, hist_sphi, n_of_it, M_HIST, dif)
+        prev_sphi = sphi
       end if
-      prev_sphi = sphi
     end if
     where(ieee_is_nan(sphi)) sphi = 0.e0_wp
 

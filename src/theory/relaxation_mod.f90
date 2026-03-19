@@ -476,3 +476,96 @@ contains
   end subroutine apply_givens
 
 end module JFNK_mod
+
+module aitken_mod
+  use precision_mod, only: wp
+  use para_mod, only: SDIV, MDIV
+  implicit none
+  private
+  public :: aitken_delta2
+
+  real(wp), allocatable, save :: aitk1_rho(:,:), aitk1_gama(:,:), aitk1_ww(:,:), aitk1_sphi(:,:)
+  real(wp), allocatable, save :: aitk2_rho(:,:), aitk2_gama(:,:), aitk2_ww(:,:), aitk2_sphi(:,:)
+  integer, save :: n_aitk_hist = 0
+
+contains
+
+  subroutine aitken_delta2(rho, gama, ww, sphi, prev_rho, prev_gama, prev_ww, prev_sphi, &
+                           n_rho_locked, N_RHO_LOCK, has_scalar, fired)
+    real(wp), intent(inout) :: rho(SDIV,MDIV), gama(SDIV,MDIV), ww(SDIV,MDIV), sphi(SDIV,MDIV)
+    real(wp), intent(inout) :: prev_rho(SDIV,MDIV), prev_gama(SDIV,MDIV)
+    real(wp), intent(inout) :: prev_ww(SDIV,MDIV), prev_sphi(SDIV,MDIV)
+    integer,  intent(in)    :: n_rho_locked, N_RHO_LOCK
+    logical,  intent(in)    :: has_scalar
+    logical,  intent(out)   :: fired
+
+    real(wp) :: x_k_rho(SDIV,MDIV), x_k_gama(SDIV,MDIV), x_k_ww(SDIV,MDIV), x_k_sphi(SDIV,MDIV)
+    real(wp) :: denom
+    integer  :: s, m
+
+    ! Allocate on first call or grid change
+    if (.not. allocated(aitk1_rho) .or. size(aitk1_rho,1) /= SDIV .or. size(aitk1_rho,2) /= MDIV) then
+      if (allocated(aitk1_rho)) deallocate(aitk1_rho, aitk1_gama, aitk1_ww, aitk1_sphi)
+      if (allocated(aitk2_rho)) deallocate(aitk2_rho, aitk2_gama, aitk2_ww, aitk2_sphi)
+      allocate(aitk1_rho(SDIV,MDIV),  source=rho)
+      allocate(aitk1_gama(SDIV,MDIV), source=gama)
+      allocate(aitk1_ww(SDIV,MDIV),   source=ww)
+      allocate(aitk1_sphi(SDIV,MDIV), source=sphi)
+      allocate(aitk2_rho(SDIV,MDIV),  source=rho)
+      allocate(aitk2_gama(SDIV,MDIV), source=gama)
+      allocate(aitk2_ww(SDIV,MDIV),   source=ww)
+      allocate(aitk2_sphi(SDIV,MDIV), source=sphi)
+      n_aitk_hist = 0
+    end if
+
+    fired = .false.
+    x_k_rho = rho;  x_k_gama = gama;  x_k_ww = ww;  x_k_sphi = sphi
+
+    if (n_rho_locked >= N_RHO_LOCK .and. n_aitk_hist >= 2) then
+      fired = .true.
+
+      do m = 1, MDIV
+        do s = 1, SDIV
+          denom = rho(s,m) - 2.e0_wp*aitk1_rho(s,m) + aitk2_rho(s,m)
+          if (abs(denom) > 1.e-14_wp) &
+            rho(s,m) = rho(s,m) - (rho(s,m) - aitk1_rho(s,m))**2 / denom
+
+          denom = gama(s,m) - 2.e0_wp*aitk1_gama(s,m) + aitk2_gama(s,m)
+          if (abs(denom) > 1.e-14_wp) &
+            gama(s,m) = gama(s,m) - (gama(s,m) - aitk1_gama(s,m))**2 / denom
+
+          denom = ww(s,m) - 2.e0_wp*aitk1_ww(s,m) + aitk2_ww(s,m)
+          if (abs(denom) > 1.e-14_wp) &
+            ww(s,m) = ww(s,m) - (ww(s,m) - aitk1_ww(s,m))**2 / denom
+        end do
+      end do
+
+      if (has_scalar) then
+        do m = 1, MDIV
+          do s = 1, SDIV
+            denom = sphi(s,m) - 2.e0_wp*aitk1_sphi(s,m) + aitk2_sphi(s,m)
+            if (abs(denom) > 1.e-14_wp) &
+              sphi(s,m) = sphi(s,m) - (sphi(s,m) - aitk1_sphi(s,m))**2 / denom
+          end do
+        end do
+      end if
+
+      where (abs(rho)  > 100.e0_wp) rho  = x_k_rho
+      where (abs(gama) > 300.e0_wp) gama = x_k_gama
+      where (abs(ww)   > 100.e0_wp) ww   = x_k_ww
+      if (has_scalar) where (abs(sphi) > 10.e0_wp) sphi = x_k_sphi
+
+      prev_rho = rho;  prev_gama = gama;  prev_ww = ww
+      if (has_scalar) prev_sphi = sphi
+
+      n_aitk_hist = 0
+    end if
+
+    ! Shift history: aitk2 <- aitk1 <- entry values (pre-modification)
+    aitk2_rho  = aitk1_rho;   aitk2_gama = aitk1_gama;  aitk2_ww  = aitk1_ww;   aitk2_sphi = aitk1_sphi
+    aitk1_rho  = x_k_rho;     aitk1_gama = x_k_gama;    aitk1_ww  = x_k_ww;     aitk1_sphi = x_k_sphi
+    if (.not. fired) n_aitk_hist = n_aitk_hist + 1
+
+  end subroutine aitken_delta2
+
+end module aitken_mod
