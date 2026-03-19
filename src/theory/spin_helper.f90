@@ -51,6 +51,8 @@ module spin_helper
   real(wp), allocatable, target :: D1_metric_rho(:,:), D1_metric_gama(:,:), D1_metric_omega(:,:), D1_metric_sphi(:,:)
   real(wp), allocatable, target :: D2_metric_rho(:,:), D2_metric_gama(:,:), D2_metric_omega(:,:), D2_metric_sphi(:,:)
   real(wp), allocatable, target :: target_rho(:,:), target_gama(:,:), target_ww(:,:), target_sphi(:,:)
+  character(len=10) :: metric_method = 'Picard'
+  character(len=10) :: scalar_method = 'Picard'
 
 contains
   pure function deriv_s_vec(f) result(df_ds)
@@ -989,32 +991,29 @@ contains
     integer, intent(in) :: n_of_it
     integer :: s, m
     ! --- Threshold constants ---
-    real(wp), parameter :: CHEB_THRESH = 1.e-2_wp   ! Chebyshev below this
-    real(wp), parameter :: AND_THRESH  = 1.e-1_wp   ! Anderson above this
+    real(wp), parameter :: PICARD_THRESH = 5.e-1_wp
+    real(wp), parameter :: CHEB_THRESH   = 1.e-1_wp
     real(wp), parameter :: w_picard    = 0.7e0_wp   ! Picard damping (transition zone)
-    real(wp), parameter :: DEEP_THRESH = 1.e-3_wp   ! deep settling: skip metric update, high-w sphi
-    real(wp), parameter :: w_sphi_deep = 1.e0_wp    ! scalar weight in deep settling (Tier 3)
-    real(wp), parameter :: aitken_lambda_min = 0.8_wp
-    real(wp), parameter :: aitken_lambda_max = 1.3_wp
+    real(wp), parameter :: RHO_LOCK_TOL = 2.e-2_wp
+    real(wp), parameter :: AITKEN_GAIN_MAX = 1.25e0_wp
     integer,  parameter :: M_HIST      = 3           ! Anderson history window
-    integer,  parameter :: N_MONOTONE  = 5           ! consecutive dif-decreases to confirm tail
+    integer,  parameter :: N_CHEB      = 3           ! consecutive dif-decreases to enable Chebyshev
+    integer,  parameter :: N_ANDERSON  = 5           ! consecutive dif-decreases to enable Anderson
+    integer,  parameter :: N_RHO_LOCK  = 3           ! consecutive stable rho estimates for Aitken-like boost
     ! --- Chebyshev state ---
     real(wp), save :: cheb_w = 1.e0_wp
     real(wp), save :: rho_spec_est  = 0.7e0_wp
-    real(wp), save :: prev_res_norm = -1.e0_wp
+    real(wp), save :: rho_spec_prev = 0.7e0_wp
     real(wp), save :: prev_dif_local = -1.e0_wp  ! for better spectral radius tracking
     real(wp), save :: dif_prev = -1.e0_wp         ! one-step-back dif for monotone check
-    real(wp), save :: sphi_mon_prev1 = -1.e0_wp
-    real(wp), save :: sphi_mon_prev2 = -1.e0_wp
     integer,  save :: n_consec_decrease = 0        ! consecutive dif-decrease counter (Tiers 3,4)
+    integer,  save :: n_rho_locked = 0
     real(wp), allocatable, save :: prev_rho(:,:), prev_gama(:,:), prev_ww(:,:), prev_sphi(:,:)
     real(wp) :: x_k_rho(SDIV,MDIV), x_k_gama(SDIV,MDIV), x_k_ww(SDIV,MDIV), x_k_sphi(SDIV,MDIV)
     real(wp) :: sphi_raw(SDIV,MDIV)
-    real(wp) :: res_norm, rho_obs, sphi_mon_raw, aitken_denom, aitken_mon, aitken_lambda
+    real(wp) :: rho_obs, aitken_gain
     ! --- Anderson state ---
     real(wp), allocatable, save :: hist_rho(:,:,:), hist_gama(:,:,:), hist_ww(:,:,:), hist_sphi(:,:,:)
-
-    associate (unused => n_of_it); end associate
 
     ! --- Allocate / reset on first call or grid change ---
     if (.not. allocated(prev_rho) .or. size(prev_rho,1) /= SDIV .or. size(prev_rho,2) /= MDIV) then
@@ -1030,12 +1029,11 @@ contains
       allocate(hist_sphi(SDIV,MDIV,M_HIST), source=0.e0_wp)
       cheb_w            = 1.e0_wp
       rho_spec_est      = 0.7e0_wp
-      prev_res_norm     = -1.e0_wp
+      rho_spec_prev     = 0.7e0_wp
       prev_dif_local    = -1.e0_wp
       dif_prev          = -1.e0_wp
-      sphi_mon_prev1    = -1.e0_wp
-      sphi_mon_prev2    = -1.e0_wp
       n_consec_decrease = 0
+      n_rho_locked      = 0
     end if
 
     ! --- Monotone-contraction counter: confirm we are in the contracting tail ---
@@ -1047,16 +1045,36 @@ contains
       end if
     end if
     dif_prev = dif
+    if (abs(rho_spec_est - rho_spec_prev) < RHO_LOCK_TOL .and. n_consec_decrease >= N_ANDERSON) then
+      n_rho_locked = n_rho_locked + 1
+    else
+      n_rho_locked = 0
+    end if
+    rho_spec_prev = rho_spec_est
 
-    if (dif < CHEB_THRESH) then
+    if (dif > PICARD_THRESH .or. n_consec_decrease < N_CHEB) then
+      ! ---------------------------------------------------------------
+      ! Conservative Picard for the large-residual regime
+      ! ---------------------------------------------------------------
+      metric_method = 'Picard'
+      if (prev_dif_local > 0.e0_wp .and. dif > 0.e0_wp) then
+        rho_obs      = min(9.9e-1_wp, max(1.e-1_wp, dif / prev_dif_local))
+        rho_spec_est = 0.6e0_wp * rho_spec_est + 0.4e0_wp * rho_obs
+      end if
+      prev_dif_local = dif
+
+      cheb_w = 1.e0_wp
+      rho  = (1.e0_wp - w_picard) * rho  + w_picard * target_rho
+      gama = (1.e0_wp - w_picard) * gama + w_picard * target_gama
+      ww   = (1.e0_wp - w_picard) * ww   + w_picard * target_ww
+      prev_rho = rho;  prev_gama = gama;  prev_ww = ww
+    else if (dif > CHEB_THRESH .or. n_consec_decrease < N_ANDERSON) then
       ! ---------------------------------------------------------------
       ! Chebyshev-accelerated SOR using adaptive rho_spec_est.
-      ! Extend spectral-radius tracking into the late tail using the
-      ! same dif/prev_dif observable, but with more conservative
-      ! smoothing than the transition zone.
       ! cheb_w recurrence: cheb_w_{k+1} = 1 / (1 - (rho^2/4) * cheb_w_k)
       ! ---------------------------------------------------------------
-      if (prev_dif_local > 0.e0_wp .and. dif > 0.e0_wp .and. n_consec_decrease >= N_MONOTONE) then
+      metric_method = 'Cheb'
+      if (prev_dif_local > 0.e0_wp .and. dif > 0.e0_wp .and. n_consec_decrease >= N_CHEB) then
         rho_obs = min(9.8e-1_wp, max(3.e-1_wp, dif / prev_dif_local))
         rho_spec_est = 0.7e0_wp * rho_spec_est + 0.3e0_wp * rho_obs
       end if
@@ -1070,34 +1088,25 @@ contains
       gama = prev_gama + cheb_w * (target_gama - prev_gama)
       ww   = prev_ww   + cheb_w * (target_ww   - prev_ww)
       prev_rho = x_k_rho;  prev_gama = x_k_gama;  prev_ww = x_k_ww
-    else if (dif < AND_THRESH) then
-      ! ---------------------------------------------------------------
-      ! Conservative Picard transition zone; track spectral radius from dif
-      ! ---------------------------------------------------------------
-      if (prev_dif_local > 0.e0_wp .and. dif > 0.e0_wp) then
-        rho_obs      = min(9.9e-1_wp, max(1.e-1_wp, dif / prev_dif_local))
-        rho_spec_est = 0.6e0_wp * rho_spec_est + 0.4e0_wp * rho_obs  ! more responsive blend
-      end if
-      prev_dif_local = dif
-      res_norm = sqrt(sum((target_rho  - rho )**2 + &
-                          (target_gama - gama)**2 + &
-                          (target_ww   - ww  )**2))
-      prev_res_norm = res_norm
-
-      cheb_w = 1.e0_wp
-      rho  = (1.e0_wp - w_picard) * rho  + w_picard * target_rho
-      gama = (1.e0_wp - w_picard) * gama + w_picard * target_gama
-      ww   = (1.e0_wp - w_picard) * ww   + w_picard * target_ww
-      prev_rho = rho;  prev_gama = gama;  prev_ww = ww
     else
       ! ---------------------------------------------------------------
-      ! Anderson acceleration (early nonlinear phase, dif >= AND_THRESH)
-      ! Runs per-field; shared history buffers reset on grid change.
+      ! Anderson acceleration in the small-residual regime
       ! ---------------------------------------------------------------
-      cheb_w = 1.e0_wp;  prev_res_norm = -1.e0_wp
+      metric_method = 'Ander'
+      cheb_w = 1.e0_wp
+      x_k_rho  = rho
+      x_k_gama = gama
+      x_k_ww   = ww
       call anderson_accel_optimized(rho,  target_rho,  hist_rho,  n_of_it, M_HIST, dif)
       call anderson_accel_optimized(gama, target_gama, hist_gama, n_of_it, M_HIST, dif)
       call anderson_accel_optimized(ww,   target_ww,   hist_ww,   n_of_it, M_HIST, dif)
+      if (n_rho_locked >= N_RHO_LOCK) then
+        aitken_gain = min(AITKEN_GAIN_MAX, 1.e0_wp + 0.75e0_wp * (1.e0_wp - rho_spec_est))
+        rho  = x_k_rho  + aitken_gain * (rho  - x_k_rho)
+        gama = x_k_gama + aitken_gain * (gama - x_k_gama)
+        ww   = x_k_ww   + aitken_gain * (ww   - x_k_ww)
+        metric_method = 'Aitken'
+      end if
       prev_rho = rho;  prev_gama = gama;  prev_ww = ww
     end if
 
@@ -1113,38 +1122,25 @@ contains
 
     if (.not. has_scalar) return
 
-    if (dif < CHEB_THRESH) then
-      x_k_sphi  = sphi
-      if (.not. (dif < DEEP_THRESH .and. n_consec_decrease >= N_MONOTONE)) then
-        ! Normal Chebyshev for sphi (cheb_w set by metric block above)
-        sphi_raw = prev_sphi + cheb_w * (target_sphi - prev_sphi)
-      else
-        ! Tier 3: confirmed contracting tail — high-weight Picard decoupled from r_e-based cheb_w
-        sphi_raw = w_sphi_deep * target_sphi + (1.e0_wp - w_sphi_deep) * x_k_sphi
-
-        ! Late-stage scalar Aitken: use a scalar monitor to estimate a safe
-        ! over-relaxation factor for the whole field update.
-        sphi_mon_raw = maxval(abs(sphi_raw(:,1)))
-        if (sphi_mon_prev2 > 0.e0_wp .and. sphi_mon_prev1 > 0.e0_wp) then
-          aitken_denom = sphi_mon_raw - 2.e0_wp * sphi_mon_prev1 + sphi_mon_prev2
-          if (abs(aitken_denom) > 1.e-12_wp * max(1.e0_wp, abs(sphi_mon_raw)) .and. &
-              (sphi_mon_raw - sphi_mon_prev1) * (sphi_mon_prev1 - sphi_mon_prev2) > 0.e0_wp) then
-            aitken_mon = sphi_mon_raw - (sphi_mon_raw - sphi_mon_prev1)**2 / aitken_denom
-            if (abs(sphi_mon_raw - sphi_mon_prev1) > 1.e-14_wp) then
-              aitken_lambda = (aitken_mon - sphi_mon_prev1) / (sphi_mon_raw - sphi_mon_prev1)
-              aitken_lambda = min(aitken_lambda_max, max(aitken_lambda_min, aitken_lambda))
-              sphi_raw = x_k_sphi + aitken_lambda * (sphi_raw - x_k_sphi)
-            end if
-          end if
-        end if
-      end if
-      sphi = sphi_raw
-      prev_sphi = x_k_sphi
-    else if (dif < AND_THRESH) then
+    if (dif > PICARD_THRESH .or. n_consec_decrease < N_CHEB) then
+      scalar_method = 'Picard'
       sphi      = (1.e0_wp - w_picard) * sphi + w_picard * target_sphi
       prev_sphi = sphi
+    else if (dif > CHEB_THRESH .or. n_consec_decrease < N_ANDERSON) then
+      scalar_method = 'Chebyshev'
+      x_k_sphi  = sphi
+      sphi_raw = prev_sphi + cheb_w * (target_sphi - prev_sphi)
+      sphi = sphi_raw
+      prev_sphi = x_k_sphi
     else
+      scalar_method = 'Anderson'
+      x_k_sphi = sphi
       call anderson_accel_optimized(sphi, target_sphi, hist_sphi, n_of_it, M_HIST, dif)
+      if (n_rho_locked >= N_RHO_LOCK) then
+        aitken_gain = min(AITKEN_GAIN_MAX, 1.e0_wp + 0.75e0_wp * (1.e0_wp - rho_spec_est))
+        sphi = x_k_sphi + aitken_gain * (sphi - x_k_sphi)
+        scalar_method = 'Aitken'
+      end if
       prev_sphi = sphi
     end if
     where(ieee_is_nan(sphi)) sphi = 0.e0_wp
@@ -1158,9 +1154,6 @@ contains
         end if
       end do
     end do
-
-    sphi_mon_prev2 = sphi_mon_prev1
-    sphi_mon_prev1 = maxval(abs(sphi(:,1)))
 
   end subroutine relaxation
 
