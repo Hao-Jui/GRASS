@@ -997,6 +997,7 @@ contains
     real(wp), save :: cheb_w = 1.e0_wp
     real(wp), save :: rho_spec_est  = 0.7e0_wp
     real(wp), save :: prev_res_norm = -1.e0_wp
+    real(wp), save :: prev_dif_local = -1.e0_wp  ! for better spectral radius tracking
     real(wp), allocatable, save :: prev_rho(:,:), prev_gama(:,:), prev_ww(:,:), prev_sphi(:,:)
     real(wp) :: x_k_rho(SDIV,MDIV), x_k_gama(SDIV,MDIV), x_k_ww(SDIV,MDIV), x_k_sphi(SDIV,MDIV)
     real(wp) :: res_norm, rho_obs
@@ -1017,9 +1018,10 @@ contains
       allocate(hist_gama(SDIV,MDIV,M_HIST), source=0.e0_wp)
       allocate(hist_ww(SDIV,MDIV,M_HIST),   source=0.e0_wp)
       allocate(hist_sphi(SDIV,MDIV,M_HIST), source=0.e0_wp)
-      cheb_w        = 1.e0_wp
-      rho_spec_est  = 0.7e0_wp
-      prev_res_norm = -1.e0_wp
+      cheb_w         = 1.e0_wp
+      rho_spec_est   = 0.7e0_wp
+      prev_res_norm  = -1.e0_wp
+      prev_dif_local = -1.e0_wp
     end if
 
     if (dif < CHEB_THRESH) then
@@ -1037,15 +1039,16 @@ contains
       prev_rho = x_k_rho;  prev_gama = x_k_gama;  prev_ww = x_k_ww
     else if (dif < AND_THRESH) then
       ! ---------------------------------------------------------------
-      ! Conservative Picard transition zone; update spectral radius estimate
+      ! Conservative Picard transition zone; track spectral radius from dif
       ! ---------------------------------------------------------------
+      if (prev_dif_local > 0.e0_wp .and. dif > 0.e0_wp) then
+        rho_obs      = min(9.9e-1_wp, max(1.e-1_wp, dif / prev_dif_local))
+        rho_spec_est = 0.6e0_wp * rho_spec_est + 0.4e0_wp * rho_obs  ! more responsive blend
+      end if
+      prev_dif_local = dif
       res_norm = sqrt(sum((target_rho  - rho )**2 + &
                           (target_gama - gama)**2 + &
                           (target_ww   - ww  )**2))
-      if (prev_res_norm > 0.e0_wp .and. res_norm > 0.e0_wp) then
-        rho_obs      = min(9.9e-1_wp, max(1.e-1_wp, res_norm / prev_res_norm))
-        rho_spec_est = 0.7e0_wp * rho_spec_est + 0.3e0_wp * rho_obs
-      end if
       prev_res_norm = res_norm
 
       cheb_w = 1.e0_wp
