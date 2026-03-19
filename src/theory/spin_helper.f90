@@ -1000,6 +1000,7 @@ contains
     integer,  parameter :: N_CHEB      = 3           ! consecutive dif-decreases to enable Chebyshev
     integer,  parameter :: N_ANDERSON  = 5           ! consecutive dif-decreases to enable Anderson
     integer,  parameter :: N_RHO_LOCK  = 3           ! consecutive stable rho estimates for Aitken-like boost
+    integer,  parameter :: N_CHEB_FAIL = 3           ! consecutive Chebyshev-hurts before disabling it
     ! --- Chebyshev state ---
     real(wp), save :: cheb_w = 1.e0_wp
     real(wp), save :: rho_spec_est  = 0.7e0_wp
@@ -1008,6 +1009,8 @@ contains
     real(wp), save :: dif_prev = -1.e0_wp         ! one-step-back dif for monotone check
     integer,  save :: n_consec_decrease = 0        ! consecutive dif-decrease counter (Tiers 3,4)
     integer,  save :: n_rho_locked = 0
+    integer,  save :: n_cheb_hurt = 0
+    logical,  save :: last_was_cheb = .false.
     real(wp), allocatable, save :: prev_rho(:,:), prev_gama(:,:), prev_ww(:,:), prev_sphi(:,:)
     real(wp) :: x_k_rho(SDIV,MDIV), x_k_gama(SDIV,MDIV), x_k_ww(SDIV,MDIV), x_k_sphi(SDIV,MDIV)
     real(wp) :: sphi_raw(SDIV,MDIV)
@@ -1035,14 +1038,19 @@ contains
       dif_prev          = -1.e0_wp
       n_consec_decrease = 0
       n_rho_locked      = 0
+      n_cheb_hurt       = 0
+      last_was_cheb     = .false.
     end if
 
     ! --- Monotone-contraction counter: confirm we are in the contracting tail ---
     if (dif_prev > 0.e0_wp) then
       if (dif < dif_prev) then
         n_consec_decrease = n_consec_decrease + 1
+        if (last_was_cheb) n_cheb_hurt = max(0, n_cheb_hurt - 1)
+      else if (last_was_cheb) then
+        n_cheb_hurt = n_cheb_hurt + 1
       else
-        n_consec_decrease = 0   ! drift/oscillation: reset; Tiers 3,4 deactivate
+        n_consec_decrease = 0
       end if
     end if
     dif_prev = dif
@@ -1078,7 +1086,7 @@ contains
       gama = (1.e0_wp - w_picard) * gama + w_picard * target_gama
       ww   = (1.e0_wp - w_picard) * ww   + w_picard * target_ww
       prev_rho = rho;  prev_gama = gama;  prev_ww = ww
-    else if (dif > CHEB_THRESH .or. n_consec_decrease < N_ANDERSON) then
+    else if ((dif > CHEB_THRESH .or. n_consec_decrease < N_ANDERSON) .and. n_cheb_hurt < N_CHEB_FAIL) then
       ! ---------------------------------------------------------------
       ! Chebyshev-accelerated SOR using adaptive rho_spec_est.
       ! cheb_w recurrence: cheb_w_{k+1} = 1 / (1 - (rho^2/4) * cheb_w_k)
@@ -1113,6 +1121,7 @@ contains
       prev_rho = rho;  prev_gama = gama;  prev_ww = ww
     end if
     end if  ! .not. aitken_fired
+    last_was_cheb = (metric_method == 'Chebys')
 
     ! ---------------------------------------------------------------
     ! Divergence check
@@ -1130,7 +1139,7 @@ contains
         scalar_method = 'Picard'
         sphi      = (1.e0_wp - w_picard) * sphi + w_picard * target_sphi
         prev_sphi = sphi
-      else if (dif > CHEB_THRESH .or. n_consec_decrease < N_ANDERSON) then
+      else if ((dif > CHEB_THRESH .or. n_consec_decrease < N_ANDERSON) .and. n_cheb_hurt < N_CHEB_FAIL) then
         scalar_method = 'Chebys'
         x_k_sphi  = sphi
         sphi_raw = prev_sphi + cheb_w * (target_sphi - prev_sphi)
