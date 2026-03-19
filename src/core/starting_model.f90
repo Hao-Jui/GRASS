@@ -50,17 +50,17 @@ contains
     call single_model()
   contains
     subroutine single_model()
-      real(wp) :: ee, rho0
-      r_ratio = .7e0_wp
-      output = .true.
+      real(wp) :: ee, rho0, t0, t1
+      !r_ratio = .7e0_wp
+      output = .true.; call cpu_time(t0)
       call rotation_solver
       call solution_properties
 
       rho0 = n0_at_h(h_center)
       ee   = e_at_h(h_center)
       call print_converged_block(rho0, ee)
-      output = .false.
-      print *, " "
+      output = .false.; call cpu_time(t1)
+      write(*,*) " "; write(*,"(A, f10.4)") "Elapsed time [s]: ", t1-t0; write(*,*) " "
       !stop "One model solved!"
     end subroutine single_model
   end subroutine initialize_starting_model
