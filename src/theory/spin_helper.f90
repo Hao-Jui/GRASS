@@ -994,6 +994,8 @@ contains
     real(wp), parameter :: w_picard    = 0.7e0_wp   ! Picard damping (transition zone)
     real(wp), parameter :: DEEP_THRESH = 1.e-3_wp   ! deep settling: skip metric update, high-w sphi
     real(wp), parameter :: w_sphi_deep = 1.e0_wp    ! scalar weight in deep settling (Tier 3)
+    real(wp), parameter :: aitken_lambda_min = 0.8_wp
+    real(wp), parameter :: aitken_lambda_max = 1.3_wp
     integer,  parameter :: M_HIST      = 3           ! Anderson history window
     integer,  parameter :: N_MONOTONE  = 5           ! consecutive dif-decreases to confirm tail
     ! --- Chebyshev state ---
@@ -1002,10 +1004,13 @@ contains
     real(wp), save :: prev_res_norm = -1.e0_wp
     real(wp), save :: prev_dif_local = -1.e0_wp  ! for better spectral radius tracking
     real(wp), save :: dif_prev = -1.e0_wp         ! one-step-back dif for monotone check
+    real(wp), save :: sphi_mon_prev1 = -1.e0_wp
+    real(wp), save :: sphi_mon_prev2 = -1.e0_wp
     integer,  save :: n_consec_decrease = 0        ! consecutive dif-decrease counter (Tiers 3,4)
     real(wp), allocatable, save :: prev_rho(:,:), prev_gama(:,:), prev_ww(:,:), prev_sphi(:,:)
     real(wp) :: x_k_rho(SDIV,MDIV), x_k_gama(SDIV,MDIV), x_k_ww(SDIV,MDIV), x_k_sphi(SDIV,MDIV)
-    real(wp) :: res_norm, rho_obs
+    real(wp) :: sphi_raw(SDIV,MDIV)
+    real(wp) :: res_norm, rho_obs, sphi_mon_raw, aitken_denom, aitken_mon, aitken_lambda
     ! --- Anderson state ---
     real(wp), allocatable, save :: hist_rho(:,:,:), hist_gama(:,:,:), hist_ww(:,:,:), hist_sphi(:,:,:)
 
@@ -1028,6 +1033,8 @@ contains
       prev_res_norm     = -1.e0_wp
       prev_dif_local    = -1.e0_wp
       dif_prev          = -1.e0_wp
+      sphi_mon_prev1    = -1.e0_wp
+      sphi_mon_prev2    = -1.e0_wp
       n_consec_decrease = 0
     end if
 
@@ -1043,9 +1050,18 @@ contains
 
     if (dif < CHEB_THRESH) then
       ! ---------------------------------------------------------------
-      ! Chebyshev-accelerated SOR using adaptive rho_spec_est
+      ! Chebyshev-accelerated SOR using adaptive rho_spec_est.
+      ! Extend spectral-radius tracking into the late tail using the
+      ! same dif/prev_dif observable, but with more conservative
+      ! smoothing than the transition zone.
       ! cheb_w recurrence: cheb_w_{k+1} = 1 / (1 - (rho^2/4) * cheb_w_k)
       ! ---------------------------------------------------------------
+      if (prev_dif_local > 0.e0_wp .and. dif > 0.e0_wp .and. n_consec_decrease >= N_MONOTONE) then
+        rho_obs = min(9.8e-1_wp, max(3.e-1_wp, dif / prev_dif_local))
+        rho_spec_est = 0.7e0_wp * rho_spec_est + 0.3e0_wp * rho_obs
+      end if
+      prev_dif_local = dif
+
       cheb_w = 1.e0_wp / (1.e0_wp - (rho_spec_est**2 / 4.e0_wp) * cheb_w)
       cheb_w = min(cheb_w, 2.e0_wp - 2.e0_wp*epsilon(cheb_w))
 
@@ -1101,11 +1117,28 @@ contains
       x_k_sphi  = sphi
       if (.not. (dif < DEEP_THRESH .and. n_consec_decrease >= N_MONOTONE)) then
         ! Normal Chebyshev for sphi (cheb_w set by metric block above)
-        sphi = prev_sphi + cheb_w * (target_sphi - prev_sphi)
+        sphi_raw = prev_sphi + cheb_w * (target_sphi - prev_sphi)
       else
         ! Tier 3: confirmed contracting tail — high-weight Picard decoupled from r_e-based cheb_w
-        sphi = w_sphi_deep * target_sphi + (1.e0_wp - w_sphi_deep) * x_k_sphi
+        sphi_raw = w_sphi_deep * target_sphi + (1.e0_wp - w_sphi_deep) * x_k_sphi
+
+        ! Late-stage scalar Aitken: use a scalar monitor to estimate a safe
+        ! over-relaxation factor for the whole field update.
+        sphi_mon_raw = maxval(abs(sphi_raw(:,1)))
+        if (sphi_mon_prev2 > 0.e0_wp .and. sphi_mon_prev1 > 0.e0_wp) then
+          aitken_denom = sphi_mon_raw - 2.e0_wp * sphi_mon_prev1 + sphi_mon_prev2
+          if (abs(aitken_denom) > 1.e-12_wp * max(1.e0_wp, abs(sphi_mon_raw)) .and. &
+              (sphi_mon_raw - sphi_mon_prev1) * (sphi_mon_prev1 - sphi_mon_prev2) > 0.e0_wp) then
+            aitken_mon = sphi_mon_raw - (sphi_mon_raw - sphi_mon_prev1)**2 / aitken_denom
+            if (abs(sphi_mon_raw - sphi_mon_prev1) > 1.e-14_wp) then
+              aitken_lambda = (aitken_mon - sphi_mon_prev1) / (sphi_mon_raw - sphi_mon_prev1)
+              aitken_lambda = min(aitken_lambda_max, max(aitken_lambda_min, aitken_lambda))
+              sphi_raw = x_k_sphi + aitken_lambda * (sphi_raw - x_k_sphi)
+            end if
+          end if
+        end if
       end if
+      sphi = sphi_raw
       prev_sphi = x_k_sphi
     else if (dif < AND_THRESH) then
       sphi      = (1.e0_wp - w_picard) * sphi + w_picard * target_sphi
@@ -1125,6 +1158,9 @@ contains
         end if
       end do
     end do
+
+    sphi_mon_prev2 = sphi_mon_prev1
+    sphi_mon_prev1 = maxval(abs(sphi(:,1)))
 
   end subroutine relaxation
 

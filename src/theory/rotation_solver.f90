@@ -3,7 +3,7 @@ module rotation_uniform
   use precision_mod, only: wp
   use para_mod, only: active_theory, THEORY_GR, &
                       rho, gama, alpha, ww, omg, sphi, &
-                      r_e, r_ratio, h_center, MDIV, &
+                      r_e, r_ratio, h_center, SDIV, MDIV, &
                       B_coup, mphi_r, F_j, &
                       sphi_c, sphi_m, Omega_c, Omega_e, &
                       Fmax_h, n_of_relaxation_steps, timing
@@ -24,12 +24,17 @@ subroutine rotation_solver
   implicit none
   integer :: n_of_it
   real(wp) :: r_e_old, r_e_new, r_e_new_sq
+  real(wp) :: drho_norm, dgama_norm, dww_norm, dsphi_norm, dre_norm
+  real(wp) :: q_rho, q_gama, q_ww, q_sphi, q_re
   real(wp) :: gama_pole_h, gama_center_h, gama_equator_h
   real(wp) :: rho_pole_h, rho_center_h, rho_equator_h, ww_equator_h
   real(wp) :: sphi_pole_h, sphi_center_h, sphi_equator_h
   real(wp) :: root_mphi_re, sqrt_B_coup
   real(wp) :: t0, t1, dt_alpha, dt_relaxation
   logical :: zero_scalar_mode
+  real(wp), allocatable :: rho_prev_iter(:,:), gama_prev_iter(:,:), ww_prev_iter(:,:), sphi_prev_iter(:,:)
+  real(wp) :: r_e_prev_iter
+  real(wp) :: drho_prev, dgama_prev, dww_prev, dsphi_prev, dre_prev
 
   zero_scalar_mode = merge(.true., .false., active_theory == THEORY_GR)
   sqrt_B_coup = sqrt(B_coup)
@@ -38,6 +43,8 @@ subroutine rotation_solver
   n_of_it = 0
   r_e_new = r_e
   r_e_new_sq = r_e_new**2
+  drho_prev = -1.e0_wp; dgama_prev = -1.e0_wp; dww_prev = -1.e0_wp
+  dsphi_prev = -1.e0_wp; dre_prev = -1.e0_wp
 
   if ( maxval(sphi*sqrt_B_coup) < 1.e-3_wp ) sphi = sphi * 10.e0_wp
   if (zero_scalar_mode) sphi = 0.e0_wp
@@ -48,6 +55,11 @@ subroutine rotation_solver
   ! ---------------------------------------------------------------
   !write(*,*) r_ratio, h_center
   call allocate_workspace
+  allocate(rho_prev_iter(SDIV,MDIV), source=rho)
+  allocate(gama_prev_iter(SDIV,MDIV), source=gama)
+  allocate(ww_prev_iter(SDIV,MDIV), source=ww)
+  allocate(sphi_prev_iter(SDIV,MDIV), source=sphi)
+  r_e_prev_iter = r_e_new
   
   do while( dif > 1.e-8_wp .or. n_of_it < 2 )
     if (zero_scalar_mode) sphi = 0.e0_wp
@@ -105,6 +117,34 @@ subroutine rotation_solver
       call cpu_time(t1); dt_alpha = t1 - t0; call cpu_time(t0)
     end if
     if (timing) write(*,'(A,7(1X,ES12.5))') "Relaxation + Alpha: ", dt_relaxation, dt_alpha
+
+    drho_norm  = field_update_norm(rho,  rho_prev_iter)
+    dgama_norm = field_update_norm(gama, gama_prev_iter)
+    dww_norm   = field_update_norm(ww,   ww_prev_iter)
+    dsphi_norm = field_update_norm(sphi, sphi_prev_iter)
+    dre_norm   = abs(r_e_new - r_e_prev_iter)
+
+    q_rho  = contraction_ratio(drho_norm,  drho_prev)
+    q_gama = contraction_ratio(dgama_norm, dgama_prev)
+    q_ww   = contraction_ratio(dww_norm,   dww_prev)
+    q_sphi = contraction_ratio(dsphi_norm, dsphi_prev)
+    q_re   = contraction_ratio(dre_norm,   dre_prev)
+
+    write(*,'(A,5(1X,A,ES10.3),A,5(1X,A,F7.3))') 'conv:', &
+      'drho=', drho_norm, 'dgama=', dgama_norm, 'dww=', dww_norm, 'dsphi=', dsphi_norm, 'dre=', dre_norm, &
+      ' |', 'qrho=', q_rho, 'qgama=', q_gama, 'qww=', q_ww, 'qsphi=', q_sphi, 'qre=', q_re
+
+    rho_prev_iter = rho
+    gama_prev_iter = gama
+    ww_prev_iter = ww
+    sphi_prev_iter = sphi
+    r_e_prev_iter = r_e_new
+    drho_prev = drho_norm
+    dgama_prev = dgama_norm
+    dww_prev = dww_norm
+    dsphi_prev = dsphi_norm
+    dre_prev = dre_norm
+
     n_of_it = n_of_it + 1
     if ( n_of_it > 2000 ) stop "Probably won't converge"
   enddo
@@ -129,8 +169,23 @@ subroutine rotation_solver
   end if
   call mass_radius()
   call output_helper(D2_metric_rho, D2_metric_omega)
+  deallocate(rho_prev_iter, gama_prev_iter, ww_prev_iter, sphi_prev_iter)
   call deallocate_workspace
 contains
+  pure real(wp) function field_update_norm(a, b) result(val)
+    real(wp), intent(in) :: a(:,:), b(:,:)
+    val = sqrt(sum((a - b)**2) / real(size(a), wp))
+  end function field_update_norm
+
+  pure real(wp) function contraction_ratio(curr, prev) result(val)
+    real(wp), intent(in) :: curr, prev
+    if (prev > 0.e0_wp) then
+      val = curr / prev
+    else
+      val = -1.e0_wp
+    end if
+  end function contraction_ratio
+
   subroutine rescale_metric(factor)
     implicit none
     real(wp), intent(in) :: factor
