@@ -995,8 +995,11 @@ contains
     real(wp), parameter :: PICARD_THRESH = 5.e-1_wp
     real(wp), parameter :: CHEB_THRESH   = 1.e-1_wp
     real(wp), parameter :: w_picard    = 0.7e0_wp   ! Picard damping (transition zone)
+    real(wp), parameter :: W_MIX_MIN   = 5.e-2_wp
+    real(wp), parameter :: W_MIX_DECAY = 7.5e-1_wp
     real(wp), parameter :: RHO_LOCK_TOL = 2.e-2_wp
     integer,  parameter :: M_HIST      = 3           ! Anderson history window
+    integer,  parameter :: PICARD_STALL_LIMIT = 8
     integer,  parameter :: N_CHEB      = 3           ! consecutive dif-decreases to enable Chebyshev
     integer,  parameter :: N_ANDERSON  = 5           ! consecutive dif-decreases to enable Anderson
     integer,  parameter :: N_RHO_LOCK  = 3           ! consecutive stable rho estimates for Aitken-like boost
@@ -1008,14 +1011,18 @@ contains
     real(wp), save :: prev_dif_local = -1.e0_wp  ! for better spectral radius tracking
     real(wp), save :: dif_prev = -1.e0_wp         ! one-step-back dif for monotone check
     integer,  save :: n_consec_decrease = 0        ! consecutive dif-decrease counter (Tiers 3,4)
+    integer,  save :: n_picard_stall = 0
     integer,  save :: n_rho_locked = 0
     integer,  save :: n_cheb_hurt = 0
     logical,  save :: last_was_cheb = .false.
+    real(wp), save :: picard_best_dif = huge(1.e0_wp)
+    real(wp), save :: w_mix = w_picard
     real(wp), allocatable, save :: prev_rho(:,:), prev_gama(:,:), prev_ww(:,:), prev_sphi(:,:)
     real(wp) :: x_k_rho(SDIV,MDIV), x_k_gama(SDIV,MDIV), x_k_ww(SDIV,MDIV), x_k_sphi(SDIV,MDIV)
-    real(wp) :: sphi_raw(SDIV,MDIV)
+    real(wp) :: sphi_floor_decay(SDIV)
     real(wp) :: rho_obs
     logical  :: aitken_fired
+    logical  :: use_picard, use_chebys
     ! --- Anderson state ---
     real(wp), allocatable, save :: hist_rho(:,:,:), hist_gama(:,:,:), hist_ww(:,:,:), hist_sphi(:,:,:)
 
@@ -1037,9 +1044,12 @@ contains
       prev_dif_local    = -1.e0_wp
       dif_prev          = -1.e0_wp
       n_consec_decrease = 0
+      n_picard_stall    = 0
       n_rho_locked      = 0
       n_cheb_hurt       = 0
       last_was_cheb     = .false.
+      picard_best_dif   = huge(1.e0_wp)
+      w_mix             = w_picard
     end if
 
     ! --- Monotone-contraction counter: confirm we are in the contracting tail ---
@@ -1067,10 +1077,16 @@ contains
     if (aitken_fired) then
       metric_method = 'Aitken'
       if (has_scalar) scalar_method = 'Aitken'
+      n_picard_stall  = 0
+      picard_best_dif = huge(1.e0_wp)
+      w_mix           = w_picard
     end if
 
     if (.not. aitken_fired) then
-    if (dif > PICARD_THRESH .or. n_consec_decrease < N_CHEB) then
+    use_picard = (dif > PICARD_THRESH .or. n_consec_decrease < N_CHEB)
+    use_chebys = (.not. use_picard) .and. &
+      ((dif > CHEB_THRESH .or. n_consec_decrease < N_ANDERSON) .and. n_cheb_hurt < N_CHEB_FAIL)
+    if (use_picard) then
       ! ---------------------------------------------------------------
       ! Conservative Picard for the large-residual regime
       ! ---------------------------------------------------------------
@@ -1081,17 +1097,37 @@ contains
       end if
       prev_dif_local = dif
 
+      if (dif > CHEB_THRESH) then
+        if (dif < picard_best_dif) then
+          picard_best_dif = dif
+          n_picard_stall = 0
+        else
+          n_picard_stall = n_picard_stall + 1
+          if (n_picard_stall >= PICARD_STALL_LIMIT) then
+            w_mix = max(W_MIX_MIN, W_MIX_DECAY * w_mix)
+            n_picard_stall = 0
+          end if
+        end if
+      else
+        n_picard_stall  = 0
+        picard_best_dif = huge(1.e0_wp)
+        w_mix           = w_picard
+      end if
+
       cheb_w = 1.e0_wp
-      rho  = (1.e0_wp - w_picard) * rho  + w_picard * target_rho
-      gama = (1.e0_wp - w_picard) * gama + w_picard * target_gama
-      ww   = (1.e0_wp - w_picard) * ww   + w_picard * target_ww
+      rho  = (1.e0_wp - w_mix) * rho  + w_mix * target_rho
+      gama = (1.e0_wp - w_mix) * gama + w_mix * target_gama
+      ww   = (1.e0_wp - w_mix) * ww   + w_mix * target_ww
       prev_rho = rho;  prev_gama = gama;  prev_ww = ww
-    else if ((dif > CHEB_THRESH .or. n_consec_decrease < N_ANDERSON) .and. n_cheb_hurt < N_CHEB_FAIL) then
+    else if (use_chebys) then
       ! ---------------------------------------------------------------
       ! Chebyshev-accelerated SOR using adaptive rho_spec_est.
       ! cheb_w recurrence: cheb_w_{k+1} = 1 / (1 - (rho^2/4) * cheb_w_k)
       ! ---------------------------------------------------------------
       metric_method = 'Chebys'
+      n_picard_stall  = 0
+      picard_best_dif = huge(1.e0_wp)
+      w_mix           = w_picard
       if (prev_dif_local > 0.e0_wp .and. dif > 0.e0_wp .and. n_consec_decrease >= N_CHEB) then
         rho_obs = min(9.8e-1_wp, max(3.e-1_wp, dif / prev_dif_local))
         rho_spec_est = 0.7e0_wp * rho_spec_est + 0.3e0_wp * rho_obs
@@ -1111,13 +1147,13 @@ contains
       ! Anderson acceleration in the small-residual regime
       ! ---------------------------------------------------------------
       metric_method = 'Anders'
+      n_picard_stall  = 0
+      picard_best_dif = huge(1.e0_wp)
+      w_mix           = w_picard
       cheb_w = 1.e0_wp
-      x_k_rho  = rho
-      x_k_gama = gama
-      x_k_ww   = ww
-      call anderson_accel_optimized(rho,  target_rho,  hist_rho,  n_of_it, M_HIST, dif)
-      call anderson_accel_optimized(gama, target_gama, hist_gama, n_of_it, M_HIST, dif)
-      call anderson_accel_optimized(ww,   target_ww,   hist_ww,   n_of_it, M_HIST, dif)
+      call anderson_accel_optimized(rho,  target_rho,  hist_rho,  n_of_it, M_HIST)
+      call anderson_accel_optimized(gama, target_gama, hist_gama, n_of_it, M_HIST)
+      call anderson_accel_optimized(ww,   target_ww,   hist_ww,   n_of_it, M_HIST)
       prev_rho = rho;  prev_gama = gama;  prev_ww = ww
     end if
     end if  ! .not. aitken_fired
@@ -1135,20 +1171,18 @@ contains
     if (.not. has_scalar) return
 
     if (.not. aitken_fired) then
-      if (dif > PICARD_THRESH .or. n_consec_decrease < N_CHEB) then
+      if (use_picard) then
         scalar_method = 'Picard'
-        sphi      = (1.e0_wp - w_picard) * sphi + w_picard * target_sphi
+        sphi      = (1.e0_wp - w_mix) * sphi + w_mix * target_sphi
         prev_sphi = sphi
-      else if ((dif > CHEB_THRESH .or. n_consec_decrease < N_ANDERSON) .and. n_cheb_hurt < N_CHEB_FAIL) then
+      else if (use_chebys) then
         scalar_method = 'Chebys'
         x_k_sphi  = sphi
-        sphi_raw = prev_sphi + cheb_w * (target_sphi - prev_sphi)
-        sphi = sphi_raw
+        sphi = prev_sphi + cheb_w * (target_sphi - prev_sphi)
         prev_sphi = x_k_sphi
       else
         scalar_method = 'Anders'
-        x_k_sphi = sphi
-        call anderson_accel_optimized(sphi, target_sphi, hist_sphi, n_of_it, M_HIST, dif)
+        call anderson_accel_optimized(sphi, target_sphi, hist_sphi, n_of_it, M_HIST)
         prev_sphi = sphi
       end if
     end if
@@ -1156,10 +1190,15 @@ contains
 
     if (abs(mphi_r) < epsilon(mphi_r)) return
 
+    sphi_floor_decay(1) = 1.e0_wp
+    sphi_floor_decay(2:SDIV) = exp(root_mphi_re * ( &
+      s_gp(1:SDIV-1) / (1.e0_wp - s_gp(1:SDIV-1)) - &
+      s_gp(2:SDIV)   / (1.e0_wp - s_gp(2:SDIV)) ))
+
     do m = 1, MDIV
       do s = 2, SDIV
         if (sphi(s,m) < 0.e0_wp) then
-          sphi(s,m) = sphi(s-1,m) * exp(root_mphi_re * (s_gp(s-1)/(1.e0_wp-s_gp(s-1)) - s_gp(s)/(1.e0_wp-s_gp(s))))
+          sphi(s,m) = sphi(s-1,m) * sphi_floor_decay(s)
         end if
       end do
     end do
