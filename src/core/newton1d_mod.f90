@@ -1,12 +1,7 @@
 
-!Subroutine	                                    Purpose
-!reset_newton_state_1d	                        Reinitializes solver state
-!to_solver_coord_1d / from_solver_coord_1d	    Transforms between physical (hc) and solver (x = log(hc)) coordinates
-!clamp_step_1d	                                Trust-region style step limiting (±1.0 max)
-!solve_linear_1d	                              Solves J * delta = rhs with singularity check
-!broyden_update_1d	                            Rank-1 Broyden Jacobian update (secant method style)
-!commit_state_1d	                              Saves current iterate for next Broyden update
-!line_search_1d
+! Active 1D shooting path: textbook Newton in x = log(hc), with
+! a finite-difference Jacobian rebuilt at every iteration and an
+! Armijo backtracking line search for globalization.
 
 module newton_types_mod
   implicit none

@@ -28,7 +28,7 @@ module para_mod
   integer, parameter :: res  = 10
   integer, parameter :: s_pwr = 1
   integer :: SDIV = 60 * res + 1
-  integer :: MDIV = 10 * res + 1
+  integer :: MDIV = 4 * res + 1
 
   ! -- Target quantities -----------------------------------------------------
   character(len=128) :: eos_file = "MPA1"
