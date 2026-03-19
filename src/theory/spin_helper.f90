@@ -992,12 +992,15 @@ contains
     real(wp), parameter :: CHEB_THRESH = 1.e-2_wp   ! Chebyshev below this
     real(wp), parameter :: AND_THRESH  = 1.e-1_wp   ! Anderson above this
     real(wp), parameter :: w_picard    = 0.7e0_wp   ! Picard damping (transition zone)
-    integer,  parameter :: M_HIST      = 3           ! Anderson history window
+    integer,  parameter :: M_HIST        = 3    ! Anderson history window
+    integer,  parameter :: RESTART_PERIOD = 20  ! Chebyshev restart interval
     ! --- Chebyshev state ---
     real(wp), save :: cheb_w = 1.e0_wp
-    real(wp), save :: rho_spec_est  = 0.7e0_wp
-    real(wp), save :: prev_res_norm = -1.e0_wp
-    real(wp), save :: prev_dif_local = -1.e0_wp  ! for better spectral radius tracking
+    real(wp), save :: rho_spec_est   = 0.7e0_wp
+    real(wp), save :: prev_res_norm  = -1.e0_wp
+    real(wp), save :: prev_dif_local = -1.e0_wp  ! for spectral radius tracking
+    logical,  save :: in_cheb = .false.           ! phase-entry flag for warm-start
+    integer,  save :: cheb_n  = 0                 ! iteration count within Chebyshev phase
     real(wp), allocatable, save :: prev_rho(:,:), prev_gama(:,:), prev_ww(:,:), prev_sphi(:,:)
     real(wp) :: x_k_rho(SDIV,MDIV), x_k_gama(SDIV,MDIV), x_k_ww(SDIV,MDIV), x_k_sphi(SDIV,MDIV)
     real(wp) :: res_norm, rho_obs
@@ -1022,13 +1025,26 @@ contains
       rho_spec_est   = 0.7e0_wp
       prev_res_norm  = -1.e0_wp
       prev_dif_local = -1.e0_wp
+      in_cheb        = .false.
+      cheb_n         = 0
     end if
 
     if (dif < CHEB_THRESH) then
       ! ---------------------------------------------------------------
       ! Chebyshev-accelerated SOR using adaptive rho_spec_est
       ! cheb_w recurrence: cheb_w_{k+1} = 1 / (1 - (rho^2/4) * cheb_w_k)
+      ! Warm-start: initialize cheb_w at its stable fixed point
+      !   cheb_w* = 2/rho^2 * (1 - sqrt(1-rho^2))
+      ! on first entry and every RESTART_PERIOD steps to skip cold-start transient.
       ! ---------------------------------------------------------------
+      if (.not. in_cheb .or. mod(cheb_n, RESTART_PERIOD) == 0) then
+        cheb_w  = 2.e0_wp / rho_spec_est**2 * &
+                  (1.e0_wp - sqrt(max(0.e0_wp, 1.e0_wp - rho_spec_est**2)))
+        cheb_w  = min(cheb_w, 1.9e0_wp)  ! conservative cap
+        in_cheb = .true.
+        if (mod(cheb_n, RESTART_PERIOD) == 0 .and. cheb_n > 0) cheb_n = 0
+      end if
+      cheb_n = cheb_n + 1
       cheb_w = 1.e0_wp / (1.e0_wp - (rho_spec_est**2 / 4.e0_wp) * cheb_w)
       cheb_w = min(cheb_w, 2.e0_wp - 2.e0_wp*epsilon(cheb_w))
 
@@ -1051,7 +1067,7 @@ contains
                           (target_ww   - ww  )**2))
       prev_res_norm = res_norm
 
-      cheb_w = 1.e0_wp
+      cheb_w = 1.e0_wp;  in_cheb = .false.;  cheb_n = 0
       rho  = (1.e0_wp - w_picard) * rho  + w_picard * target_rho
       gama = (1.e0_wp - w_picard) * gama + w_picard * target_gama
       ww   = (1.e0_wp - w_picard) * ww   + w_picard * target_ww
@@ -1061,7 +1077,7 @@ contains
       ! Anderson acceleration (early nonlinear phase, dif >= AND_THRESH)
       ! Runs per-field; shared history buffers reset on grid change.
       ! ---------------------------------------------------------------
-      cheb_w = 1.e0_wp;  prev_res_norm = -1.e0_wp
+      cheb_w = 1.e0_wp;  prev_res_norm = -1.e0_wp;  in_cheb = .false.;  cheb_n = 0
       call anderson_accel_optimized(rho,  target_rho,  hist_rho,  n_of_it, M_HIST, dif)
       call anderson_accel_optimized(gama, target_gama, hist_gama, n_of_it, M_HIST, dif)
       call anderson_accel_optimized(ww,   target_ww,   hist_ww,   n_of_it, M_HIST, dif)
