@@ -988,11 +988,13 @@ contains
     integer, intent(in) :: n_of_it
     integer :: s, m
     ! Chebyshev-accelerated SOR state (persistent across calls)
-    real(wp), parameter :: rho_spec  = 0.7e0_wp  ! spectral radius estimate
-    real(wp), parameter :: w_picard  = 0.7e0_wp  ! Picard blend when dif >= threshold
+    real(wp), parameter :: w_picard  = 0.7e0_wp
     real(wp), save :: cheb_w = 1.e0_wp
+    real(wp), save :: rho_spec_est  = 0.7e0_wp   ! adaptive spectral radius estimate
+    real(wp), save :: prev_res_norm = -1.e0_wp    ! -1 = uninitialized
     real(wp), allocatable, save :: prev_rho(:,:), prev_gama(:,:), prev_ww(:,:), prev_sphi(:,:)
     real(wp) :: x_k_rho(SDIV,MDIV), x_k_gama(SDIV,MDIV), x_k_ww(SDIV,MDIV), x_k_sphi(SDIV,MDIV)
+    real(wp) :: res_norm, rho_obs
 
     associate (unused => n_of_it); end associate
 
@@ -1003,17 +1005,18 @@ contains
       allocate(prev_gama(SDIV,MDIV), source=gama)
       allocate(prev_ww(SDIV,MDIV),   source=ww)
       allocate(prev_sphi(SDIV,MDIV), source=sphi)
-      cheb_w = 1.e0_wp
+      cheb_w       = 1.e0_wp
+      rho_spec_est = 0.7e0_wp
+      prev_res_norm = -1.e0_wp
     end if
 
     if (dif < 1.e-2_wp) then
       ! ---------------------------------------------------------------
-      ! Chebyshev-accelerated SOR
-      ! 3-term recurrence: x_{k+1} = x_{k-1} + cheb_w * (g(x_k) - x_{k-1})
-      ! cheb_w recurrence: cheb_w_{k+1} = 1 / (1 - (rho_spec^2/4) * cheb_w_k)
+      ! Chebyshev-accelerated SOR using adaptive rho_spec_est
+      ! cheb_w recurrence: cheb_w_{k+1} = 1 / (1 - (rho^2/4) * cheb_w_k)
       ! ---------------------------------------------------------------
-      cheb_w = 1.e0_wp / (1.e0_wp - (rho_spec**2 / 4.e0_wp) * cheb_w)
-      cheb_w = min(cheb_w, 2.e0_wp - 2.e0_wp*epsilon(cheb_w))  ! stability clamp
+      cheb_w = 1.e0_wp / (1.e0_wp - (rho_spec_est**2 / 4.e0_wp) * cheb_w)
+      cheb_w = min(cheb_w, 2.e0_wp - 2.e0_wp*epsilon(cheb_w))
 
       x_k_rho  = rho;  x_k_gama = gama;  x_k_ww = ww
       rho  = prev_rho  + cheb_w * (target_rho  - prev_rho)
@@ -1022,8 +1025,19 @@ contains
       prev_rho = x_k_rho;  prev_gama = x_k_gama;  prev_ww = x_k_ww
     else
       ! ---------------------------------------------------------------
-      ! Conservative Picard; reset cheb_w so Chebyshev restarts cleanly
+      ! Picard; measure spectral radius from consecutive residual norms.
+      ! Estimate is frozen once Chebyshev activates (the Chebyshev rate
+      ! is not the Picard spectral radius and would corrupt the estimate).
       ! ---------------------------------------------------------------
+      res_norm = sqrt(sum((target_rho  - rho )**2 + &
+                          (target_gama - gama)**2 + &
+                          (target_ww   - ww  )**2))
+      if (prev_res_norm > 0.e0_wp .and. res_norm > 0.e0_wp) then
+        rho_obs      = min(9.9e-1_wp, max(1.e-1_wp, res_norm / prev_res_norm))
+        rho_spec_est = 0.7e0_wp * rho_spec_est + 0.3e0_wp * rho_obs
+      end if
+      prev_res_norm = res_norm
+
       cheb_w = 1.e0_wp
       rho  = (1.e0_wp - w_picard) * rho  + w_picard * target_rho
       gama = (1.e0_wp - w_picard) * gama + w_picard * target_gama
@@ -1044,11 +1058,11 @@ contains
     if (.not. has_scalar) return
 
     if (dif < 1.e-5_wp) then
-      x_k_sphi = sphi
-      sphi     = prev_sphi + cheb_w * (target_sphi - prev_sphi)
+      x_k_sphi  = sphi
+      sphi      = prev_sphi + cheb_w * (target_sphi - prev_sphi)
       prev_sphi = x_k_sphi
     else
-      sphi = (1.e0_wp - w_picard) * sphi + w_picard * target_sphi
+      sphi      = (1.e0_wp - w_picard) * sphi + w_picard * target_sphi
       prev_sphi = sphi
     end if
     where(ieee_is_nan(sphi)) sphi = 0.e0_wp
