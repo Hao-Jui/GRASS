@@ -4,7 +4,7 @@ module para_mod
   ! -- Theory selection ------------------------------------------------------
   integer, parameter :: THEORY_GR = 0
   integer, parameter :: THEORY_ST = 1
-  integer :: active_theory = THEORY_GR
+  integer :: active_theory = THEORY_ST
 
   ! hybrid / anderson
   ! -- Running option --------------------------------------------------------
@@ -15,7 +15,7 @@ module para_mod
 
   ! -- Rotation configuration ------------------------------------------------
   ! uniform / const_j / uryu
-  character(len=20) :: solver_type = "uryu"
+  character(len=20) :: solver_type = "uniform"
 
   ! -- Solver state ----------------------------------------------------------
   logical :: output = .false.
@@ -38,8 +38,8 @@ module para_mod
   real(wp) :: chi_goal = 0.1e0_wp
   real(wp) :: omc_goal = 30.e0_wp
 
-  real(wp) :: B_goal   = 4.e3_wp
-  real(wp) :: mphi_goal = 1.e0_wp
+  real(wp) :: B_goal   = 6.e5_wp
+  real(wp) :: mphi_goal = 50.e0_wp
 
   ! -- Rotation-law parameters (KEH, Uryu enabled) --------------------------
   real(wp) :: A_diff  = 0.5e0_wp

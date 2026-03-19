@@ -6,7 +6,7 @@ PARA_FILE="$ROOT_DIR/src/core/para_mod.f90"
 BUILD_MODE="${MODE:-Release}"
 START_VALUE="${1:-3800}"
 END_VALUE="${2:-4800}"
-STEP_VALUE="${3:-50}"
+STEP_VALUE="${3:-100}"
 LOG_DIR="${ROOT_DIR}/logs/b_goal_sweep"
 
 mkdir -p "$LOG_DIR"
