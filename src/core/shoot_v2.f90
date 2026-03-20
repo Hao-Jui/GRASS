@@ -14,7 +14,7 @@ subroutine shoot_v2
                               solve_linear, clamp_step, from_solver_coords, to_solver_coords, &
                               broyden_update, commit_state
   use shoot_solver_mod_1d, only: newton_state_1d, reset_newton_state_1d, solve_linear_1d, &
-                                 clamp_step_1d, from_solver_coord_1d, to_solver_coord_1d, &
+                                 line_search_1d, from_solver_coord_1d, to_solver_coord_1d, &
                                  broyden_update_1d, commit_state_1d
   use rotation_uniform,  only: rotation_solver
   use starting_model_mod, only: initialize_starting_model
@@ -120,16 +120,18 @@ contains
         need_cycle = .true.; return
       endif
 
-      if (solver_state_1d%has_jacobian .and. abs(delta_x1d) < 1.e-6_wp .and. abs(F1d) > accuracy*1.e4_wp) then
-        call reset_newton_state_1d(solver_state_1d)
-        need_cycle = .true.; return
+      if (er > 1.e-4_wp) then
+        call line_search_1d(x1d, F1d, delta_x1d, r_ratio, evaluate_solution_1d, delta_x1d, &
+                            J_est=solver_state_1d%J, success=step_ok)
+        if (.not. step_ok) then
+          call reset_newton_state_1d(solver_state_1d)
+          need_cycle = .true.; return
+        end if
       end if
 
-      call clamp_step_1d(delta_x1d)
       x1d = x1d + delta_x1d
       call from_solver_coord_1d(x1d, h_new)
       h_center = h_new
-      solver_state_1d%has_jacobian = .true.
     else
       rhs = -F
       step_ok = solve_linear(solver_state%J, rhs, delta_x)
@@ -158,16 +160,14 @@ contains
     if (use_shoot_1d) then
       call evaluate_solution_1d(h_center, r_ratio, F1d, rho0, ee)
       call to_solver_coord_1d(h_center, x1d)
-
+      er = abs(F1d)
       if (solver_state_1d%has_jacobian) then
         call broyden_update_1d(solver_state_1d, x1d, F1d)
       else
         call build_jacobian_1d(solver_state_1d, x1d, F1d, h_center, r_ratio, rho0, ee, reuse_base=.true.)
         call to_solver_coord_1d(h_center, x1d)
-      endif
-
+      end if
       call commit_state_1d(solver_state_1d, x1d, F1d)
-      er = abs(F1d)
     else
       call evaluate_solution(h_center, r_ratio, F, rho0, ee, er)
       call to_solver_coords(h_center, r_ratio, x)
