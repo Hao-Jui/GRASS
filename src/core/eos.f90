@@ -1,30 +1,73 @@
 module eos_mod
+  use precision_mod, only: wp
+  use toolkit_mod, only: interp, interp_pt, interp_dual
+  use para_mod, only: log_e, log_p, log_h, log_n0, num_tab, phase_transition
+  use ad_mod, only: dual
   implicit none
+  private
+  ! Public elemental functions
+  public :: e_at_p, p_at_e, p_at_e_dual, n0_at_e, n0_at_h, e_at_h, p_at_h, h_at_p
+  ! Public subroutines
+  public :: loadEos, pressure_derivative_n
 contains
+
+  ! Private non-elemental helpers for EOS interpolation
+  pure real(wp) function interp_eos_with_phase(val_in, t_in, t_out)
+    real(wp), intent(in) :: val_in
+    real(wp), intent(in) :: t_in(:), t_out(:)
+    real(wp) :: res_log
+    if (phase_transition) then
+      call interp_pt(t_in, t_out, num_tab, log(val_in), res_log)
+    else
+      call interp(t_in, t_out, num_tab, log(val_in), res_log)
+    end if
+    interp_eos_with_phase = exp(res_log)
+  end function interp_eos_with_phase
+
+  pure real(wp) function interp_eos_simple(val_in, t_in, t_out)
+    real(wp), intent(in) :: val_in
+    real(wp), intent(in) :: t_in(:), t_out(:)
+    real(wp) :: res_log
+    call interp(t_in, t_out, num_tab, log(val_in), res_log)
+    interp_eos_simple = exp(res_log)
+  end function interp_eos_simple
+
+  pure type(dual) function interp_eos_dual(val_in, t_in, t_out)
+    use ad_mod, only: log, exp
+    type(dual), intent(in) :: val_in
+    real(wp), intent(in) :: t_in(:), t_out(:)
+    type(dual) :: res_log
+    call interp_dual(t_in, t_out, num_tab, log(val_in), res_log)
+    interp_eos_dual = exp(res_log)
+  end function interp_eos_dual
+
 subroutine loadEos
     use para_mod, only: p_at_PT, eos_file, num_tab, &
                         log_e, log_p, log_h, log_n0, &
                         enthalpy_min, C, KSCALE
     implicit none
-    integer :: i
+    integer :: i, unit
 
     p_at_PT = 1
-    open(16,file="./eos/"//trim(adjustl(eos_file))//".dat",status="unknown",form='formatted')
-    read(16,*) num_tab
+    
+    open(newunit=unit, file="./eos/"//trim(adjustl(eos_file))//".dat", &
+         status="old", action="read", form='formatted')
+    read(unit,*) num_tab
     allocate(log_e(num_tab),log_p(num_tab),log_h(num_tab),log_n0(num_tab))
+
     do i = 1, num_tab
-      read(16,*) log_e(i), log_p(i), log_h(i), log_n0(i)
+      read(unit,*) log_e(i), log_p(i), log_h(i), log_n0(i)
       if ( i == 1 ) then
         enthalpy_min =   log( log_h(i) )
       else
-        if ( log_p(i)/log_p(i-1) < 1.d0 + 1.d-15 ) then
+        if (log_p(i) / log_p(i-1) < 1.d0 + 1.d-15 ) then
           p_at_PT = i
           !write(*,*) log( log_p(i-1)*KSCALE ), log( log_p(i)*KSCALE ) 
           !write(*,*) log( log_e(i-1)*C*C*KSCALE ), log( log_e(i)*C*C*KSCALE ) 
         endif
       endif
     enddo
-    close(16)
+    close(unit)
     
     log_e(:) = log( log_e(:)*C*C*KSCALE)
     log_p(:) = log( log_p(:)*KSCALE)
@@ -40,107 +83,45 @@ subroutine loadEos
   end subroutine loadEos
 
 
-  pure elemental real(8) function e_at_p(pp)
-    use toolkit_mod, only: interp, interp_pt
-    use para_mod, only : log_p, log_e, num_tab, phase_transition
-    implicit none
-    real(8), intent(in) :: pp
-    real(8) :: pwr
-    if (phase_transition) then
-      call interp_pt(log_p, log_e, num_tab, log(pp), pwr)
-    else
-      call interp(log_p, log_e, num_tab, log(pp), pwr)
-    end if
-    e_at_p = exp(pwr)
+  pure elemental real(wp) function e_at_p(pp)
+    real(wp), intent(in) :: pp
+    e_at_p = interp_eos_with_phase(pp, log_p, log_e)
   end function e_at_p
 
-  pure elemental real(8) function p_at_e(ee)
-    use toolkit_mod, only: interp, interp_pt
-    use para_mod, only : log_p, log_e, num_tab, phase_transition
-    implicit none
-    real(8), intent(in) :: ee
-    real(8) :: pwr
-    if (phase_transition) then
-      call interp_pt(log_e, log_p, num_tab, log(ee), pwr)
-    else
-      call interp(log_e, log_p, num_tab, log(ee), pwr)
-    end if
-    p_at_e = exp(pwr)
+  pure elemental real(wp) function p_at_e(ee)
+    real(wp), intent(in) :: ee
+    p_at_e = interp_eos_with_phase(ee, log_e, log_p)
   end function p_at_e
 
   pure elemental function p_at_e_dual(ee) result(res)
-    use toolkit_mod, only: interp_dual
-    use ad_mod, only: dual, log, exp
-    use para_mod, only : log_p, log_e, num_tab
-    implicit none
     type(dual), intent(in) :: ee
-    type(dual) :: pwr
     type(dual) :: res
-
-    call interp_dual(log_e, log_p, num_tab, log(ee), pwr)
-    res = exp(pwr)
+    res = interp_eos_dual(ee, log_e, log_p)
   end function p_at_e_dual
 
-  pure elemental real(8) function n0_at_e(ee)
-    use toolkit_mod, only: interp, interp_pt
-    use para_mod, only : log_n0, log_e, num_tab, phase_transition
-    implicit none
-    real(8), intent(in) :: ee
-    real(8) :: pwr
-    if (phase_transition) then
-      call interp_pt(log_e, log_n0, num_tab, log(ee), pwr)
-    else
-      call interp(log_e, log_n0, num_tab, log(ee), pwr)
-    end if
-    n0_at_e = exp(pwr)
+  pure elemental real(wp) function n0_at_e(ee)
+    real(wp), intent(in) :: ee
+    n0_at_e = interp_eos_with_phase(ee, log_e, log_n0)
   end function n0_at_e
 
-  pure elemental real(8) function n0_at_h(hh)
-    use toolkit_mod, only: interp, interp_pt
-    use para_mod, only : log_n0, log_h, num_tab, phase_transition
-    implicit none
-    real(8), intent(in) :: hh
-    real(8) :: pwr
-    if (phase_transition) then
-      call interp_pt(log_h, log_n0, num_tab, log(hh), pwr)
-    else
-      call interp(log_h, log_n0, num_tab, log(hh), pwr)
-    end if
-    n0_at_h = exp(pwr)
+  pure elemental real(wp) function n0_at_h(hh)
+    real(wp), intent(in) :: hh
+    n0_at_h = interp_eos_simple(hh, log_h, log_n0)
   end function n0_at_h
 
-  pure elemental real(8) function e_at_h(hh)
-    use toolkit_mod, only: interp, interp_pt
-    use para_mod, only : log_e, log_h, num_tab, phase_transition
-    implicit none
-    real(8), intent(in) :: hh
-    real(8) :: pwr
-    if (phase_transition) then
-      call interp_pt(log_h, log_e, num_tab, log(hh), pwr)
-    else
-      call interp(log_h, log_e, num_tab, log(hh), pwr)
-    end if
-    e_at_h = exp(pwr)
+  pure elemental real(wp) function e_at_h(hh)
+    real(wp), intent(in) :: hh
+    e_at_h = interp_eos_simple(hh, log_h, log_e)
   end function e_at_h
 
-  pure elemental real(8) function p_at_h(hh)
-    use toolkit_mod, only: interp, interp_pt
-    use para_mod, only : log_p, log_h, num_tab
-    implicit none
-    real(8), intent(in) :: hh
-    real(8) :: pwr
-    call interp(log_h, log_p, num_tab, log(hh), pwr)
-    p_at_h = exp(pwr)
+  pure elemental real(wp) function p_at_h(hh)
+    real(wp), intent(in) :: hh
+    p_at_h = interp_eos_simple(hh, log_h, log_p)
   end function p_at_h
 
-  pure elemental real(8) function h_at_p(pp)
-    use toolkit_mod, only: interp, interp_pt
-    use para_mod, only : log_p, log_h, num_tab
-    implicit none
-    real(8), intent(in) :: pp
-    real(8) :: pwr
-    call interp(log_p, log_h, num_tab, log(pp), pwr)
-    h_at_p = exp(pwr)
+  pure elemental real(wp) function h_at_p(pp)
+    real(wp), intent(in) :: pp
+    h_at_p = interp_eos_simple(pp, log_p, log_h)
   end function h_at_p
 
   ! **********************************************************************
@@ -153,17 +134,17 @@ subroutine loadEos
   subroutine pressure_derivative_n(ee, n, derivative, status)
     use para_mod, only: log_e, log_p, num_tab
     implicit none
-    real(8), intent(in) :: ee
+    real(wp), intent(in) :: ee
     integer, intent(in) :: n
-    real(8), intent(out) :: derivative
+    real(wp), intent(out) :: derivative
     integer, intent(out), optional :: status
 
     integer :: info, idx, half_width, left, right, n_points, i
-    real(8) :: x0, min_e, max_e
-    real(8), allocatable :: nodes(:), values(:), coeffs(:, :)
-    real(8) :: ee_clamped
+    real(wp) :: x0, min_e, max_e
+    real(wp), allocatable :: nodes(:), values(:), coeffs(:, :)
+    real(wp) :: ee_clamped
     logical :: fatal_error
-    real(8), parameter :: clamp_tol = 1.d-12
+    real(wp), parameter :: clamp_tol = 1.d-12
 
     info = 0
     fatal_error = .false.
@@ -252,12 +233,12 @@ subroutine loadEos
     subroutine fornberg_weights(x0_local, x, m, n_deriv, c)
       implicit none
       integer, intent(in) :: m, n_deriv
-      real(8), intent(in) :: x0_local
-      real(8), intent(in) :: x(m)
-      real(8), intent(out) :: c(m, n_deriv + 1)
+      real(wp), intent(in) :: x0_local
+      real(wp), intent(in) :: x(m)
+      real(wp), intent(out) :: c(m, n_deriv + 1)
 
       integer :: i, j, k, max_k
-      real(8) :: c1, c2, c3, c4, c5
+      real(wp) :: c1, c2, c3, c4, c5
 
       c(:, :) = 0.d0
       c(1,1) = 1.d0

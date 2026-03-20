@@ -33,7 +33,6 @@ SRC_THEORY := $(SRCDIR)/theory
 SOURCES := \
   $(SRC_CORE)/precision_mod.f90 \
   $(SRC_TOOL)/ad_mod.f90 \
-  $(SRC_TOOL)/simpson_mod.f90 \
   $(SRC_TOOL)/nag_compat_mod.f90 \
   $(SRC_TOOL)/brent.f90 \
   $(SRC_TOOL)/cheb_mod.f90 \
