@@ -185,6 +185,20 @@ written to `./Cont`.
   new parameters.
 - **EOS handling**: adapt `loadEos` in `src/core/eos.f90` to support
   additional table formats.
+- **Relaxation tuning**: The 4-stage relaxation strategy (Picard → Chebyshev
+  → Anderson → Aitken) is implemented in `src/theory/spin_helper.f90`
+  (`relaxation` subroutine, ~lines 988–1158) and `src/theory/relaxation_mod.f90`
+  (Anderson and Aitken modules). Key thresholds and weights are defined as
+  parameters near the start of `relaxation()`:
+  - `PICARD_THRESH`, `CHEB_THRESH`: control stage transitions
+  - `w_picard = 0.7`: Picard damping weight (reduce for tighter coupling)
+  - `N_CHEB = 3`, `N_ANDERSON = 5`: gate activation of Chebyshev and Anderson
+  - `N_RHO_LOCK = 3`, `N_AITKEN = 2`: Aitken history and ρ-lock requirements
+
+  To modify convergence behavior: adjust thresholds, damping weights, or
+  disable stages via logical guards (e.g., `if (.not. use_anderson)`).
+  The Aitken δ² element-wise correction is guarded by `MAX_AITKEN_JUMP = 10`
+  to prevent per-element amplification > 0.91× convergence rate.
 
 Please keep changes Fortran 2003 compliant and document new options in
 this README.
