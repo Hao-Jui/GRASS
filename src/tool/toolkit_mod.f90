@@ -199,152 +199,17 @@ contains
     end do
   end subroutine integrate_profiles
 
-  subroutine integrate_column_spline(values, knots, result, status)
-    use nag_compat_mod, only: e02baf, e02bbf
-    use simpson_mod, only: simpson_1d
-    real(wp), intent(in)  :: values(:)
-    real(wp), intent(in)  :: knots(:)
-    real(wp), intent(out) :: result
-    integer, intent(out) :: status
-    integer :: n_points
-    integer :: info_fit, info_int
-    real(wp), allocatable :: coeff_a(:), coeff_b(:), coeff_c(:), coeff_d(:)
-    real(wp) :: temp_mat(size(values),1), temp_vec(1)
-
-    result = 0.e0_wp
-    status = 0
-    n_points = size(values)
-    if (n_points <= 1 .or. size(knots) /= n_points) then
-      status = 1
-      return
-    end if
-
-    allocate(coeff_a(n_points-1), coeff_b(n_points-1), coeff_c(n_points-1), coeff_d(n_points-1))
-    info_fit = 0
-    info_int = 0
-
-    call e02baf(n_points, knots, values, coeff_a, coeff_b, coeff_c, coeff_d, info_fit)
-    if (info_fit == 0) then
-      call e02bbf(n_points, knots, coeff_a, coeff_b, coeff_c, coeff_d, knots(1), knots(n_points), result, info_int)
-    end if
-
-    if (info_fit /= 0 .or. info_int /= 0) then
-      temp_mat(:,1) = values
-      temp_vec = simpson_1d(temp_mat, knots(1), knots(n_points))
-      result = temp_vec(1)
-      status = 2
-    end if
-    deallocate(coeff_a, coeff_b, coeff_c, coeff_d)
-  end subroutine integrate_column_spline
-
-  pure function cumsum(x) result(y)
-    real(wp), intent(in) :: x(:)
-    real(wp) :: y(size(x))
-    integer :: i
-    y(1) = x(1)
-    do i = 2, size(x)
-      y(i) = y(i-1) + x(i)
-    end do
-  end function
-
   ! **********************************************************************
-  ! First and second order derivatives in s and m directions
-  ! using 2nd order finite differences
+  ! 1D derivative
   ! **********************************************************************
-  real(wp) function deriv_s(f, s, m)
-    use para_mod, only : ds, SDIV, MDIV
-    implicit none
-    real(wp), intent(in) :: f(SDIV, MDIV)
-    integer, intent(in) :: s, m
-
-    if (s == 1) then
-      deriv_s = (f(2, m) - f(1, m)) / ds
-    elseif (s == SDIV) then
-      deriv_s = (f(SDIV, m) - f(SDIV-1, m)) / ds
-    else
-      deriv_s = (f(s+1, m) - f(s-1, m)) / (2.e0_wp * ds)
-    end if
-  end function deriv_s
-
-  real(wp) function deriv_ss(f, s, m)
-    use para_mod, only : ds, SDIV, MDIV
-    implicit none
-    real(wp), intent(in) :: f(SDIV, MDIV)
-    integer, intent(in) :: s, m
-    integer :: si
-
-    si = max(4, min(s, SDIV-2))
-    deriv_ss = (f(si+2, m) - 2.e0_wp*f(si, m) + f(si-2, m)) / (4.e0_wp * ds**2)
-  end function deriv_ss
-
-  real(wp) function deriv_m(f, s, m)
-    use para_mod, only : dm, SDIV, MDIV
-    implicit none
-    real(wp), intent(in) :: f(SDIV, MDIV)
-    integer, intent(in) :: s, m
-
-    if (m == 1) then
-      deriv_m = (f(s, 2) - f(s, 1)) / dm
-    elseif (m == MDIV) then
-      deriv_m = (f(s, MDIV) - f(s, MDIV-1)) / dm
-    else
-      deriv_m = (f(s, m+1) - f(s, m-1)) / (2.e0_wp * dm)
-    end if
-  end function deriv_m
-
-  real(wp) function deriv_mm(f, s, m)
-    use para_mod, only : dm, SDIV, MDIV
-    implicit none
-    real(wp), intent(in) :: f(SDIV, MDIV)
-    integer, intent(in) :: s, m
-    integer :: mi
-
-    mi = merge(2, m, m == 1)
-    mi = merge(MDIV-1, mi, m == MDIV)
-    deriv_mm = (f(s, mi+1) - 2.e0_wp*f(s, mi) + f(s, mi-1)) / (dm**2)
-  end function deriv_mm
-
-  real(wp) function deriv_sm(f, s, m)
-    use para_mod, only : dm, ds, SDIV, MDIV
-    implicit none
-    real(wp), intent(in) :: f(SDIV, MDIV)
-    integer, intent(in) :: s, m
-
-    if (s == 1) then
-      if (m == 1) then
-        deriv_sm = (f(2,2)-f(1,2)-f(2,1)+f(1,1))/(dm*ds)
-      elseif (m == MDIV) then
-        deriv_sm = (f(2,MDIV)-f(1,MDIV)-f(2,MDIV-1)+f(1,MDIV-1))/(dm*ds)
-      else
-        deriv_sm = (f(2,m+1)-f(2,m-1)-f(1,m+1)+f(1,m-1))/(2.e0_wp*dm*ds)
-      end if
-    elseif (s == SDIV) then
-      if (m == 1) then
-        deriv_sm = (f(SDIV,2)-f(SDIV,1)-f(SDIV-1,2)+f(SDIV-1,1))/(dm*ds)
-      elseif (m == MDIV) then
-        deriv_sm = (f(SDIV,MDIV)-f(SDIV-1,MDIV)-f(SDIV,MDIV-1)+f(SDIV-1,MDIV-1))/(dm*ds)
-      else
-        deriv_sm = (f(SDIV,m+1)-f(SDIV,m-1)-f(SDIV-1,m+1)+f(SDIV-1,m-1))/(2.e0_wp*dm*ds)
-      end if
-    else
-      if (m == 1) then
-        deriv_sm = (f(s+1,2)-f(s-1,2)-f(s+1,1)+f(s-1,1))/(2.e0_wp*dm*ds)
-      elseif (m == MDIV) then
-        deriv_sm = (f(s+1,MDIV)-f(s-1,MDIV)-f(s+1,MDIV-1)+f(s-1,MDIV-1))/(2.e0_wp*dm*ds)
-      else
-        deriv_sm = (f(s+1,m+1)-f(s-1,m+1)-f(s+1,m-1)+f(s-1,m-1))/(4.e0_wp*dm*ds)
-      end if
-    end if
-  end function deriv_sm
-  
   real(wp) function deriv_s_1d(f, s)
     use para_mod, only : ds, SDIV
     implicit none
     real(wp), intent(in) :: f(SDIV)
     integer, intent(in) :: s
+    real(wp) :: inv_ds
 
     if (SDIV < 5) then
-      ! Not enough points for the 4th order stencil; fall back to 2nd order.
       if (s == 1) then
         deriv_s_1d = (f(2) - f(1)) / ds
       elseif (s == SDIV) then
@@ -355,20 +220,19 @@ contains
       return
     end if
 
-    select case (s)
-    case (1)
-      deriv_s_1d = (-25.e0_wp*f(1) + 48.e0_wp*f(2) - 36.e0_wp*f(3) + 16.e0_wp*f(4) - 3.e0_wp*f(5)) / (12.e0_wp * ds)
-    case (2)
-      deriv_s_1d = (-3.e0_wp*f(1) - 10.e0_wp*f(2) + 18.e0_wp*f(3) - 6.e0_wp*f(4) + f(5)) / (12.e0_wp * ds)
-    case default
-      if (s == SDIV-1) then
-        deriv_s_1d = (3.e0_wp*f(SDIV) + 10.e0_wp*f(SDIV-1) - 18.e0_wp*f(SDIV-2) + 6.e0_wp*f(SDIV-3) - f(SDIV-4)) / (12.e0_wp * ds)
-      elseif (s == SDIV) then
-        deriv_s_1d = (25.e0_wp*f(SDIV) - 48.e0_wp*f(SDIV-1) + 36.e0_wp*f(SDIV-2) - 16.e0_wp*f(SDIV-3) + 3.e0_wp*f(SDIV-4)) / (12.e0_wp * ds)
-      else
-        deriv_s_1d = (-f(s+2) + 8.e0_wp*f(s+1) - 8.e0_wp*f(s-1) + f(s-2)) / (12.e0_wp * ds)
-      end if
-    end select
+    inv_ds = 1.e0_wp / (12.e0_wp * ds)
+
+    if (s == 1) then
+      deriv_s_1d = (-25.e0_wp*f(1) + 48.e0_wp*f(2) - 36.e0_wp*f(3) + 16.e0_wp*f(4) - 3.e0_wp*f(5)) * inv_ds
+    elseif (s == 2) then
+      deriv_s_1d = (-3.e0_wp*f(1) - 10.e0_wp*f(2) + 18.e0_wp*f(3) - 6.e0_wp*f(4) + f(5)) * inv_ds
+    elseif (s == SDIV-1) then
+      deriv_s_1d = (3.e0_wp*f(SDIV) + 10.e0_wp*f(SDIV-1) - 18.e0_wp*f(SDIV-2) + 6.e0_wp*f(SDIV-3) - f(SDIV-4)) * inv_ds
+    elseif (s == SDIV) then
+      deriv_s_1d = (25.e0_wp*f(SDIV) - 48.e0_wp*f(SDIV-1) + 36.e0_wp*f(SDIV-2) - 16.e0_wp*f(SDIV-3) + 3.e0_wp*f(SDIV-4)) * inv_ds
+    else
+      deriv_s_1d = (-f(s+2) + 8.e0_wp*f(s+1) - 8.e0_wp*f(s-1) + f(s-2)) * inv_ds
+    end if
   end function deriv_s_1d
 
   ! **********************************************************************
