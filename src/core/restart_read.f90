@@ -320,7 +320,7 @@ contains
   end function biquadratic
 
   subroutine biquadratic_all(idx_s, idx_m, ws, wm, alpha_out, gama_out, rho_out, ww_out, &
-                             pressure_out, energy_out, enthalpy_out, velocity_sq_out, omg_out, sphi_out)
+                            pressure_out, energy_out, enthalpy_out, velocity_sq_out, omg_out, sphi_out)
     implicit none
     integer, intent(in) :: idx_s(3), idx_m(3)
     real(8), intent(in) :: ws(3), wm(3)
@@ -374,7 +374,7 @@ contains
     f11 = field(i1,j1)
 
     bilinear = f00*(1.d0-w_s)*(1.d0-w_m) + f10*w_s*(1.d0-w_m) + &
-               f01*(1.d0-w_s)*w_m + f11*w_s*w_m
+              f01*(1.d0-w_s)*w_m + f11*w_s*w_m
   end function bilinear
 
   subroutine bilinear_all(i0, i1, j0, j1, ws, wm, alpha_out, gama_out, rho_out, ww_out, &

@@ -154,8 +154,8 @@ contains
       error stop "pack_relaxation_fields: size mismatch"
 
     associate( xr => x(     1:  nb), &
-               xg => x(  nb+1:2*nb), &
-               xw => x(2*nb+1:3*nb)  )
+              xg => x(  nb+1:2*nb), &
+              xw => x(2*nb+1:3*nb)  )
       xr = reshape(rho,  [nb])
       xg = reshape(gama, [nb])
       xw = reshape(ww,   [nb])
@@ -181,8 +181,8 @@ contains
       error stop "unpack_relaxation_fields: size mismatch"
 
     associate( xr => x(     1:  nb), &
-               xg => x(  nb+1:2*nb), &
-               xw => x(2*nb+1:3*nb)  )
+              xg => x(  nb+1:2*nb), &
+              xw => x(2*nb+1:3*nb)  )
       rho  = reshape(xr, [SDIV, MDIV])
       gama = reshape(xg, [SDIV, MDIV])
       ww   = reshape(xw, [SDIV, MDIV])
@@ -233,7 +233,7 @@ contains
       end if
 
       call backtracking_update(x, fx, step, evaluate_residual, cfg, &
-                               x_trial, f_trial, alpha, accepted)
+                              x_trial, f_trial, alpha, accepted)
       if (.not. accepted) then
         info = 3; exit
       end if
@@ -288,7 +288,7 @@ contains
     krylov: do j = 1, m
       ! Apply scaling in the FD direction only (right-preconditioning)
       call apply_jacobian_fd(x_base, f_base, dscale*v(:,j), &
-                             evaluate_residual, cfg%fd_eps, w)
+                            evaluate_residual, cfg%fd_eps, w)
 
       ! Modified Gram-Schmidt
       do i = 1, j
@@ -344,8 +344,8 @@ contains
       error stop "build_block_variable_scaling: unexpected state size"
 
     associate( xr => x_base(     1:  nb), &
-               xg => x_base(  nb+1:2*nb), &
-               xw => x_base(2*nb+1:3*nb)  )
+              xg => x_base(  nb+1:2*nb), &
+              xw => x_base(2*nb+1:3*nb)  )
       dscale(     1:  nb) = 1.0_wp / max(1.0_wp, maxval(abs(xr)))
       dscale(  nb+1:2*nb) = 1.0_wp / max(1.0_wp, maxval(abs(xg)))
       dscale(2*nb+1:3*nb) = 1.0_wp / max(1.0_wp, maxval(abs(xw)))
@@ -359,7 +359,7 @@ contains
 
   ! ------------------------------------------------------------------
   subroutine backtracking_update(x, fx, step, evaluate_residual, cfg, &
-                                 x_trial, f_trial, alpha, accepted)
+                                x_trial, f_trial, alpha, accepted)
     real(wp),           intent(in),  contiguous :: x(:), fx(:), step(:)
     type(jfnk_options), intent(in)              :: cfg
     real(wp),           intent(out), contiguous :: x_trial(:), f_trial(:)
@@ -484,7 +484,7 @@ module aitken_mod
 contains
 
   subroutine aitken_delta2(rho, gama, ww, sphi, prev_rho, prev_gama, prev_ww, prev_sphi, &
-                           n_rho_locked, N_RHO_LOCK, has_scalar, fired)
+                          n_rho_locked, N_RHO_LOCK, has_scalar, fired)
     real(wp), intent(inout) :: rho(SDIV,MDIV), gama(SDIV,MDIV), ww(SDIV,MDIV), sphi(SDIV,MDIV)
     real(wp), intent(inout) :: prev_rho(SDIV,MDIV), prev_gama(SDIV,MDIV)
     real(wp), intent(inout) :: prev_ww(SDIV,MDIV), prev_sphi(SDIV,MDIV)

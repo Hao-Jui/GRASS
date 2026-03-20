@@ -17,8 +17,8 @@ contains
 
     npts = size(fvals,1)
     if (mod(npts,2) == 0) then
-       print *, "Simpson requires odd number of points. Increment N by 1."
-       stop
+        print *, "Simpson requires odd number of points. Increment N by 1."
+        stop
     endif
 
     ! Step size
