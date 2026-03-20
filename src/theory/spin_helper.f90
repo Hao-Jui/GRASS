@@ -1097,10 +1097,11 @@ contains
       end if
       prev_dif_local = dif
 
-      if (dif > CHEB_THRESH) then
+      if (dif > 1.e-3_wp) then
         if (dif < picard_best_dif) then
           picard_best_dif = dif
           n_picard_stall = 0
+          w_mix = min(w_mix + 5.e-2_wp, w_picard)
         else
           n_picard_stall = n_picard_stall + 1
           if (n_picard_stall >= PICARD_STALL_LIMIT) then
@@ -1108,10 +1109,6 @@ contains
             n_picard_stall = 0
           end if
         end if
-      else
-        n_picard_stall  = 0
-        picard_best_dif = huge(1.e0_wp)
-        w_mix           = w_picard
       end if
 
       cheb_w = 1.e0_wp
