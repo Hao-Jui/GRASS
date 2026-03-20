@@ -11,7 +11,7 @@ module para_mod
   integer, parameter :: MODE_REGRID  = 1
   integer, parameter :: MODE_DEFAULT = 2
 
-  integer :: run_mode = MODE_REGRID
+  integer :: run_mode = MODE_DEFAULT
 
   ! -- Rotation configuration ------------------------------------------------
   ! uniform / const_j / uryu
@@ -38,7 +38,7 @@ module para_mod
   real(wp) :: chi_goal = 0.1e0_wp
   real(wp) :: omc_goal = 30.e0_wp
 
-  real(wp) :: B_goal   = 600.e0_wp
+  real(wp) :: B_goal   = 6.e2_wp
   real(wp) :: mphi_goal = 1.e0_wp
 
   ! -- Rotation-law parameters (KEH, Uryu enabled) --------------------------

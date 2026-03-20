@@ -42,13 +42,13 @@ subroutine mass_radius()
     vel_safe = min(max(velocity_sq(s,:), 0.e0_wp), 1.e0_wp - 1.e-12_wp)
 
     mu_integrand_buffer(:,1) = exp(2.e0_wp*alpha(s,:)+gama(s,:)) * &
-                               ( ( ( energy(s,:) + pressure(s,:) ) * acoup**4 / (1.e0_wp - vel_safe) ) * &
-                                 ( 1.e0_wp + vel_safe + 2.e0_wp * sqrt(vel_safe) * s1 * sqrt(1.e0_wp-mu(:)**2) * r_e * ww(s,:) * exp(-rho(s,:)) ) &
-                                 + 2.e0_wp*pressure(s,:) * acoup**4 - vphi / (2.e0_wp*pi) )
+                              ( ( ( energy(s,:) + pressure(s,:) ) * acoup**4 / (1.e0_wp - vel_safe) ) * &
+                                ( 1.e0_wp + vel_safe + 2.e0_wp * sqrt(vel_safe) * s1 * sqrt(1.e0_wp-mu(:)**2) * r_e * ww(s,:) * exp(-rho(s,:)) ) &
+                                + 2.e0_wp*pressure(s,:) * acoup**4 - vphi / (2.e0_wp*pi) )
     mu_integrand_buffer(:,2) = exp(2.e0_wp*alpha(s,:) + (gama(s,:) - rho(s,:))/2.e0_wp) * rho_0(s,:) * acoup**3  / sqrt(1.e0_wp-vel_safe)
     mu_integrand_buffer(:,3) = exp(2.e0_wp*alpha(s,:) + (gama(s,:) - rho(s,:))/2.e0_wp) * energy(s,:)* acoup**4  / sqrt(1.e0_wp-vel_safe)
     mu_integrand_buffer(:,4) = sqrt(1.e0_wp-mu(:)**2) * exp( 2.e0_wp*alpha(s,:) + gama(s,:) - rho(s,:) ) * &
-                               (energy(s,:) + pressure(s,:)) * acoup**4 * sqrt(vel_safe) / (1.e0_wp-vel_safe)
+                              (energy(s,:) + pressure(s,:)) * acoup**4 * sqrt(vel_safe) / (1.e0_wp-vel_safe)
     mu_integrand_buffer(:,5) = mu_integrand_buffer(:,4) * omg(s,:)
     call integrate_profiles(mu, mu_integrand_buffer, mu_results)
     d_m(s)  = mu_results(1)
@@ -331,18 +331,18 @@ contains
               // trim(adjustl(mphi_str)) //"_M" &
               // trim(adjustl(M_str)) // "dat"
     call write_eq_profile(profile_file,(SDIV-1)/2,&
-         gama(:,1), rho(:,1), alpha(:,1),         &
-         ww(:,1), omg(:,1),                       &
-         enthalpy(:,1),                           & ! 7
-         rho_0(:,1)/(KSCALE*C**2)/ n_sat,         &
-         energy(:,1)/(C*C*KSCALE),                &
-         pressure(:,1)/KSCALE,                    &
-         sphi(:,1) * sqrt(B_coup),                &
-         sphi_deriv * sqrt(B_coup),               &
-         sound_speed,                             &
-         effective_cs,                            &
-         effective_pressure/KSCALE,               & 
-         effective_energy/(C*C*KSCALE)  )
+        gama(:,1), rho(:,1), alpha(:,1),         &
+        ww(:,1), omg(:,1),                       &
+        enthalpy(:,1),                           & ! 7
+        rho_0(:,1)/(KSCALE*C**2)/ n_sat,         &
+        energy(:,1)/(C*C*KSCALE),                &
+        pressure(:,1)/KSCALE,                    &
+        sphi(:,1) * sqrt(B_coup),                &
+        sphi_deriv * sqrt(B_coup),               &
+        sound_speed,                             &
+        effective_cs,                            &
+        effective_pressure/KSCALE,               & 
+        effective_energy/(C*C*KSCALE)  )
 
     if (.true.) then ! Debug: Chebyshev fit of gama over the stellar interior [s_gp(1), s_gp(res+1)]
       block
@@ -380,9 +380,9 @@ contains
     gg    = -exp(2.e0_wp*rho(:,1)) * pres_deriv / ( energy(:,1) + pressure(:,1) )
     BV    = sqrt( - gg * schwarz ) / r_e * ( 1.e0_wp - s_gp )**2 * sqrt(KAPPA) / C
     call write_eq_profile(profile_file, (SDIV+1)/2, &
-         gama(:,1), rho(:,1), alpha(:,1), & ! 1-3
-         enthalpy(:,1), rho_0(:,1)/(KSCALE*C**2), pressure(:,1)/KSCALE, & ! 4-6
-         sound_speed, BV) ! 7-8
+        gama(:,1), rho(:,1), alpha(:,1), & ! 1-3
+        enthalpy(:,1), rho_0(:,1)/(KSCALE*C**2), pressure(:,1)/KSCALE, & ! 4-6
+        sound_speed, BV) ! 7-8
   end subroutine to_alexis  
 
   subroutine to_sizeng()
@@ -390,7 +390,7 @@ contains
     real(wp), parameter :: K_km = 218.04217865726338e0_wp
     profile_file = "./Cont/sizeng.dat"
     call initial_data_for_spec( profile_file, rho_0 / (KSCALE*C**2) * rho_to_km * K_km, &
-         alpha, rho, gama, ww * ( sqrt(K_km) / sqrt(KAPPA) ), sqrt(velocity_sq) )
+        alpha, rho, gama, ww * ( sqrt(K_km) / sqrt(KAPPA) ), sqrt(velocity_sq) )
   end subroutine to_sizeng  
 
 end subroutine solution_properties

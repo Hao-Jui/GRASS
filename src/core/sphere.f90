@@ -22,7 +22,7 @@ subroutine sphere
     end interface
     integer :: s, m
     real(8) r_is_s, r_is_final, r_final, m_final, &
-           lambda_s, nu_s, e_s, gama_eq, rho_eq
+          lambda_s, nu_s, e_s, gama_eq, rho_eq
     real(8), dimension(SDIV) :: gama_mu_0, rho_mu_0
     real(8), dimension(RDIV) :: r_is_gp, lambda_gp, nu_gp, e_d_gp
 

@@ -89,15 +89,15 @@ contains
     df_ds(3,:) = (   2.e0_wp*f(1,:)- 24.e0_wp*f(2,:)- 35.e0_wp*f(3,:)+ 80.e0_wp*f(4,:) &
                   -  30.e0_wp*f(5,:)+  8.e0_wp*f(6,:)-       f(7,:)) * inv60DS
     df_ds(SDIV-2,:) = (        f(SDIV-6,:)-  8.e0_wp*f(SDIV-5,:)+ 30.e0_wp*f(SDIV-4,:)- 80.e0_wp*f(SDIV-3,:) &
-                       + 35.e0_wp*f(SDIV-2,:)+ 24.e0_wp*f(SDIV-1,:)-  2.e0_wp*f(SDIV,:)) * inv60DS
+                      + 35.e0_wp*f(SDIV-2,:)+ 24.e0_wp*f(SDIV-1,:)-  2.e0_wp*f(SDIV,:)) * inv60DS
     df_ds(SDIV-1,:) = (  -2.e0_wp*f(SDIV-6,:)+ 15.e0_wp*f(SDIV-5,:)- 50.e0_wp*f(SDIV-4,:)+100.e0_wp*f(SDIV-3,:) &
-                       -150.e0_wp*f(SDIV-2,:)+ 77.e0_wp*f(SDIV-1,:)+ 10.e0_wp*f(SDIV,:)) * inv60DS
+                      -150.e0_wp*f(SDIV-2,:)+ 77.e0_wp*f(SDIV-1,:)+ 10.e0_wp*f(SDIV,:)) * inv60DS
     df_ds(SDIV,:)   = (  10.e0_wp*f(SDIV-6,:)- 72.e0_wp*f(SDIV-5,:)+225.e0_wp*f(SDIV-4,:)-400.e0_wp*f(SDIV-3,:) &
-                       +450.e0_wp*f(SDIV-2,:)-360.e0_wp*f(SDIV-1,:)+147.e0_wp*f(SDIV,:)) * inv60DS
+                      +450.e0_wp*f(SDIV-2,:)-360.e0_wp*f(SDIV-1,:)+147.e0_wp*f(SDIV,:)) * inv60DS
     ! 6th-order centered interior
     do m = 1, MDIV
       df_ds(4:SDIV-3,m) = (   -f(1:SDIV-6,m)+ 9.e0_wp*f(2:SDIV-5,m)- 45.e0_wp*f(3:SDIV-4,m) &
-                           + 45.e0_wp*f(5:SDIV-2,m)-  9.e0_wp*f(6:SDIV-1,m)+       f(7:SDIV,m)) * inv60DS
+                          + 45.e0_wp*f(5:SDIV-2,m)-  9.e0_wp*f(6:SDIV-1,m)+       f(7:SDIV,m)) * inv60DS
     end do
   end function deriv_s_vec
 
@@ -135,14 +135,14 @@ contains
     df_dm(:,3) = (   2.e0_wp*f(:,1)- 24.e0_wp*f(:,2)- 35.e0_wp*f(:,3)+ 80.e0_wp*f(:,4) &
                   -  30.e0_wp*f(:,5)+  8.e0_wp*f(:,6)-       f(:,7)) * inv60DM
     df_dm(:,MDIV-2) = (        f(:,MDIV-6)-  8.e0_wp*f(:,MDIV-5)+ 30.e0_wp*f(:,MDIV-4)- 80.e0_wp*f(:,MDIV-3) &
-                       + 35.e0_wp*f(:,MDIV-2)+ 24.e0_wp*f(:,MDIV-1)-  2.e0_wp*f(:,MDIV)) * inv60DM
+                      + 35.e0_wp*f(:,MDIV-2)+ 24.e0_wp*f(:,MDIV-1)-  2.e0_wp*f(:,MDIV)) * inv60DM
     df_dm(:,MDIV-1) = (  -2.e0_wp*f(:,MDIV-6)+ 15.e0_wp*f(:,MDIV-5)- 50.e0_wp*f(:,MDIV-4)+100.e0_wp*f(:,MDIV-3) &
-                       -150.e0_wp*f(:,MDIV-2)+ 77.e0_wp*f(:,MDIV-1)+ 10.e0_wp*f(:,MDIV)) * inv60DM
+                      -150.e0_wp*f(:,MDIV-2)+ 77.e0_wp*f(:,MDIV-1)+ 10.e0_wp*f(:,MDIV)) * inv60DM
     df_dm(:,MDIV)   = (  10.e0_wp*f(:,MDIV-6)- 72.e0_wp*f(:,MDIV-5)+225.e0_wp*f(:,MDIV-4)-400.e0_wp*f(:,MDIV-3) &
-                       +450.e0_wp*f(:,MDIV-2)-360.e0_wp*f(:,MDIV-1)+147.e0_wp*f(:,MDIV)) * inv60DM
+                      +450.e0_wp*f(:,MDIV-2)-360.e0_wp*f(:,MDIV-1)+147.e0_wp*f(:,MDIV)) * inv60DM
     ! 6th-order centered interior — column-contiguous slice, no loop needed
     df_dm(:,4:MDIV-3) = (   -f(:,1:MDIV-6)+ 9.e0_wp*f(:,2:MDIV-5)- 45.e0_wp*f(:,3:MDIV-4) &
-                         + 45.e0_wp*f(:,5:MDIV-2)-  9.e0_wp*f(:,6:MDIV-1)+       f(:,7:MDIV)) * inv60DM
+                        + 45.e0_wp*f(:,5:MDIV-2)-  9.e0_wp*f(:,6:MDIV-1)+       f(:,7:MDIV)) * inv60DM
   end function deriv_m_vec
 
   function deriv_sm_vec(f) result(df_dsm)
@@ -198,7 +198,7 @@ contains
   end subroutine update_equatorial_radius
 
   subroutine update_angular_velocity(r_e_new, gama_pole_h, rho_pole_h, gama_equator_h, rho_equator_h, &
-                                     sphi_pole_h, sphi_equator_h, ww_equator_h)
+                                    sphi_pole_h, sphi_equator_h, ww_equator_h)
     use rotation_law_mod, only: diff_rotation_const_j, rotation_law_const_j, &
                                 diff_rotation_uryu, rotation_law_uryu
     real(wp), intent(in) :: r_e_new, gama_pole_h, rho_pole_h, gama_equator_h, rho_equator_h
@@ -249,7 +249,7 @@ contains
       endif
       guess = Omega_e * 0.8e0_wp
       call find_omege_e(guess, r_e_new, rho_equator_h, gama_equator_h, &
-                       ww_equator_h, rho_pole_h, gama_pole_h, tolerance, Omega_e, diff_rotation_const_j)
+                      ww_equator_h, rho_pole_h, gama_pole_h, tolerance, Omega_e, diff_rotation_const_j)
 
       term_in_Omega_h = abs(Omega_e - ww_equator_h) * exp(-2.e0_wp * r_e_new**2 * rho_equator_h)
       Omega_c = Omega_e + term_in_Omega_h / (1.e0_wp - term_in_Omega_h * abs(Omega_e - ww_equator_h)) / A_diff**2
@@ -523,7 +523,7 @@ contains
   end subroutine build_source_terms
 
   subroutine angular_integration(S_metric_rho, S_metric_gama, S_metric_omega, S_metric_sphi, &
-                                 D1_metric_rho, D1_metric_gama, D1_metric_omega, D1_metric_sphi)
+                                D1_metric_rho, D1_metric_gama, D1_metric_omega, D1_metric_sphi)
     real(wp), intent(in)  :: S_metric_rho(:,:), S_metric_gama(:,:), S_metric_omega(:,:), S_metric_sphi(:,:)
     real(wp), intent(out) :: D1_metric_rho(:,:), D1_metric_gama(:,:), D1_metric_omega(:,:), D1_metric_sphi(:,:)
     call dgemm('T', 'T', LMAX+1, SDIV, MDIV, 1.e0_wp, weighted_even_basis, MDIV, S_metric_rho, SDIV, 0.e0_wp, D1_metric_rho, LMAX+1)
@@ -647,7 +647,7 @@ contains
         f2n_vals(k) = ((1.e0_wp - s_gp(k)) / s_gp(k))**(2 * s_pwr * n_phys)
         left_terms(k) = prefactor * source_weights(k) / (f2n_vals(k) * s_gp(k) * (1.e0_wp - s_gp(k)))
         right_terms(k) = prefactor * f2n_vals(k) * s_gp(k)**(2 * s_pwr - 1) * source_weights(k) &
-                       / (1.e0_wp - s_gp(k))**(2 * s_pwr + 1)
+                      / (1.e0_wp - s_gp(k))**(2 * s_pwr + 1)
         boundary_sum = boundary_sum + prefactor * source_weights(k) / (s_gp(k) * (1.e0_wp - s_gp(k)))
       end do
 
@@ -688,7 +688,7 @@ contains
         left_terms(k) = prefactor * s_gp(k)**(s_pwr - 1) * source_weights(k) &
                       / (f2n_vals(k) * (1.e0_wp - s_gp(k))**(s_pwr + 1))
         right_terms(k) = prefactor * f2n_vals(k) * s_gp(k)**(2 * s_pwr - 1) * source_weights(k) &
-                       / (1.e0_wp - s_gp(k))**(2 * s_pwr + 1)
+                      / (1.e0_wp - s_gp(k))**(2 * s_pwr + 1)
         boundary_sum = boundary_sum + prefactor * source_weights(k) / (s_gp(k) * (1.e0_wp - s_gp(k)))
       end do
 
@@ -906,7 +906,7 @@ contains
   end subroutine update_alpha_potential
 
   subroutine get_all_targets(r_e_new, root_mphi_re, &
-                             out_target_rho, out_target_gama, out_target_ww, out_target_sphi)
+                            out_target_rho, out_target_gama, out_target_ww, out_target_sphi)
     real(wp), intent(in) :: r_e_new
     real(wp), intent(in) :: root_mphi_re
     real(wp), intent(out) :: out_target_rho(SDIV,MDIV), out_target_gama(SDIV,MDIV), out_target_ww(SDIV,MDIV), out_target_sphi(SDIV,MDIV)
@@ -933,34 +933,34 @@ contains
       call cpu_time(t0)
     end if
     call precompute_derivatives_and_bessels(r_e_new, root_mphi_re, mr_cache, besseli_cache, besselk_cache, &
-         dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, dww_s_cache, dww_m_cache, ds_s_cache, ds_m_cache, &
-         d2g_ss_cache, d2g_mm_cache, e_gsm_cache, e_rsm_cache, e2alpha_r2_cache, Acoup4_cache)
+        dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, dww_s_cache, dww_m_cache, ds_s_cache, ds_m_cache, &
+        d2g_ss_cache, d2g_mm_cache, e_gsm_cache, e_rsm_cache, e2alpha_r2_cache, Acoup4_cache)
     if (timing) then
       call cpu_time(t1); dt_precompute = t1 - t0; call cpu_time(t0)
     end if
 
     call build_source_terms(r_e_new, S_metric_rho, S_metric_gama, S_metric_omega, S_metric_sphi, &
-         dr_s_cache, dr_m_cache, dg_s_cache, dg_m_cache, dww_s_cache, dww_m_cache, ds_s_cache, ds_m_cache, &
-         d2g_ss_cache, d2g_mm_cache, e_gsm_cache, e_rsm_cache, e2alpha_r2_cache, Acoup4_cache)
+        dr_s_cache, dr_m_cache, dg_s_cache, dg_m_cache, dww_s_cache, dww_m_cache, ds_s_cache, ds_m_cache, &
+        d2g_ss_cache, d2g_mm_cache, e_gsm_cache, e_rsm_cache, e2alpha_r2_cache, Acoup4_cache)
     if (timing) then
       call cpu_time(t1); dt_build = t1 - t0; call cpu_time(t0)
     end if
 
     call angular_integration(S_metric_rho, S_metric_gama, S_metric_omega, S_metric_sphi, &
-         D1_metric_rho, D1_metric_gama, D1_metric_omega, D1_metric_sphi)
+        D1_metric_rho, D1_metric_gama, D1_metric_omega, D1_metric_sphi)
     if (timing) then
       call cpu_time(t1); dt_angular = t1 - t0; call cpu_time(t0)
     end if
 
     call radial_integration(D1_metric_rho, D1_metric_gama, D1_metric_omega, D1_metric_sphi, &
-         D2_metric_rho, D2_metric_gama, D2_metric_omega, D2_metric_sphi, root_mphi_re, wfac_cache, &
-         besseli_cache, besselk_cache)
+        D2_metric_rho, D2_metric_gama, D2_metric_omega, D2_metric_sphi, root_mphi_re, wfac_cache, &
+        besseli_cache, besselk_cache)
     if (timing) then
       call cpu_time(t1); dt_radial = t1 - t0; call cpu_time(t0)
     end if
 
     call sum_coefficients_and_get_targets(out_target_rho, out_target_gama, out_target_ww, out_target_sphi, &
-         D2_metric_rho, D2_metric_gama, D2_metric_omega, D2_metric_sphi)
+        D2_metric_rho, D2_metric_gama, D2_metric_omega, D2_metric_sphi)
     if (timing) then
       call cpu_time(t1); dt_sum = t1 - t0; call cpu_time(t0)
     end if
@@ -1055,7 +1055,7 @@ contains
     end if
 
     dif_min_seen = min(dif_min_seen, dif)
-    if (dif_min_seen < 1.e-3_wp .and. dif > dif_min_seen * 1.e2_wp .and. n_of_it > 500) then
+    if (dif_min_seen < 1.e-3_wp .and. dif > dif_min_seen * 1.e2_wp .and. n_of_it > 100) then
       w_mix = max(W_MIX_MIN, W_MIX_DECAY * w_mix)
     end if
 
@@ -1080,7 +1080,7 @@ contains
 
     ! --- Aitken delta-squared: element-wise quadratic acceleration ---
     call aitken_delta2(rho, gama, ww, sphi, prev_rho, prev_gama, prev_ww, prev_sphi, &
-                       n_rho_locked, N_RHO_LOCK, has_scalar, aitken_fired)
+                      n_rho_locked, N_RHO_LOCK, has_scalar, aitken_fired)
     if (aitken_fired) then
       metric_method = 'Aitken'
       if (has_scalar) scalar_method = 'Aitken'

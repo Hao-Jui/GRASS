@@ -8,16 +8,16 @@ module rotation_uniform
                       sphi_c, sphi_m, Omega_c, Omega_e, &
                       Fmax_h, n_of_relaxation_steps, timing
   use spin_helper, only: dif, &
-                         target_rho, target_gama, target_ww, target_sphi, &
-                         metric_method, scalar_method, &
-                         dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, &
-                         dww_s_cache, dww_m_cache, ds_s_cache, ds_m_cache, &
-                         d2g_ss_cache, d2g_mm_cache, e_rsm_cache, &
-                         D2_metric_rho, D2_metric_omega, &
-                         allocate_workspace, deallocate_workspace, &
-                         update_equatorial_radius, update_angular_velocity, &
-                         update_eos_and_velocity, get_all_targets, &
-                         relaxation, update_alpha_potential, output_helper
+    target_rho, target_gama, target_ww, target_sphi, &
+    metric_method, scalar_method, &
+    dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, &
+    dww_s_cache, dww_m_cache, ds_s_cache, ds_m_cache, &
+    d2g_ss_cache, d2g_mm_cache, e_rsm_cache, &
+    D2_metric_rho, D2_metric_omega, &
+    allocate_workspace, deallocate_workspace, &
+    update_equatorial_radius, update_angular_velocity, &
+    update_eos_and_velocity, get_all_targets, &
+    relaxation, update_alpha_potential, output_helper
   implicit none
 contains
 
@@ -71,19 +71,19 @@ subroutine rotation_solver
       ! --- Update equatorial radius ---
       r_e_old = r_e_new
       call update_equatorial_radius( r_e_old, &
-           r_e_new, dif, &
-           sphi_pole_h, gama_pole_h, rho_pole_h, &
-           gama_equator_h, rho_equator_h, ww_equator_h, sphi_equator_h, &
-           sphi_center_h, gama_center_h, rho_center_h )
+        r_e_new, dif, &
+        sphi_pole_h, gama_pole_h, rho_pole_h, &
+        gama_equator_h, rho_equator_h, ww_equator_h, sphi_equator_h, &
+        sphi_center_h, gama_center_h, rho_center_h )
       r_e_new_sq = r_e_new**2
 
       ! --- Solve for metric and scalar field targets ---
       call update_angular_velocity(r_e_new, gama_pole_h, rho_pole_h, gama_equator_h, rho_equator_h, &
-           sphi_pole_h, sphi_equator_h, ww_equator_h)
+        sphi_pole_h, sphi_equator_h, ww_equator_h)
       call update_eos_and_velocity(r_e_new, gama_pole_h, rho_pole_h, sphi_pole_h)
       root_mphi_re = sqrt(mphi_r * r_e_new_sq)
       call get_all_targets(r_e_new, root_mphi_re, &
-           target_rho, target_gama, target_ww, target_sphi)
+        target_rho, target_gama, target_ww, target_sphi)
 
       ! --- Relaxation iteration ---
       if (timing) call cpu_time(t0)

@@ -246,32 +246,32 @@ contains
     df_ds(3) = (   2.e0_wp*f(1)- 24.e0_wp*f(2)- 35.e0_wp*f(3)+ 80.e0_wp*f(4) &
                 -  30.e0_wp*f(5)+  8.e0_wp*f(6)-       f(7)) * inv60DS
     df_ds(n-2) = (       f(n-6)-  8.e0_wp*f(n-5)+ 30.e0_wp*f(n-4)- 80.e0_wp*f(n-3) &
-                 + 35.e0_wp*f(n-2)+ 24.e0_wp*f(n-1)-  2.e0_wp*f(n)) * inv60DS
+                + 35.e0_wp*f(n-2)+ 24.e0_wp*f(n-1)-  2.e0_wp*f(n)) * inv60DS
     df_ds(n-1) = (  -2.e0_wp*f(n-6)+ 15.e0_wp*f(n-5)- 50.e0_wp*f(n-4)+100.e0_wp*f(n-3) &
-                 -150.e0_wp*f(n-2)+ 77.e0_wp*f(n-1)+ 10.e0_wp*f(n)) * inv60DS
+                -150.e0_wp*f(n-2)+ 77.e0_wp*f(n-1)+ 10.e0_wp*f(n)) * inv60DS
     df_ds(n)   = (  10.e0_wp*f(n-6)- 72.e0_wp*f(n-5)+225.e0_wp*f(n-4)-400.e0_wp*f(n-3) &
-                 + 450.e0_wp*f(n-2)-360.e0_wp*f(n-1)+147.e0_wp*f(n)) * inv60DS
+                + 450.e0_wp*f(n-2)-360.e0_wp*f(n-1)+147.e0_wp*f(n)) * inv60DS
 
     ! 5th-order one-sided boundaries (f'')
     d2f_ds2(1) = ( 812.e0_wp*f(1)-3132.e0_wp*f(2)+5265.e0_wp*f(3)-5080.e0_wp*f(4) &
-                 +2970.e0_wp*f(5)- 972.e0_wp*f(6)+ 137.e0_wp*f(7)) * inv180DS2
+                +2970.e0_wp*f(5)- 972.e0_wp*f(6)+ 137.e0_wp*f(7)) * inv180DS2
     d2f_ds2(2) = ( 137.e0_wp*f(1)- 147.e0_wp*f(2)- 255.e0_wp*f(3)+ 470.e0_wp*f(4) &
-                 - 285.e0_wp*f(5)+  93.e0_wp*f(6)-  13.e0_wp*f(7)) * inv180DS2
+                - 285.e0_wp*f(5)+  93.e0_wp*f(6)-  13.e0_wp*f(7)) * inv180DS2
     d2f_ds2(3) = ( -13.e0_wp*f(1)+ 228.e0_wp*f(2)- 420.e0_wp*f(3)+ 200.e0_wp*f(4) &
-                 +  15.e0_wp*f(5)-  12.e0_wp*f(6)+   2.e0_wp*f(7)) * inv180DS2
+                +  15.e0_wp*f(5)-  12.e0_wp*f(6)+   2.e0_wp*f(7)) * inv180DS2
     d2f_ds2(n-2) = (   2.e0_wp*f(n-6)-  12.e0_wp*f(n-5)+  15.e0_wp*f(n-4)+200.e0_wp*f(n-3) &
-                   - 420.e0_wp*f(n-2)+ 228.e0_wp*f(n-1)-  13.e0_wp*f(n)) * inv180DS2
+                  - 420.e0_wp*f(n-2)+ 228.e0_wp*f(n-1)-  13.e0_wp*f(n)) * inv180DS2
     d2f_ds2(n-1) = ( -13.e0_wp*f(n-6)+  93.e0_wp*f(n-5)- 285.e0_wp*f(n-4)+470.e0_wp*f(n-3) &
-                   - 255.e0_wp*f(n-2)- 147.e0_wp*f(n-1)+ 137.e0_wp*f(n)) * inv180DS2
+                  - 255.e0_wp*f(n-2)- 147.e0_wp*f(n-1)+ 137.e0_wp*f(n)) * inv180DS2
     d2f_ds2(n)   = ( 137.e0_wp*f(n-6)- 972.e0_wp*f(n-5)+2970.e0_wp*f(n-4)-5080.e0_wp*f(n-3) &
-                   +5265.e0_wp*f(n-2)-3132.e0_wp*f(n-1)+ 812.e0_wp*f(n)) * inv180DS2
+                  +5265.e0_wp*f(n-2)-3132.e0_wp*f(n-1)+ 812.e0_wp*f(n)) * inv180DS2
 
     ! Fused 6th-order centered interior: f(i-3:i+3) loaded once for both stencils
     do i = 4, n-3
       df_ds(i)   = (   -f(i-3) + 9.e0_wp*f(i-2) - 45.e0_wp*f(i-1) &
-                   + 45.e0_wp*f(i+1) -  9.e0_wp*f(i+2) +       f(i+3)) * inv60DS
+                  + 45.e0_wp*f(i+1) -  9.e0_wp*f(i+2) +       f(i+3)) * inv60DS
       d2f_ds2(i) = (2.e0_wp*f(i-3) - 27.e0_wp*f(i-2) + 270.e0_wp*f(i-1) - 490.e0_wp*f(i) &
-                   +270.e0_wp*f(i+1) - 27.e0_wp*f(i+2) +  2.e0_wp*f(i+3)) * inv180DS2
+                  +270.e0_wp*f(i+1) - 27.e0_wp*f(i+2) +  2.e0_wp*f(i+3)) * inv180DS2
     end do
   end subroutine deriv_s_and_ss_1d
 
@@ -322,17 +322,17 @@ contains
 
     ! 6th-order one-sided boundaries (f')
     df_dmu(1) = (-147.e0_wp*f(1)+360.e0_wp*f(2)-450.e0_wp*f(3)+400.e0_wp*f(4) &
-                 -225.e0_wp*f(5)+ 72.e0_wp*f(6)- 10.e0_wp*f(7)) * inv60DM
+                -225.e0_wp*f(5)+ 72.e0_wp*f(6)- 10.e0_wp*f(7)) * inv60DM
     df_dmu(2) = ( -10.e0_wp*f(1)- 77.e0_wp*f(2)+150.e0_wp*f(3)-100.e0_wp*f(4) &
-                 +  50.e0_wp*f(5)- 15.e0_wp*f(6)+  2.e0_wp*f(7)) * inv60DM
+                +  50.e0_wp*f(5)- 15.e0_wp*f(6)+  2.e0_wp*f(7)) * inv60DM
     df_dmu(3) = (   2.e0_wp*f(1)- 24.e0_wp*f(2)- 35.e0_wp*f(3)+ 80.e0_wp*f(4) &
-                 -  30.e0_wp*f(5)+  8.e0_wp*f(6)-       f(7)) * inv60DM
+                -  30.e0_wp*f(5)+  8.e0_wp*f(6)-       f(7)) * inv60DM
     df_dmu(n-2) = (       f(n-6)-  8.e0_wp*f(n-5)+ 30.e0_wp*f(n-4)- 80.e0_wp*f(n-3) &
-                   + 35.e0_wp*f(n-2)+ 24.e0_wp*f(n-1)-  2.e0_wp*f(n)) * inv60DM
+                  + 35.e0_wp*f(n-2)+ 24.e0_wp*f(n-1)-  2.e0_wp*f(n)) * inv60DM
     df_dmu(n-1) = (  -2.e0_wp*f(n-6)+ 15.e0_wp*f(n-5)- 50.e0_wp*f(n-4)+100.e0_wp*f(n-3) &
-                   -150.e0_wp*f(n-2)+ 77.e0_wp*f(n-1)+ 10.e0_wp*f(n)) * inv60DM
+                  -150.e0_wp*f(n-2)+ 77.e0_wp*f(n-1)+ 10.e0_wp*f(n)) * inv60DM
     df_dmu(n)   = (  10.e0_wp*f(n-6)- 72.e0_wp*f(n-5)+225.e0_wp*f(n-4)-400.e0_wp*f(n-3) &
-                   + 450.e0_wp*f(n-2)-360.e0_wp*f(n-1)+147.e0_wp*f(n)) * inv60DM
+                  + 450.e0_wp*f(n-2)-360.e0_wp*f(n-1)+147.e0_wp*f(n)) * inv60DM
 
     ! 5th-order one-sided boundaries (f'')
     d2f_dmu2(1) = ( 812.e0_wp*f(1)-3132.e0_wp*f(2)+5265.e0_wp*f(3)-5080.e0_wp*f(4) &
@@ -342,11 +342,11 @@ contains
     d2f_dmu2(3) = ( -13.e0_wp*f(1)+ 228.e0_wp*f(2)- 420.e0_wp*f(3)+ 200.e0_wp*f(4) &
                   +  15.e0_wp*f(5)-  12.e0_wp*f(6)+   2.e0_wp*f(7)) * inv180DM2
     d2f_dmu2(n-2) = (   2.e0_wp*f(n-6)-  12.e0_wp*f(n-5)+  15.e0_wp*f(n-4)+200.e0_wp*f(n-3) &
-                     - 420.e0_wp*f(n-2)+ 228.e0_wp*f(n-1)-  13.e0_wp*f(n)) * inv180DM2
+                    - 420.e0_wp*f(n-2)+ 228.e0_wp*f(n-1)-  13.e0_wp*f(n)) * inv180DM2
     d2f_dmu2(n-1) = ( -13.e0_wp*f(n-6)+  93.e0_wp*f(n-5)- 285.e0_wp*f(n-4)+470.e0_wp*f(n-3) &
-                     - 255.e0_wp*f(n-2)- 147.e0_wp*f(n-1)+ 137.e0_wp*f(n)) * inv180DM2
+                    - 255.e0_wp*f(n-2)- 147.e0_wp*f(n-1)+ 137.e0_wp*f(n)) * inv180DM2
     d2f_dmu2(n)   = ( 137.e0_wp*f(n-6)- 972.e0_wp*f(n-5)+2970.e0_wp*f(n-4)-5080.e0_wp*f(n-3) &
-                     +5265.e0_wp*f(n-2)-3132.e0_wp*f(n-1)+ 812.e0_wp*f(n)) * inv180DM2
+                    +5265.e0_wp*f(n-2)-3132.e0_wp*f(n-1)+ 812.e0_wp*f(n)) * inv180DM2
 
     ! Fused 6th-order centered interior: f(i-3:i+3) loaded once for both stencils
     do i = 4, n-3
