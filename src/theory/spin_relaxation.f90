@@ -15,7 +15,6 @@ module spin_relaxation
                       solver_type, output, timing, eos_file
   use brent_mod, only : find_omege_e, zbrent_rot
   use toolkit_mod, only : besseli, besselk, interp, interp_log_h_to_p, interp_log_p_to_e
-  use simpson_mod, only: simpson_1d
   use nag_compat_mod, only : d01gaf
   use anderson_optimized, only: anderson_accel_optimized
   use aitken_mod,         only: aitken_delta2
