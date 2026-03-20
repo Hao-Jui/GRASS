@@ -61,7 +61,7 @@ subroutine rotation_solver
   allocate(ww_prev_iter(SDIV,MDIV), source=ww)
   allocate(sphi_prev_iter(SDIV,MDIV), source=sphi)
   r_e_prev_iter = r_e_new
-  write(*,*) r_ratio, h_center
+
   do while( dif > 1.e-8_wp .or. n_of_it < 2 )
     if (zero_scalar_mode) sphi = 0.e0_wp
     sphi_m   = maxval( sphi(:,1) * sqrt_B_coup )
@@ -146,7 +146,7 @@ subroutine rotation_solver
     n_of_it = n_of_it + 1
     if ( n_of_it > 2000 ) stop "Probably won't converge"
   enddo
-  write(*,*) r_ratio, h_center, n_of_it
+  !write(*,*) r_ratio, h_center, n_of_it
   n_of_relaxation_steps = n_of_relaxation_steps + n_of_it
   ! --- End of iteration
 
