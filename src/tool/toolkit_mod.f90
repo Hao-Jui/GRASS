@@ -60,9 +60,23 @@ contains
     real(wp), intent(in)  :: xp(np), yp(np), xb
     real(wp), intent(out) :: yb
     integer :: n_nearest_pt, ir, ii
-    real(wp) :: dx, wi, num, den
+    real(wp) :: dx, wi, num, den, ds_uniform
 
-    n_nearest_pt = minloc(abs(xb - xp), 1)
+    ! O(1) nearest-index lookup for uniform grids: n_nearest_pt = nint(xb / ds) + 1
+    ! Fallback to O(SDIV) minloc for non-uniform grids
+    if (np >= 3) then
+      ds_uniform = xp(2) - xp(1)
+      if (abs((xp(3) - xp(2)) - ds_uniform) < epsilon(ds_uniform) * abs(ds_uniform)) then
+        ! Uniform grid detected: use O(1) index calculation
+        n_nearest_pt = min(np, max(1, nint(xb / ds_uniform) + 1))
+      else
+        ! Non-uniform grid: use O(np) minloc
+        n_nearest_pt = minloc(abs(xb - xp), 1)
+      end if
+    else
+      n_nearest_pt = minloc(abs(xb - xp), 1)
+    end if
+
     ir = min(np - n_order, max(1 + n_order, n_nearest_pt - 1))
 
     num = 0.e0_wp
