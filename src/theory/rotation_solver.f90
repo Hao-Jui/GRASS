@@ -36,6 +36,7 @@ subroutine rotation_solver
   real(wp), allocatable :: rho_prev_iter(:,:), gama_prev_iter(:,:), ww_prev_iter(:,:), sphi_prev_iter(:,:)
   real(wp) :: r_e_prev_iter
   real(wp) :: drho_prev, dgama_prev, dww_prev, dsphi_prev, dre_prev
+  real(wp) :: dif_rho, dif_gama, dif_ww, dif_sphi, dif_re
 
   zero_scalar_mode = merge(.true., .false., active_theory == THEORY_GR)
   sqrt_B_coup = sqrt(B_coup)
@@ -97,6 +98,20 @@ subroutine rotation_solver
     if (timing) then
       call cpu_time(t1); dt_relaxation = t1 - t0; call cpu_time(t0)
     end if
+
+    ! --- Multi-variable convergence criterion ---
+    ! Compute relative changes for all field variables to ensure robust convergence
+    ! (not just r_e, which may converge while sphi or rho oscillate)
+    dif_rho   = maxval(abs(rho - rho_prev_iter) / (abs(rho) + 1.e-15_wp))
+    dif_gama  = maxval(abs(gama - gama_prev_iter) / (abs(gama) + 1.e-15_wp))
+    dif_ww    = maxval(abs(ww - ww_prev_iter) / (abs(ww) + 1.e-15_wp))
+    if (any(abs(sphi_prev_iter) > 1.e-15_wp)) then
+      dif_sphi = maxval(abs(sphi - sphi_prev_iter) / abs(sphi_prev_iter))
+    else
+      dif_sphi = maxval(abs(sphi - sphi_prev_iter))
+    end if
+    dif_re = abs(r_e_new - r_e_prev_iter) / max(abs(r_e_new), 1.e-15_wp)
+    dif = max(dif, max(dif_rho, dif_gama, dif_ww, dif_sphi, dif_re))
 
     ! ---------------------------------------------------------------
     ! Fourth equation (alpha), reuse caches where possible
