@@ -45,6 +45,8 @@ SOURCES := \
   $(SRC_CORE)/set_disk.f90 \
   $(SRC_THEORY)/relaxation_mod.f90 \
   $(SRC_THEORY)/rotational_law_mod.f90 \
+  $(SRC_THEORY)/spin_derivatives.f90 \
+  $(SRC_THEORY)/spin_updates.f90 \
   $(SRC_THEORY)/spin_helper.f90 \
   $(SRC_THEORY)/rotation_solver.f90 \
   $(SRC_CORE)/newton_mod.f90 \
@@ -71,7 +73,9 @@ $(OBJDIR)/$(SRC_CORE)/miscellaneous.o: $(OBJDIR)/$(SRC_TOOL)/nag_compat_mod.o $(
 $(OBJDIR)/$(SRC_CORE)/set_disk.o: $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o
 $(OBJDIR)/$(SRC_THEORY)/relaxation_mod.o: $(OBJDIR)/$(SRC_CORE)/para_mod.o
 $(OBJDIR)/$(SRC_THEORY)/rotational_law_mod.o: $(OBJDIR)/$(SRC_TOOL)/brent.o $(OBJDIR)/$(SRC_CORE)/para_mod.o
-$(OBJDIR)/$(SRC_THEORY)/spin_helper.o: $(OBJDIR)/$(SRC_TOOL)/nag_compat_mod.o $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_CORE)/eos.o
+$(OBJDIR)/$(SRC_THEORY)/spin_derivatives.o: $(OBJDIR)/$(SRC_CORE)/para_mod.o
+$(OBJDIR)/$(SRC_THEORY)/spin_updates.o: $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_THEORY)/rotational_law_mod.o $(OBJDIR)/$(SRC_TOOL)/brent.o
+$(OBJDIR)/$(SRC_THEORY)/spin_helper.o: $(OBJDIR)/$(SRC_TOOL)/nag_compat_mod.o $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_CORE)/eos.o $(OBJDIR)/$(SRC_THEORY)/spin_derivatives.o $(OBJDIR)/$(SRC_THEORY)/spin_updates.o
 $(OBJDIR)/$(SRC_THEORY)/rotation_solver.o: $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_THEORY)/spin_helper.o $(OBJDIR)/$(SRC_CORE)/analysis_v2.o
 $(OBJDIR)/$(SRC_CORE)/newton_mod.o: $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_THEORY)/rotation_solver.o $(OBJDIR)/$(SRC_CORE)/eos.o $(OBJDIR)/$(SRC_CORE)/analysis_v2.o
 $(OBJDIR)/$(SRC_CORE)/newton1d_mod.o: $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_THEORY)/rotation_solver.o $(OBJDIR)/$(SRC_CORE)/eos.o $(OBJDIR)/$(SRC_CORE)/analysis_v2.o
