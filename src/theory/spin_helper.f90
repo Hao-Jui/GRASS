@@ -1017,6 +1017,7 @@ contains
     logical,  save :: last_was_cheb = .false.
     real(wp), save :: picard_best_dif = huge(1.e0_wp)
     real(wp), save :: w_mix = w_picard
+    real(wp), save :: dif_min_seen = huge(1.e0_wp)
     real(wp), allocatable, save :: prev_rho(:,:), prev_gama(:,:), prev_ww(:,:), prev_sphi(:,:)
     real(wp) :: x_k_rho(SDIV,MDIV), x_k_gama(SDIV,MDIV), x_k_ww(SDIV,MDIV), x_k_sphi(SDIV,MDIV)
     real(wp) :: sphi_floor_decay(SDIV)
@@ -1050,6 +1051,12 @@ contains
       last_was_cheb     = .false.
       picard_best_dif   = huge(1.e0_wp)
       w_mix             = w_picard
+      dif_min_seen      = huge(1.e0_wp)
+    end if
+
+    dif_min_seen = min(dif_min_seen, dif)
+    if (dif_min_seen < 1.e-3_wp .and. dif > dif_min_seen * 1.e2_wp .and. n_of_it > 500) then
+      w_mix = max(W_MIX_MIN, W_MIX_DECAY * w_mix)
     end if
 
     ! --- Monotone-contraction counter: confirm we are in the contracting tail ---
