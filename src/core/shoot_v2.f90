@@ -15,7 +15,7 @@ subroutine shoot_v2
                               broyden_update, commit_state
   use shoot_solver_mod_1d, only: newton_state_1d, reset_newton_state_1d, solve_linear_1d, &
                                  line_search_1d, from_solver_coord_1d, to_solver_coord_1d, &
-                                 broyden_update_1d, commit_state_1d
+                                 clamp_step_1d, broyden_update_1d, commit_state_1d
   use rotation_uniform,  only: rotation_solver
   use starting_model_mod, only: initialize_starting_model
   use miscellaneous_mod, only: log_kepler_sequence, print_converged_block
@@ -119,6 +119,7 @@ contains
         call reset_newton_state_1d(solver_state_1d)
         need_cycle = .true.; return
       endif
+      call clamp_step_1d(delta_x1d, er)
 
       if (er > 1.e-4_wp) then
         call line_search_1d(x1d, F1d, delta_x1d, r_ratio, evaluate_solution_1d, delta_x1d, &

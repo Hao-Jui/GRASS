@@ -38,7 +38,7 @@ module para_mod
   real(wp) :: chi_goal = 0.1e0_wp
   real(wp) :: omc_goal = 30.e0_wp
 
-  real(wp) :: B_goal   = 16.e2_wp
+  real(wp) :: B_goal   = 600.e0_wp
   real(wp) :: mphi_goal = 1.e0_wp
 
   ! -- Rotation-law parameters (KEH, Uryu enabled) --------------------------

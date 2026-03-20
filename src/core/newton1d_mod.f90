@@ -25,7 +25,15 @@ end module newton_types_mod
 module shoot_solver_mod_1d
   use newton_types_mod, only: newton_state_1d
   implicit none
-  real(8), parameter :: max_step_1d = 1.d0  ! trust-region style clamp on log(h) step; smaller to be less aggressive
+  ! Adaptive step size cap based on error magnitude
+  ! Linear interpolation: cap = CAP_MIN + (CAP_MAX - CAP_MIN) * max(0, 1 - er)
+  ! Reference table (er = error, cap = log-space bound, max change = exp(cap)):
+  !   er = 1.0  -->  cap = 0.2  -->  max h change = ±22%
+  !   er = 0.5  -->  cap = 1.1  -->  max h change = ±3.0×
+  !   er = 0.1  -->  cap = 1.82 -->  max h change = ±6.2×
+  !   er < 0.01 -->  cap ≈ 2.0  -->  max h change = ±7.4× (full Newton)
+  real(8), parameter :: STEP_CAP_MIN = 0.2d0   ! tight cap when er ~ 1 (prevent catastrophe)
+  real(8), parameter :: STEP_CAP_MAX = 2.0d0   ! loose cap near convergence (preserve Newton speed)
 
 contains
   subroutine reset_newton_state_1d(state)
@@ -46,9 +54,13 @@ contains
     real(8), intent(out) :: hc
     hc = exp(x)
   end subroutine from_solver_coord_1d
-  subroutine clamp_step_1d(delta)
+  subroutine clamp_step_1d(delta, er)
     real(8), intent(inout) :: delta
-    delta = max(-max_step_1d, min(delta, max_step_1d))
+    real(8), intent(in)    :: er
+    real(8) :: cap
+    ! Adaptive cap: tight when far from solution, loose when close
+    cap = STEP_CAP_MIN + (STEP_CAP_MAX - STEP_CAP_MIN) * max(0.d0, 1.d0 - er)
+    delta = max(-cap, min(delta, cap))
   end subroutine clamp_step_1d
 
   logical function solve_linear_1d(J, rhs, delta)
