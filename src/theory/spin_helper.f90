@@ -14,7 +14,7 @@ module spin_helper
                       A_diff, lambda1, lambda2, Fmax_h, F_equator_h, &
                       solver_type, output, timing, eos_file
   use brent_mod, only : find_omege_e, zbrent_rot
-  use toolkit_mod, only : deriv_sm, deriv_s, deriv_m, besseli, besselk, interp, interp_log_h_to_p, interp_log_p_to_e
+  use toolkit_mod, only : besseli, besselk, interp, interp_log_h_to_p, interp_log_p_to_e
   use simpson_mod, only: simpson_1d
   use nag_compat_mod, only : d01gaf
   use anderson_optimized, only: anderson_accel_optimized
@@ -45,6 +45,7 @@ module spin_helper
   real(wp), allocatable, target :: ds_s_cache(:,:), ds_m_cache(:,:) 
   real(wp), allocatable, target :: mr_cache(:), besseli_cache(:,:), besselk_cache(:,:), wfac_cache(:)
   real(wp), allocatable :: s1_geom(:), s1_sq_geom(:), s1_one_minus_s_geom(:), s2_geom(:), sgp4_geom(:), m1_geom(:)
+  real(wp), allocatable :: sgp_term_2d_cache(:,:), sin_theta_2d_cache(:,:), sgp_2d_cache(:,:)
   real(wp), allocatable :: radial_quad_weights(:)
   real(wp), allocatable :: angular_quad_weights(:)
   real(wp), allocatable :: weighted_even_basis(:,:), weighted_gama_basis(:,:), weighted_omega_basis(:,:)
@@ -57,99 +58,25 @@ module spin_helper
 
 contains
   pure function deriv_s_vec(f) result(df_ds)
-    use para_mod, only : SDIV, MDIV, DS
+    use para_mod, only : SDIV, MDIV
     real(wp), dimension(SDIV,MDIV), intent(in) :: f
     real(wp), dimension(SDIV,MDIV) :: df_ds
-    real(wp) :: inv60DS
-    integer :: m
-    if (SDIV < 5) then
-      df_ds(1,:) = (f(2,:) - f(1,:)) / DS
-      if (SDIV > 2) df_ds(2:SDIV-1,:) = (f(3:SDIV,:) - f(1:SDIV-2,:)) / (2.e0_wp * DS)
-      df_ds(SDIV,:) = (f(SDIV,:) - f(SDIV-1,:)) / DS
-      return
-    end if
-
-    if (SDIV < 7) then
-      df_ds(1,:) = (-25.e0_wp*f(1,:)+48.e0_wp*f(2,:)-36.e0_wp*f(3,:)+16.e0_wp*f(4,:)-3.e0_wp*f(5,:)) / (12.e0_wp*DS)
-      df_ds(2,:) = ( -3.e0_wp*f(1,:)-10.e0_wp*f(2,:)+18.e0_wp*f(3,:)-6.e0_wp*f(4,:)+f(5,:)) / (12.e0_wp*DS)
-      df_ds(SDIV-1,:) = (3.e0_wp*f(SDIV,:)+10.e0_wp*f(SDIV-1,:)-18.e0_wp*f(SDIV-2,:)+6.e0_wp*f(SDIV-3,:)-f(SDIV-4,:)) / (12.e0_wp*DS)
-      df_ds(SDIV,:) = (25.e0_wp*f(SDIV,:)-48.e0_wp*f(SDIV-1,:)+36.e0_wp*f(SDIV-2,:)-16.e0_wp*f(SDIV-3,:)+3.e0_wp*f(SDIV-4,:)) / (12.e0_wp*DS)
-      do m = 1, MDIV
-        df_ds(3:SDIV-2,m) = (-f(5:SDIV,m)+8.e0_wp*f(4:SDIV-1,m)-8.e0_wp*f(2:SDIV-3,m)+f(1:SDIV-4,m)) / (12.e0_wp*DS)
-      end do
-      return
-    end if
-
-    inv60DS = 1.e0_wp / (60.e0_wp * DS)
-    ! 6th-order one-sided boundaries
-    df_ds(1,:) = (-147.e0_wp*f(1,:)+360.e0_wp*f(2,:)-450.e0_wp*f(3,:)+400.e0_wp*f(4,:) &
-                  -225.e0_wp*f(5,:)+ 72.e0_wp*f(6,:)- 10.e0_wp*f(7,:)) * inv60DS
-    df_ds(2,:) = ( -10.e0_wp*f(1,:)- 77.e0_wp*f(2,:)+150.e0_wp*f(3,:)-100.e0_wp*f(4,:) &
-                  +  50.e0_wp*f(5,:)- 15.e0_wp*f(6,:)+  2.e0_wp*f(7,:)) * inv60DS
-    df_ds(3,:) = (   2.e0_wp*f(1,:)- 24.e0_wp*f(2,:)- 35.e0_wp*f(3,:)+ 80.e0_wp*f(4,:) &
-                  -  30.e0_wp*f(5,:)+  8.e0_wp*f(6,:)-       f(7,:)) * inv60DS
-    df_ds(SDIV-2,:) = (        f(SDIV-6,:)-  8.e0_wp*f(SDIV-5,:)+ 30.e0_wp*f(SDIV-4,:)- 80.e0_wp*f(SDIV-3,:) &
-                      + 35.e0_wp*f(SDIV-2,:)+ 24.e0_wp*f(SDIV-1,:)-  2.e0_wp*f(SDIV,:)) * inv60DS
-    df_ds(SDIV-1,:) = (  -2.e0_wp*f(SDIV-6,:)+ 15.e0_wp*f(SDIV-5,:)- 50.e0_wp*f(SDIV-4,:)+100.e0_wp*f(SDIV-3,:) &
-                      -150.e0_wp*f(SDIV-2,:)+ 77.e0_wp*f(SDIV-1,:)+ 10.e0_wp*f(SDIV,:)) * inv60DS
-    df_ds(SDIV,:)   = (  10.e0_wp*f(SDIV-6,:)- 72.e0_wp*f(SDIV-5,:)+225.e0_wp*f(SDIV-4,:)-400.e0_wp*f(SDIV-3,:) &
-                      +450.e0_wp*f(SDIV-2,:)-360.e0_wp*f(SDIV-1,:)+147.e0_wp*f(SDIV,:)) * inv60DS
-    ! 6th-order centered interior
-    do m = 1, MDIV
-      df_ds(4:SDIV-3,m) = (   -f(1:SDIV-6,m)+ 9.e0_wp*f(2:SDIV-5,m)- 45.e0_wp*f(3:SDIV-4,m) &
-                          + 45.e0_wp*f(5:SDIV-2,m)-  9.e0_wp*f(6:SDIV-1,m)+       f(7:SDIV,m)) * inv60DS
-    end do
+    call deriv_s_sub(f, df_ds)
   end function deriv_s_vec
 
   pure function deriv_m_vec(f) result(df_dm)
-    use para_mod, only : SDIV, MDIV, DM
+    use para_mod, only : SDIV, MDIV
     real(wp), dimension(SDIV,MDIV), intent(in) :: f
     real(wp), dimension(SDIV,MDIV) :: df_dm
-    real(wp) :: inv60DM
-    if (abs(r_ratio - 1.e0_wp) < epsilon(r_ratio)) then
-      df_dm = 0.e0_wp
-      return
-    end if
-    if (MDIV < 5) then
-      df_dm(:,1) = (f(:,2) - f(:,1)) / DM
-      if (MDIV > 2) df_dm(:,2:MDIV-1) = (f(:,3:MDIV) - f(:,1:MDIV-2)) / (2.e0_wp * DM)
-      df_dm(:,MDIV) = (f(:,MDIV) - f(:,MDIV-1)) / DM
-      return
-    end if
-
-    if (MDIV < 7) then
-      df_dm(:,1) = (-25.e0_wp*f(:,1)+48.e0_wp*f(:,2)-36.e0_wp*f(:,3)+16.e0_wp*f(:,4)-3.e0_wp*f(:,5)) / (12.e0_wp*DM)
-      df_dm(:,2) = ( -3.e0_wp*f(:,1)-10.e0_wp*f(:,2)+18.e0_wp*f(:,3)-6.e0_wp*f(:,4)+f(:,5)) / (12.e0_wp*DM)
-      df_dm(:,MDIV-1) = (3.e0_wp*f(:,MDIV)+10.e0_wp*f(:,MDIV-1)-18.e0_wp*f(:,MDIV-2)+6.e0_wp*f(:,MDIV-3)-f(:,MDIV-4)) / (12.e0_wp*DM)
-      df_dm(:,MDIV) = (25.e0_wp*f(:,MDIV)-48.e0_wp*f(:,MDIV-1)+36.e0_wp*f(:,MDIV-2)-16.e0_wp*f(:,MDIV-3)+3.e0_wp*f(:,MDIV-4)) / (12.e0_wp*DM)
-      df_dm(:,3:MDIV-2) = (-f(:,5:MDIV)+8.e0_wp*f(:,4:MDIV-1)-8.e0_wp*f(:,2:MDIV-3)+f(:,1:MDIV-4)) / (12.e0_wp*DM)
-      return
-    end if
-
-    inv60DM = 1.e0_wp / (60.e0_wp * DM)
-    ! 6th-order one-sided boundaries
-    df_dm(:,1) = (-147.e0_wp*f(:,1)+360.e0_wp*f(:,2)-450.e0_wp*f(:,3)+400.e0_wp*f(:,4) &
-                  -225.e0_wp*f(:,5)+ 72.e0_wp*f(:,6)- 10.e0_wp*f(:,7)) * inv60DM
-    df_dm(:,2) = ( -10.e0_wp*f(:,1)- 77.e0_wp*f(:,2)+150.e0_wp*f(:,3)-100.e0_wp*f(:,4) &
-                  +  50.e0_wp*f(:,5)- 15.e0_wp*f(:,6)+  2.e0_wp*f(:,7)) * inv60DM
-    df_dm(:,3) = (   2.e0_wp*f(:,1)- 24.e0_wp*f(:,2)- 35.e0_wp*f(:,3)+ 80.e0_wp*f(:,4) &
-                  -  30.e0_wp*f(:,5)+  8.e0_wp*f(:,6)-       f(:,7)) * inv60DM
-    df_dm(:,MDIV-2) = (        f(:,MDIV-6)-  8.e0_wp*f(:,MDIV-5)+ 30.e0_wp*f(:,MDIV-4)- 80.e0_wp*f(:,MDIV-3) &
-                      + 35.e0_wp*f(:,MDIV-2)+ 24.e0_wp*f(:,MDIV-1)-  2.e0_wp*f(:,MDIV)) * inv60DM
-    df_dm(:,MDIV-1) = (  -2.e0_wp*f(:,MDIV-6)+ 15.e0_wp*f(:,MDIV-5)- 50.e0_wp*f(:,MDIV-4)+100.e0_wp*f(:,MDIV-3) &
-                      -150.e0_wp*f(:,MDIV-2)+ 77.e0_wp*f(:,MDIV-1)+ 10.e0_wp*f(:,MDIV)) * inv60DM
-    df_dm(:,MDIV)   = (  10.e0_wp*f(:,MDIV-6)- 72.e0_wp*f(:,MDIV-5)+225.e0_wp*f(:,MDIV-4)-400.e0_wp*f(:,MDIV-3) &
-                      +450.e0_wp*f(:,MDIV-2)-360.e0_wp*f(:,MDIV-1)+147.e0_wp*f(:,MDIV)) * inv60DM
-    ! 6th-order centered interior — column-contiguous slice, no loop needed
-    df_dm(:,4:MDIV-3) = (   -f(:,1:MDIV-6)+ 9.e0_wp*f(:,2:MDIV-5)- 45.e0_wp*f(:,3:MDIV-4) &
-                        + 45.e0_wp*f(:,5:MDIV-2)-  9.e0_wp*f(:,6:MDIV-1)+       f(:,7:MDIV)) * inv60DM
+    call deriv_m_sub(f, df_dm)
   end function deriv_m_vec
 
   function deriv_sm_vec(f) result(df_dsm)
     use para_mod, only : SDIV, MDIV
     real(wp), dimension(SDIV,MDIV), intent(in) :: f
-    real(wp), dimension(SDIV,MDIV) :: df_dsm
-    df_dsm = deriv_m_vec(deriv_s_vec(f))
+    real(wp), dimension(SDIV,MDIV) :: df_dsm, temp
+    call deriv_s_sub(f, temp)
+    call deriv_m_sub(temp, df_dsm)
   end function deriv_sm_vec
 
   subroutine update_equatorial_radius(r_e_old, r_e_new, dif, sphi_pole_h, gama_pole_h, rho_pole_h, &
@@ -160,20 +87,22 @@ contains
     real(wp), intent(out)   :: sphi_pole_h, gama_pole_h, rho_pole_h
     real(wp), intent(out)   :: gama_equator_h, rho_equator_h, ww_equator_h, sphi_equator_h
     real(wp), intent(out)   :: sphi_center_h, gama_center_h, rho_center_h
-    real(wp) :: s_p, r_e_new_sq, grgr
-    real(wp), dimension(SDIV) :: gama_mu_1, gama_mu_0, rho_mu_1, rho_mu_0, ww_mu_0, sphi_mu_0, sphi_mu_1
+    real(wp) :: r_e_new_sq, grgr
+    real(wp), save :: s_p_cached = -1.e0_wp ! don't recompute every iteration
+    real(wp), save :: r_ratio_prev = -1.e0_wp
 
-    rho_mu_0  = rho(:,1);    gama_mu_0 = gama(:,1);    sphi_mu_0 = sphi(:,1);    ww_mu_0 = ww(:,1)
-    rho_mu_1  = rho(:,MDIV); gama_mu_1 = gama(:,MDIV); sphi_mu_1 = sphi(:,MDIV)
-    
-    s_p = r_ratio**(1.e0_wp/dble(s_pwr)) / ( 1.e0_wp + r_ratio**(1.e0_wp/dble(s_pwr)) ) 
-    call interp(s_gp, sphi_mu_1, SDIV, s_p, sphi_pole_h   )
-    call interp(s_gp, gama_mu_1, SDIV, s_p, gama_pole_h   )
-    call interp(s_gp, rho_mu_1,  SDIV, s_p, rho_pole_h    )
-    call interp(s_gp, gama_mu_0, SDIV, s_e, gama_equator_h)
-    call interp(s_gp, rho_mu_0,  SDIV, s_e, rho_equator_h )
-    call interp(s_gp, ww_mu_0,   SDIV, s_e, ww_equator_h  )
-    call interp(s_gp, sphi_mu_0, SDIV, s_e, sphi_equator_h)
+    if (r_ratio /= r_ratio_prev) then
+      r_ratio_prev = r_ratio
+      s_p_cached = r_ratio**(1.e0_wp/dble(s_pwr)) / (1.e0_wp + r_ratio**(1.e0_wp/dble(s_pwr)))
+    end if
+
+    call interp(s_gp, sphi(:,MDIV), SDIV, s_p_cached, sphi_pole_h   )
+    call interp(s_gp, gama(:,MDIV), SDIV, s_p_cached, gama_pole_h   )
+    call interp(s_gp, rho(:,MDIV),  SDIV, s_p_cached, rho_pole_h    )
+    call interp(s_gp, gama(:,1),    SDIV, s_e,        gama_equator_h)
+    call interp(s_gp, rho(:,1),     SDIV, s_e,        rho_equator_h )
+    call interp(s_gp, ww(:,1),      SDIV, s_e,        ww_equator_h  )
+    call interp(s_gp, sphi(:,1),    SDIV, s_e,        sphi_equator_h)
     sphi_center_h = sphi(1,1)
     gama_center_h = gama(1,1)
     rho_center_h  = rho(1,1)
@@ -331,20 +260,24 @@ contains
   subroutine update_eos_and_velocity(r_e_new, gama_pole_h, rho_pole_h, sphi_pole_h)
     use rotation_law_mod, only: intF
     real(wp), intent(in) :: r_e_new, gama_pole_h, rho_pole_h, sphi_pole_h
-    real(wp), dimension(SDIV,MDIV) :: sgp_term, sin_theta_2d, sgp_2d
-    logical, dimension(SDIV,MDIV) :: valid
     integer :: s, m
+    real(wp) :: re2, log_p_val, log_e_val
 
-    sgp_term = spread(s_gp / (1.e0_wp - s_gp), 2, MDIV)
-    sin_theta_2d = spread(sin_theta, 1, SDIV)
-    velocity_sq = merge(0.e0_wp, ((Omg - ww) * sgp_term * sin_theta_2d * exp(-rho * r_e_new**2))**2, &
-                        abs(r_ratio - 1.e0_wp) < epsilon(r_ratio))
+    re2 = r_e_new**2
 
-    where (velocity_sq > 1.e0_wp) velocity_sq = 0.e0_wp
-
-    enthalpy = enthalpy_min + 0.5e0_wp * ( &
-          r_e_new**2 * ( gama_pole_h + rho_pole_h - gama - rho + ( sphi**2 - sphi_pole_h**2 ) * B_coup / 2.e0_wp ) &
-          - log( max(1.e-300_wp, 1.e0_wp-velocity_sq) )  )
+    ! Trick 5: Cache the rotation check and skip log for non-rotating case
+    if (abs(r_ratio - 1.e0_wp) < epsilon(r_ratio)) then
+      ! Non-rotating case: velocity_sq = 0 everywhere, skip expensive log call
+      velocity_sq = 0.e0_wp
+      enthalpy = enthalpy_min + 0.5e0_wp * re2 * ( gama_pole_h + rho_pole_h - gama - rho + ( sphi**2 - sphi_pole_h**2 ) * B_coup / 2.e0_wp )
+    else
+      ! Rotating case: compute velocity field and include log term
+      velocity_sq = ((Omg - ww) * sgp_term_2d_cache * sin_theta_2d_cache * exp(-rho * re2))**2
+      where (velocity_sq > 1.e0_wp) velocity_sq = 0.e0_wp
+      enthalpy = enthalpy_min + 0.5e0_wp * ( &
+            re2 * ( gama_pole_h + rho_pole_h - gama - rho + ( sphi**2 - sphi_pole_h**2 ) * B_coup / 2.e0_wp ) &
+            - log( max(1.e-300_wp, 1.e0_wp-velocity_sq) )  )
+    end if
 
     if ( trim(solver_type) == "const_j" ) then
       enthalpy = enthalpy + 0.5e0_wp * A_diff**2 * (Omg - Omega_c)**2
@@ -356,21 +289,27 @@ contains
       end do
     endif
 
-    sgp_2d = spread(s_gp, 2, MDIV)
-    valid = (enthalpy > enthalpy_min) .and. (sgp_2d <= s_e)
+    ! Trick 2+4: Fuse exp+log chain and skip exterior points with explicit loop
+    do m = 1, MDIV
+      do s = 1, SDIV
+        if (enthalpy(s,m) > enthalpy_min .and. sgp_2d_cache(s,m) <= s_e) then
+          ! Interior point: evaluate EOS with fused log chain (skip exp→log round-trip)
+          log_p_val = interp_log_h_to_p(log(enthalpy(s,m)))
+          log_e_val = interp_log_p_to_e(log_p_val)
+          pressure(s,m) = exp(log_p_val)
+          energy(s,m)   = exp(log_e_val)
+        else
+          ! Exterior or invalid point: vacuum
+          enthalpy(s,m) = enthalpy_min
+          pressure(s,m) = 0.e0_wp
+          energy(s,m)   = 0.e0_wp
+        end if
+      end do
+    end do
 
-    where (.not. valid)
-      enthalpy = enthalpy_min
-      pressure = 0.e0_wp
-      energy   = 0.e0_wp
-    elsewhere
-      pressure = exp( interp_log_h_to_p( log(enthalpy) ) )
-      energy   = exp( interp_log_p_to_e( log(pressure) ) )
-    end where
-    ! Rescale back metric potentials (except omega)
-    rho   = rho   * r_e_new**2
-    gama  = gama  * r_e_new**2
-    alpha = alpha * r_e_new**2
+    rho   = rho   * re2
+    gama  = gama  * re2
+    alpha = alpha * re2
     sphi  = sphi  * r_e_new
   end subroutine update_eos_and_velocity
 
@@ -401,33 +340,33 @@ contains
       end do
     end if
 
-    dg_s_cache = deriv_s_vec(gama)
-    dr_s_cache = deriv_s_vec(rho)
-    dww_s_cache = deriv_s_vec(ww)
-    ds_s_cache = deriv_s_vec(sphi)
+    call deriv_s_sub(gama, dg_s_cache)
+    call deriv_s_sub(rho, dr_s_cache)
+    call deriv_s_sub(ww, dww_s_cache)
+    call deriv_s_sub(sphi, ds_s_cache)
     if (abs(r_ratio - 1.e0_wp) < epsilon(r_ratio)) then
       dg_m_cache = 0.e0_wp
       dr_m_cache = 0.e0_wp
       dww_m_cache = 0.e0_wp
       ds_m_cache = 0.e0_wp
     else
-      dg_m_cache = deriv_m_vec(gama)
-      dr_m_cache = deriv_m_vec(rho)
-      dww_m_cache = deriv_m_vec(ww)
-      ds_m_cache = deriv_m_vec(sphi)
+      call deriv_m_sub(gama, dg_m_cache)
+      call deriv_m_sub(rho, dr_m_cache)
+      call deriv_m_sub(ww, dww_m_cache)
+      call deriv_m_sub(sphi, ds_m_cache)
     end if
 
     s1 = s_gp * (1.e0_wp - s_gp)
     m1 = 1.e0_wp - mu**2
     one_minus_2s = 1.e0_wp - 2.e0_wp * s_gp
-    d2g_ss_cache = deriv_s_vec(dg_s_cache)
+    call deriv_s_sub(dg_s_cache, d2g_ss_cache)
     do m = 1, MDIV
       d2g_ss_cache(:,m) = s1 * d2g_ss_cache(:,m) + one_minus_2s * dg_s_cache(:,m)
     end do
     if (abs(r_ratio - 1.e0_wp) < epsilon(r_ratio)) then
       d2g_mm_cache = 0.e0_wp
     else
-      d2g_mm_cache = deriv_m_vec(dg_m_cache)
+      call deriv_m_sub(dg_m_cache, d2g_mm_cache)
       do m = 1, MDIV
         d2g_mm_cache(:,m) = m1(m) * d2g_mm_cache(:,m) - 2.e0_wp * mu(m) * dg_m_cache(:,m)
       end do
@@ -737,30 +676,6 @@ contains
     end subroutine integrate_massive_sphi
   end subroutine radial_integration
 
-  subroutine compute_effective_d01gaf_weights(x, w)
-    real(wp), intent(in) :: x(:)
-    real(wp), intent(out) :: w(:)
-    real(wp), allocatable :: basis(:)
-    real(wp) :: ans, er
-    integer :: i, ifail, n
-
-    n = size(x)
-    if (size(w) /= n) stop "compute_effective_d01gaf_weights: size mismatch"
-
-    allocate(basis(n))
-    basis = 0.e0_wp
-
-    do i = 1, n
-      basis(i) = 1.e0_wp
-      call d01gaf(x, basis, n, ans, er, ifail)
-      if (ifail /= 0) stop "compute_effective_d01gaf_weights: d01gaf failed"
-      w(i) = ans
-      basis(i) = 0.e0_wp
-    end do
-
-    deallocate(basis)
-  end subroutine compute_effective_d01gaf_weights
-
   subroutine sum_coefficients_and_get_targets(target_rho, target_gama, target_ww, target_sphi, &
                                               D2_metric_rho, D2_metric_gama, D2_metric_omega, D2_metric_sphi)
     real(wp), intent(out) :: target_rho(:,:), target_gama(:,:), target_ww(:,:), target_sphi(:,:)
@@ -852,7 +767,7 @@ contains
       sgp_ratio_cache = s_gp / (1.e0_wp-s_gp)
 
       da_dm(1,:) = 0.0e0_wp
-      d_gama_sm_all = deriv_m_vec(dg_s_cache)
+      call deriv_m_sub(dg_s_cache, d_gama_sm_all)
       do m = 1, MDIV
         mu_m = mu(m)
         m1   = 1.e0_wp - mu_m**2
@@ -901,8 +816,6 @@ contains
       write(*,*) "Error: Alpha fails in at least one row."
       stop "alpha fails"
     end if
-    omg= omg / r_e_new
-    ww = ww / r_e_new
   end subroutine update_alpha_potential
 
   subroutine get_all_targets(r_e_new, root_mphi_re, &
@@ -1210,13 +1123,15 @@ contains
   end subroutine relaxation
 
   subroutine allocate_workspace
+    real(wp), allocatable :: sgp_term_1d(:)
     allocate(e_gsm_cache(SDIV,MDIV), e_rsm_cache(SDIV,MDIV), e2alpha_r2_cache(SDIV,MDIV))
     allocate(Acoup4_cache(SDIV,MDIV))
     allocate(dg_s_cache(SDIV,MDIV), dg_m_cache(SDIV,MDIV), d2g_ss_cache(SDIV,MDIV), d2g_mm_cache(SDIV,MDIV))
     allocate(dr_s_cache(SDIV,MDIV), dr_m_cache(SDIV,MDIV), dww_s_cache(SDIV,MDIV), dww_m_cache(SDIV,MDIV))
-    allocate(ds_s_cache(SDIV,MDIV), ds_m_cache(SDIV,MDIV)) 
+    allocate(ds_s_cache(SDIV,MDIV), ds_m_cache(SDIV,MDIV))
     allocate(mr_cache(SDIV), besseli_cache(LMAX+1,SDIV), besselk_cache(LMAX+1,SDIV), wfac_cache(SDIV))
     allocate(s1_geom(SDIV), s1_sq_geom(SDIV), s1_one_minus_s_geom(SDIV), s2_geom(SDIV), sgp4_geom(SDIV), m1_geom(MDIV))
+    allocate(sgp_term_2d_cache(SDIV,MDIV), sin_theta_2d_cache(SDIV,MDIV), sgp_2d_cache(SDIV,MDIV))
     allocate(radial_quad_weights(SDIV), angular_quad_weights(MDIV))
     allocate(weighted_even_basis(MDIV,LMAX+1))
     allocate(weighted_gama_basis(MDIV,LMAX))
@@ -1235,6 +1150,12 @@ contains
     s2_geom = (s_gp / (1.e0_wp - s_gp))**2
     sgp4_geom = s_gp**4
     m1_geom = 1.e0_wp - mu**2
+    allocate(sgp_term_1d(SDIV))
+    sgp_term_1d = s_gp / (1.e0_wp - s_gp)
+    sgp_term_2d_cache = spread(sgp_term_1d, 2, MDIV)
+    sin_theta_2d_cache = spread(sin_theta, 1, SDIV)
+    sgp_2d_cache = spread(s_gp, 2, MDIV)
+    deallocate(sgp_term_1d)
     weighted_even_basis = spread(angular_quad_weights, 2, LMAX+1) * P_2n
     if (LMAX > 0) then
       weighted_gama_basis = spread(angular_quad_weights, 2, LMAX) * sin_2n_1_theta
@@ -1247,9 +1168,10 @@ contains
     deallocate(Acoup4_cache)
     deallocate(dg_s_cache, dg_m_cache, d2g_ss_cache, d2g_mm_cache)
     deallocate(dr_s_cache, dr_m_cache, dww_s_cache, dww_m_cache)
-    deallocate(ds_s_cache, ds_m_cache) 
+    deallocate(ds_s_cache, ds_m_cache)
     deallocate(mr_cache, besseli_cache, besselk_cache, wfac_cache)
     deallocate(s1_geom, s1_sq_geom, s1_one_minus_s_geom, s2_geom, sgp4_geom, m1_geom)
+    deallocate(sgp_term_2d_cache, sin_theta_2d_cache, sgp_2d_cache)
     deallocate(weighted_even_basis, weighted_gama_basis, weighted_omega_basis)
     deallocate(target_rho, target_gama, target_ww, target_sphi)
     deallocate(S_metric_rho, S_metric_gama, S_metric_omega, S_metric_sphi)
@@ -1258,6 +1180,110 @@ contains
     if (allocated(radial_quad_weights)) deallocate(radial_quad_weights)
     if (allocated(angular_quad_weights)) deallocate(angular_quad_weights)
   end subroutine deallocate_workspace
+
+  pure subroutine deriv_s_sub(f, df_ds)
+    use para_mod, only : SDIV, MDIV, DS
+    real(wp), dimension(SDIV,MDIV), intent(in)  :: f
+    real(wp), dimension(SDIV,MDIV), intent(out) :: df_ds
+    real(wp) :: inv60DS
+    if (SDIV < 5) then
+      df_ds(1,:) = (f(2,:) - f(1,:)) / DS
+      if (SDIV > 2) df_ds(2:SDIV-1,:) = (f(3:SDIV,:) - f(1:SDIV-2,:)) / (2.e0_wp * DS)
+      df_ds(SDIV,:) = (f(SDIV,:) - f(SDIV-1,:)) / DS
+      return
+    end if
+
+    if (SDIV < 7) then
+      df_ds(1,:) = (-25.e0_wp*f(1,:)+48.e0_wp*f(2,:)-36.e0_wp*f(3,:)+16.e0_wp*f(4,:)-3.e0_wp*f(5,:)) / (12.e0_wp*DS)
+      df_ds(2,:) = ( -3.e0_wp*f(1,:)-10.e0_wp*f(2,:)+18.e0_wp*f(3,:)-6.e0_wp*f(4,:)+f(5,:)) / (12.e0_wp*DS)
+      df_ds(SDIV-1,:) = (3.e0_wp*f(SDIV,:)+10.e0_wp*f(SDIV-1,:)-18.e0_wp*f(SDIV-2,:)+6.e0_wp*f(SDIV-3,:)-f(SDIV-4,:)) / (12.e0_wp*DS)
+      df_ds(SDIV,:) = (25.e0_wp*f(SDIV,:)-48.e0_wp*f(SDIV-1,:)+36.e0_wp*f(SDIV-2,:)-16.e0_wp*f(SDIV-3,:)+3.e0_wp*f(SDIV-4,:)) / (12.e0_wp*DS)
+      df_ds(3:SDIV-2,:) = (-f(5:SDIV,:)+8.e0_wp*f(4:SDIV-1,:)-8.e0_wp*f(2:SDIV-3,:)+f(1:SDIV-4,:)) / (12.e0_wp*DS)
+      return
+    end if
+
+    inv60DS = 1.e0_wp / (60.e0_wp * DS)
+    df_ds(1,:) = (-147.e0_wp*f(1,:)+360.e0_wp*f(2,:)-450.e0_wp*f(3,:)+400.e0_wp*f(4,:) &
+                  -225.e0_wp*f(5,:)+ 72.e0_wp*f(6,:)- 10.e0_wp*f(7,:)) * inv60DS
+    df_ds(2,:) = ( -10.e0_wp*f(1,:)- 77.e0_wp*f(2,:)+150.e0_wp*f(3,:)-100.e0_wp*f(4,:) &
+                  +  50.e0_wp*f(5,:)- 15.e0_wp*f(6,:)+  2.e0_wp*f(7,:)) * inv60DS
+    df_ds(3,:) = (   2.e0_wp*f(1,:)- 24.e0_wp*f(2,:)- 35.e0_wp*f(3,:)+ 80.e0_wp*f(4,:) &
+                  -  30.e0_wp*f(5,:)+  8.e0_wp*f(6,:)-       f(7,:)) * inv60DS
+    df_ds(SDIV-2,:) = (        f(SDIV-6,:)-  8.e0_wp*f(SDIV-5,:)+ 30.e0_wp*f(SDIV-4,:)- 80.e0_wp*f(SDIV-3,:) &
+                      + 35.e0_wp*f(SDIV-2,:)+ 24.e0_wp*f(SDIV-1,:)-  2.e0_wp*f(SDIV,:)) * inv60DS
+    df_ds(SDIV-1,:) = (  -2.e0_wp*f(SDIV-6,:)+ 15.e0_wp*f(SDIV-5,:)- 50.e0_wp*f(SDIV-4,:)+100.e0_wp*f(SDIV-3,:) &
+                      -150.e0_wp*f(SDIV-2,:)+ 77.e0_wp*f(SDIV-1,:)+ 10.e0_wp*f(SDIV,:)) * inv60DS
+    df_ds(SDIV,:)   = (  10.e0_wp*f(SDIV-6,:)- 72.e0_wp*f(SDIV-5,:)+225.e0_wp*f(SDIV-4,:)-400.e0_wp*f(SDIV-3,:) &
+                      +450.e0_wp*f(SDIV-2,:)-360.e0_wp*f(SDIV-1,:)+147.e0_wp*f(SDIV,:)) * inv60DS
+    df_ds(4:SDIV-3,:) = (-f(1:SDIV-6,:) + 9.e0_wp*f(2:SDIV-5,:) - 45.e0_wp*f(3:SDIV-4,:) &
+                       + 45.e0_wp*f(5:SDIV-2,:) - 9.e0_wp*f(6:SDIV-1,:) + f(7:SDIV,:)) * inv60DS
+  end subroutine deriv_s_sub
+
+  pure subroutine deriv_m_sub(f, df_dm)
+    use para_mod, only : SDIV, MDIV, DM
+    real(wp), dimension(SDIV,MDIV), intent(in)  :: f
+    real(wp), dimension(SDIV,MDIV), intent(out) :: df_dm
+    real(wp) :: inv60DM
+    if (abs(r_ratio - 1.e0_wp) < epsilon(r_ratio)) then
+      df_dm = 0.e0_wp
+      return
+    end if
+    if (MDIV < 5) then
+      df_dm(:,1) = (f(:,2) - f(:,1)) / DM
+      if (MDIV > 2) df_dm(:,2:MDIV-1) = (f(:,3:MDIV) - f(:,1:MDIV-2)) / (2.e0_wp * DM)
+      df_dm(:,MDIV) = (f(:,MDIV) - f(:,MDIV-1)) / DM
+      return
+    end if
+
+    if (MDIV < 7) then
+      df_dm(:,1) = (-25.e0_wp*f(:,1)+48.e0_wp*f(:,2)-36.e0_wp*f(:,3)+16.e0_wp*f(:,4)-3.e0_wp*f(:,5)) / (12.e0_wp*DM)
+      df_dm(:,2) = ( -3.e0_wp*f(:,1)-10.e0_wp*f(:,2)+18.e0_wp*f(:,3)-6.e0_wp*f(:,4)+f(:,5)) / (12.e0_wp*DM)
+      df_dm(:,MDIV-1) = (3.e0_wp*f(:,MDIV)+10.e0_wp*f(:,MDIV-1)-18.e0_wp*f(:,MDIV-2)+6.e0_wp*f(:,MDIV-3)-f(:,MDIV-4)) / (12.e0_wp*DM)
+      df_dm(:,MDIV) = (25.e0_wp*f(:,MDIV)-48.e0_wp*f(:,MDIV-1)+36.e0_wp*f(:,MDIV-2)-16.e0_wp*f(:,MDIV-3)+3.e0_wp*f(:,MDIV-4)) / (12.e0_wp*DM)
+      df_dm(:,3:MDIV-2) = (-f(:,5:MDIV)+8.e0_wp*f(:,4:MDIV-1)-8.e0_wp*f(:,2:MDIV-3)+f(:,1:MDIV-4)) / (12.e0_wp*DM)
+      return
+    end if
+
+    inv60DM = 1.e0_wp / (60.e0_wp * DM)
+    df_dm(:,1) = (-147.e0_wp*f(:,1)+360.e0_wp*f(:,2)-450.e0_wp*f(:,3)+400.e0_wp*f(:,4) &
+                  -225.e0_wp*f(:,5)+ 72.e0_wp*f(:,6)- 10.e0_wp*f(:,7)) * inv60DM
+    df_dm(:,2) = ( -10.e0_wp*f(:,1)- 77.e0_wp*f(:,2)+150.e0_wp*f(:,3)-100.e0_wp*f(:,4) &
+                  +  50.e0_wp*f(:,5)- 15.e0_wp*f(:,6)+  2.e0_wp*f(:,7)) * inv60DM
+    df_dm(:,3) = (   2.e0_wp*f(:,1)- 24.e0_wp*f(:,2)- 35.e0_wp*f(:,3)+ 80.e0_wp*f(:,4) &
+                  -  30.e0_wp*f(:,5)+  8.e0_wp*f(:,6)-       f(:,7)) * inv60DM
+    df_dm(:,MDIV-2) = (        f(:,MDIV-6)-  8.e0_wp*f(:,MDIV-5)+ 30.e0_wp*f(:,MDIV-4)- 80.e0_wp*f(:,MDIV-3) &
+                      + 35.e0_wp*f(:,MDIV-2)+ 24.e0_wp*f(:,MDIV-1)-  2.e0_wp*f(:,MDIV)) * inv60DM
+    df_dm(:,MDIV-1) = (  -2.e0_wp*f(:,MDIV-6)+ 15.e0_wp*f(:,MDIV-5)- 50.e0_wp*f(:,MDIV-4)+100.e0_wp*f(:,MDIV-3) &
+                      -150.e0_wp*f(:,MDIV-2)+ 77.e0_wp*f(:,MDIV-1)+ 10.e0_wp*f(:,MDIV)) * inv60DM
+    df_dm(:,MDIV)   = (  10.e0_wp*f(:,MDIV-6)- 72.e0_wp*f(:,MDIV-5)+225.e0_wp*f(:,MDIV-4)-400.e0_wp*f(:,MDIV-3) &
+                      +450.e0_wp*f(:,MDIV-2)-360.e0_wp*f(:,MDIV-1)+147.e0_wp*f(:,MDIV)) * inv60DM
+    df_dm(:,4:MDIV-3) = (-f(:,1:MDIV-6) + 9.e0_wp*f(:,2:MDIV-5) - 45.e0_wp*f(:,3:MDIV-4) &
+                       + 45.e0_wp*f(:,5:MDIV-2) - 9.e0_wp*f(:,6:MDIV-1) + f(:,7:MDIV)) * inv60DM
+  end subroutine deriv_m_sub
+
+  subroutine compute_effective_d01gaf_weights(x, w)
+    real(wp), intent(in) :: x(:)
+    real(wp), intent(out) :: w(:)
+    real(wp), allocatable :: basis(:)
+    real(wp) :: ans, er
+    integer :: i, ifail, n
+
+    n = size(x)
+    if (size(w) /= n) stop "compute_effective_d01gaf_weights: size mismatch"
+
+    allocate(basis(n))
+    basis = 0.e0_wp
+
+    do i = 1, n
+      basis(i) = 1.e0_wp
+      call d01gaf(x, basis, n, ans, er, ifail)
+      if (ifail /= 0) stop "compute_effective_d01gaf_weights: d01gaf failed"
+      w(i) = ans
+      basis(i) = 0.e0_wp
+    end do
+
+    deallocate(basis)
+  end subroutine compute_effective_d01gaf_weights
 
   subroutine output_helper(D2_metric_rho, D2_metric_omega)
     real(wp), intent(in) :: D2_metric_rho(SDIV,LMAX+1), D2_metric_omega(SDIV,LMAX+1)

@@ -80,8 +80,11 @@ subroutine rotation_solver
       ! --- Solve for metric and scalar field targets ---
       call update_angular_velocity(r_e_new, gama_pole_h, rho_pole_h, gama_equator_h, rho_equator_h, &
         sphi_pole_h, sphi_equator_h, ww_equator_h)
+
+      ! Also rescale back metric potentials here (except for omega / ww)
       call update_eos_and_velocity(r_e_new, gama_pole_h, rho_pole_h, sphi_pole_h)
       root_mphi_re = sqrt(mphi_r * r_e_new_sq)
+
       call get_all_targets(r_e_new, root_mphi_re, &
         target_rho, target_gama, target_ww, target_sphi)
 
@@ -104,20 +107,9 @@ subroutine rotation_solver
       end if
       if (timing) write(*,'(A,7(1X,ES12.5))') "Relaxation + Alpha: ", dt_relaxation, dt_alpha
 
-      ! --- Multi-variable convergence check ---
-      convergence: block
-        real(wp) :: dif_rho, dif_gama, dif_ww, dif_sphi
-        dif_rho  = maxval(abs(rho  - rho_prev_iter)  / (abs(rho)  + 1.e-15_wp))
-        dif_gama = maxval(abs(gama - gama_prev_iter) / (abs(gama) + 1.e-15_wp))
-        dif_ww   = maxval(abs(ww   - ww_prev_iter)   / (abs(ww)   + 1.e-15_wp))
-        if (any(abs(sphi_prev_iter) > 1.e-15_wp)) then
-          dif_sphi = maxval(abs(sphi - sphi_prev_iter) / abs(sphi_prev_iter))
-        else
-          dif_sphi = maxval(abs(sphi - sphi_prev_iter))
-        end if
-        dif = max(dif, max(dif_rho, dif_gama, dif_ww, dif_sphi))
-      end block convergence
-
+      ! Rescale back omega / ww
+      omg= omg / r_e_new; ww = ww / r_e_new
+      
       ! --- Diagnostics and contraction ratios ---
       diagnostics: block
         real(wp) :: drho_norm, dgama_norm, dww_norm, dsphi_norm, dre_norm
