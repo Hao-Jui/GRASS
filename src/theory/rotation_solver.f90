@@ -13,6 +13,7 @@ module rotation_uniform
     dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, &
     dww_s_cache, dww_m_cache, ds_s_cache, ds_m_cache, &
     d2g_ss_cache, d2g_mm_cache, e_rsm_cache, &
+    sgp_term_2d_cache, sin_theta_2d_cache, sgp_2d_cache, &
     D2_metric_rho, D2_metric_omega, &
     allocate_workspace, deallocate_workspace, &
     update_equatorial_radius, update_angular_velocity, &
@@ -82,7 +83,8 @@ subroutine rotation_solver
         sphi_pole_h, sphi_equator_h, ww_equator_h)
 
       ! Also rescale back metric potentials here (except for omega / ww)
-      call update_eos_and_velocity(r_e_new, gama_pole_h, rho_pole_h, sphi_pole_h)
+      call update_eos_and_velocity(r_e_new, gama_pole_h, rho_pole_h, sphi_pole_h, &
+                                   sgp_term_2d_cache, sin_theta_2d_cache, sgp_2d_cache)
       root_mphi_re = sqrt(mphi_r * r_e_new_sq)
 
       call get_all_targets(r_e_new, root_mphi_re, &
