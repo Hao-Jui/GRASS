@@ -35,18 +35,16 @@ subroutine rotation_solver
   ! ---------------------------------------------------------------
   ! Setup phase
   ! ---------------------------------------------------------------
-  setup: block
-    zero_scalar_mode = merge(.true., .false., active_theory == THEORY_GR)
-    sqrt_B_coup = sqrt(B_coup)
-    dif = 1.e0_wp
-    n_of_it = 0
-    r_e_new = r_e
-    r_e_new_sq = r_e_new**2
+  zero_scalar_mode = merge(.true., .false., active_theory == THEORY_GR)
+  sqrt_B_coup = sqrt(B_coup)
+  dif = 1.e0_wp
+  n_of_it = 0
+  r_e_new = r_e
+  r_e_new_sq = r_e_new**2
 
-    if ( maxval(sphi*sqrt_B_coup) < 1.e-3_wp ) sphi = sphi * 10.e0_wp
-    if (zero_scalar_mode) sphi = 0.e0_wp
-    if ( any(isnan(sphi)) ) stop "NaN found in sphi"
-  end block setup
+  if ( maxval(sphi*sqrt_B_coup) < 1.e-3_wp ) sphi = sphi * 10.e0_wp
+  if (zero_scalar_mode) sphi = 0.e0_wp
+  if ( any(isnan(sphi)) ) stop "NaN found in sphi"
 
   call allocate_workspace
 
@@ -71,52 +69,43 @@ subroutine rotation_solver
       call rescale_metric(r_e_new_sq)
 
       ! --- Update equatorial radius ---
-      radius_update: block
-        r_e_old = r_e_new
-        call update_equatorial_radius( r_e_old, &
-             r_e_new, dif, &
-             sphi_pole_h, gama_pole_h, rho_pole_h, &
-             gama_equator_h, rho_equator_h, ww_equator_h, sphi_equator_h, &
-             sphi_center_h, gama_center_h, rho_center_h )
-        r_e_new_sq = r_e_new**2
-      end block radius_update
+      r_e_old = r_e_new
+      call update_equatorial_radius( r_e_old, &
+           r_e_new, dif, &
+           sphi_pole_h, gama_pole_h, rho_pole_h, &
+           gama_equator_h, rho_equator_h, ww_equator_h, sphi_equator_h, &
+           sphi_center_h, gama_center_h, rho_center_h )
+      r_e_new_sq = r_e_new**2
 
       ! --- Solve for metric and scalar field targets ---
-      elliptic_solve: block
-        call update_angular_velocity(r_e_new, gama_pole_h, rho_pole_h, gama_equator_h, rho_equator_h, &
-             sphi_pole_h, sphi_equator_h, ww_equator_h)
-        call update_eos_and_velocity(r_e_new, gama_pole_h, rho_pole_h, sphi_pole_h)
-        root_mphi_re = sqrt(mphi_r * r_e_new_sq)
-        call get_all_targets(r_e_new, root_mphi_re, &
-             target_rho, target_gama, target_ww, target_sphi)
-      end block elliptic_solve
+      call update_angular_velocity(r_e_new, gama_pole_h, rho_pole_h, gama_equator_h, rho_equator_h, &
+           sphi_pole_h, sphi_equator_h, ww_equator_h)
+      call update_eos_and_velocity(r_e_new, gama_pole_h, rho_pole_h, sphi_pole_h)
+      root_mphi_re = sqrt(mphi_r * r_e_new_sq)
+      call get_all_targets(r_e_new, root_mphi_re, &
+           target_rho, target_gama, target_ww, target_sphi)
 
       ! --- Relaxation iteration ---
-      relax_phase: block
-        if (timing) call cpu_time(t0)
-        call relaxation(target_rho, target_gama, target_ww, target_sphi, root_mphi_re, n_of_it, dif)
-        if (timing) then
-          call cpu_time(t1); dt_relaxation = t1 - t0; call cpu_time(t0)
-        end if
-      end block relax_phase
+      if (timing) call cpu_time(t0)
+      call relaxation(target_rho, target_gama, target_ww, target_sphi, root_mphi_re, n_of_it, dif)
+      if (timing) then
+        call cpu_time(t1); dt_relaxation = t1 - t0; call cpu_time(t0)
+      end if
 
       ! --- Update metric potential (alpha) ---
-      alpha_update: block
-        if (timing) call cpu_time(t0)
-        if (abs(r_ratio - 1.e0_wp) < epsilon(r_ratio)) then
-          call impose_rigid_rotation()
-        else
-          call update_alpha_potential(r_e_new, dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, &
-              dww_s_cache, dww_m_cache, ds_s_cache, ds_m_cache, d2g_ss_cache, d2g_mm_cache, e_rsm_cache)
-        endif
-        if (timing) then
-          call cpu_time(t1); dt_alpha = t1 - t0; call cpu_time(t0)
-        end if
-        if (timing) write(*,'(A,7(1X,ES12.5))') "Relaxation + Alpha: ", dt_relaxation, dt_alpha
-      end block alpha_update
+      if (abs(r_ratio - 1.e0_wp) < epsilon(r_ratio)) then
+        call impose_rigid_rotation()
+      else
+        call update_alpha_potential(r_e_new, dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, &
+            dww_s_cache, dww_m_cache, ds_s_cache, ds_m_cache, d2g_ss_cache, d2g_mm_cache, e_rsm_cache)
+      endif
+      if (timing) then
+        call cpu_time(t1); dt_alpha = t1 - t0; call cpu_time(t0)
+      end if
+      if (timing) write(*,'(A,7(1X,ES12.5))') "Relaxation + Alpha: ", dt_relaxation, dt_alpha
 
       ! --- Multi-variable convergence check ---
-      convergence_check: block
+      convergence: block
         real(wp) :: dif_rho, dif_gama, dif_ww, dif_sphi
         dif_rho  = maxval(abs(rho  - rho_prev_iter)  / (abs(rho)  + 1.e-15_wp))
         dif_gama = maxval(abs(gama - gama_prev_iter) / (abs(gama) + 1.e-15_wp))
@@ -127,7 +116,7 @@ subroutine rotation_solver
           dif_sphi = maxval(abs(sphi - sphi_prev_iter))
         end if
         dif = max(dif, max(dif_rho, dif_gama, dif_ww, dif_sphi))
-      end block convergence_check
+      end block convergence
 
       ! --- Diagnostics and contraction ratios ---
       diagnostics: block
@@ -162,12 +151,10 @@ subroutine rotation_solver
       end block diagnostics
 
       ! --- Update previous-iteration state ---
-      state_update: block
-        rho_prev_iter  = rho
-        gama_prev_iter = gama
-        ww_prev_iter   = ww
-        sphi_prev_iter = sphi
-      end block state_update
+      rho_prev_iter  = rho
+      gama_prev_iter = gama
+      ww_prev_iter   = ww
+      sphi_prev_iter = sphi
 
       n_of_it = n_of_it + 1
       if ( n_of_it > 2000 ) stop "Probably won't converge"
@@ -181,23 +168,20 @@ subroutine rotation_solver
   ! ---------------------------------------------------------------
   ! Finalization and output
   ! ---------------------------------------------------------------
-  finalize: block
-    Omega_c  = Omega_c / r_e_new
-    Omega_e  = Omega_e / r_e_new
-    r_e      = r_e_new
-    Fmax_h   = maxval(F_j(:,1))
-    if (zero_scalar_mode) then
-      sphi = 0.e0_wp
-      sphi_c = 0.e0_wp
-      sphi_m = 0.e0_wp
-    else
-      sphi_c = sphi(1,1) * sqrt_B_coup
-      sphi_m = maxval( sphi(:,1) * sqrt_B_coup )
-    end if
-    call mass_radius()
-    call output_helper(D2_metric_rho, D2_metric_omega)
-  end block finalize
-
+  Omega_c  = Omega_c / r_e_new
+  Omega_e  = Omega_e / r_e_new
+  r_e      = r_e_new
+  Fmax_h   = maxval(F_j(:,1))
+  if (zero_scalar_mode) then
+    sphi = 0.e0_wp
+    sphi_c = 0.e0_wp
+    sphi_m = 0.e0_wp
+  else
+    sphi_c = sphi(1,1) * sqrt_B_coup
+    sphi_m = maxval( sphi(:,1) * sqrt_B_coup )
+  end if
+  call mass_radius()
+  call output_helper(D2_metric_rho, D2_metric_omega)
   call deallocate_workspace
 
 contains
