@@ -125,12 +125,12 @@ subroutine rotation_solver
     q_sphi = contraction_ratio(dsphi_norm, dsphi_prev)
     q_re   = contraction_ratio(dre_norm,   dre_prev)
 
-    !if ( n_of_it > 50 .and. mod(n_of_it,50)==0 ) then
+    if ( n_of_it > 50 .and. mod(n_of_it,50)==0 ) then
       write(*,'(A,i4,A,es10.3,A,2es12.4,A,1X,A,1X,A,A,5es12.4)') 'it= ', n_of_it, ', dif:', dif, &
         ' sphi:', sphi_center_h*r_e_old*sqrt_B_coup, sphi_m, &
         ' ', trim(metric_method), trim(scalar_method), &
         '  |', q_rho, q_gama, q_re, q_ww,q_sphi
-    !endif
+    endif
 
     rho_prev_iter = rho
     gama_prev_iter = gama
@@ -146,7 +146,7 @@ subroutine rotation_solver
     n_of_it = n_of_it + 1
     if ( n_of_it > 2000 ) stop "Probably won't converge"
   enddo
-  !write(*,*) r_ratio, h_center, n_of_it
+  write(*,*) r_ratio, h_center, n_of_it
   n_of_relaxation_steps = n_of_relaxation_steps + n_of_it
   ! --- End of iteration
 
