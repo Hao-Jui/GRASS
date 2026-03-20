@@ -30,13 +30,9 @@ contains
     elseif (x >= log_h(num_tab)) then
       y = log_p(num_tab)
     else
-      do i = 1, num_tab - 1
-          if (x < log_h(i+1)) then
-            y = log_p(i) + (log_p(i+1)-log_p(i)) * &
-                  (x - log_h(i)) / (log_h(i+1)-log_h(i))
-            return
-          end if
-      end do
+      i = binary_search_index(log_h, num_tab, x)
+      y = log_p(i) + (log_p(i+1)-log_p(i)) * &
+            (x - log_h(i)) / (log_h(i+1)-log_h(i))
     end if
   end function interp_log_h_to_p
 
@@ -52,13 +48,9 @@ contains
     elseif (x >= log_p(num_tab)) then
       y = log_e(num_tab)
     else
-      do i = 1, num_tab - 1
-          if (x < log_p(i+1)) then
-            y = log_e(i) + (log_e(i+1)-log_e(i)) * &
-                  (x - log_p(i)) / (log_p(i+1)-log_p(i))
-            return
-          end if
-      end do
+      i = binary_search_index(log_p, num_tab, x)
+      y = log_e(i) + (log_e(i+1)-log_e(i)) * &
+            (x - log_p(i)) / (log_p(i+1)-log_p(i))
     end if
   end function interp_log_p_to_e
 
@@ -689,6 +681,25 @@ contains
     if (tmp < tiny(1.e0_wp)) tmp = tiny(1.e0_wp)
     clip_besselk = tmp
   end function clip_besselk
+
+  pure function binary_search_index(arr, n, x) result(idx)
+    implicit none
+    integer, intent(in) :: n
+    real(wp), intent(in) :: arr(n), x
+    integer :: idx, left, right, mid
+
+    left = 1
+    right = n - 1
+    do while (left < right)
+      mid = (left + right) / 2
+      if (arr(mid) < x) then
+        left = mid + 1
+      else
+        right = mid
+      end if
+    end do
+    idx = left
+  end function binary_search_index
 
   subroutine debug_mod_bessel
     use para_mod, only : LMAX, SDIV, s_gp
