@@ -161,6 +161,9 @@ contains
       call evaluate_solution_1d(h_center, r_ratio, F1d, rho0, ee)
       call to_solver_coord_1d(h_center, x1d)
       er = abs(F1d)
+      if (solver_state_1d%has_jacobian .and. er > prev_er1d) &
+        call reset_newton_state_1d(solver_state_1d)
+      prev_er1d = er
       if (solver_state_1d%has_jacobian) then
         call broyden_update_1d(solver_state_1d, x1d, F1d)
       else
