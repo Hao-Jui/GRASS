@@ -7,7 +7,7 @@ module rotation_uniform
                       B_coup, mphi_r, F_j, &
                       sphi_c, sphi_m, Omega_c, Omega_e, &
                       Fmax_h, n_of_relaxation_steps, timing
-  use spin_helper, only: dif, &
+  use spin_relaxation, only: dif, &
     target_rho, target_gama, target_ww, target_sphi, &
     metric_method, scalar_method, &
     dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, &

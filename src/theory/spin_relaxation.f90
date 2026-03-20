@@ -1,4 +1,4 @@
-module spin_helper
+module spin_relaxation
   use, intrinsic :: ieee_arithmetic, only: ieee_is_nan
   use eos_mod, only: n0_at_e
   use para_mod, only: wp, SDIV, MDIV, LMAX, &
@@ -1053,4 +1053,4 @@ contains
     close(unit)
   end subroutine write_output_file
 
-end module spin_helper
+end module spin_relaxation
