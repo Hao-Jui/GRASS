@@ -18,12 +18,12 @@ contains
     real(wp), intent(out)   :: gama_equator_h, rho_equator_h, ww_equator_h, sphi_equator_h
     real(wp), intent(out)   :: sphi_center_h, gama_center_h, rho_center_h
     real(wp) :: r_e_new_sq, grgr
-    real(wp), save :: s_p_cached = -1.e0_wp
-    real(wp), save :: r_ratio_prev = -1.e0_wp
+    real(wp), save :: s_p_cached = -1.0_wp
+    real(wp), save :: r_ratio_prev = -1.0_wp
 
     if (r_ratio /= r_ratio_prev) then
       r_ratio_prev = r_ratio
-      s_p_cached = r_ratio**(1.e0_wp/dble(s_pwr)) / (1.e0_wp + r_ratio**(1.e0_wp/dble(s_pwr)))
+      s_p_cached = r_ratio**(1.0_wp/dble(s_pwr)) / (1.0_wp + r_ratio**(1.0_wp/dble(s_pwr)))
     end if
 
     call interp(s_gp, sphi(:,MDIV), SDIV, s_p_cached, sphi_pole_h   )
@@ -39,10 +39,10 @@ contains
 
     grgr = gama_pole_h + rho_pole_h - gama_center_h - rho_center_h
     if (has_scalar) then
-      grgr = grgr + B_coup / 2.e0_wp * ( sphi_center_h**2 - sphi_pole_h**2 )
+      grgr = grgr + B_coup / 2.0_wp * ( sphi_center_h**2 - sphi_pole_h**2 )
     end if
 
-    r_e_new_sq = ( 2.e0_wp * ( h_center - enthalpy_min ) ) / grgr
+    r_e_new_sq = ( 2.0_wp * ( h_center - enthalpy_min ) ) / grgr
     r_e_new = sqrt( r_e_new_sq )
     dif = abs(r_e_old - r_e_new) / r_e_new
 
@@ -87,9 +87,9 @@ contains
   contains
     subroutine uniform_rotation()
       metric_diff = gama_pole_h + rho_pole_h - gama_equator_h - rho_equator_h &
-                  + B_coup / 2.e0_wp * ( sphi_equator_h**2 - sphi_pole_h**2 )
-      term_in_Omega_h = 1.e0_wp - exp( r_e_new**2 * metric_diff )
-      if (term_in_Omega_h >= 0.e0_wp) then
+                  + B_coup / 2.0_wp * ( sphi_equator_h**2 - sphi_pole_h**2 )
+      term_in_Omega_h = 1.0_wp - exp( r_e_new**2 * metric_diff )
+      if (term_in_Omega_h >= 0.0_wp) then
           Omega_c = ww_equator_h + exp(r_e_new**2 * rho_equator_h) * sqrt(term_in_Omega_h)
       else
           write(*,"('Solving for axis ratio: ', f12.5)") r_ratio
@@ -104,9 +104,9 @@ contains
       real(wp) :: guess, rsm, wwsm, mum, sgp
       real(wp), parameter :: tolerance = 1.e-5_wp
       metric_diff = gama_pole_h + rho_pole_h - gama_equator_h - rho_equator_h &
-                  + B_coup / 2.e0_wp * ( sphi_equator_h**2 - sphi_pole_h**2 )
-      term_in_Omega_h = 1.e0_wp - exp( r_e_new**2 * metric_diff )
-      if (term_in_Omega_h >= 0.e0_wp) then
+                  + B_coup / 2.0_wp * ( sphi_equator_h**2 - sphi_pole_h**2 )
+      term_in_Omega_h = 1.0_wp - exp( r_e_new**2 * metric_diff )
+      if (term_in_Omega_h >= 0.0_wp) then
         Omega_e = ww_equator_h + exp(r_e_new**2 * rho_equator_h) * sqrt(term_in_Omega_h)
       else
         stop "L172 in const_j_rotation"
@@ -115,8 +115,8 @@ contains
       call find_omege_e(guess, r_e_new, rho_equator_h, gama_equator_h, &
                       ww_equator_h, rho_pole_h, gama_pole_h, tolerance, Omega_e, diff_rotation_const_j)
 
-      term_in_Omega_h = abs(Omega_e - ww_equator_h) * exp(-2.e0_wp * r_e_new**2 * rho_equator_h)
-      Omega_c = Omega_e + term_in_Omega_h / (1.e0_wp - term_in_Omega_h * abs(Omega_e - ww_equator_h)) / A_diff**2
+      term_in_Omega_h = abs(Omega_e - ww_equator_h) * exp(-2.0_wp * r_e_new**2 * rho_equator_h)
+      Omega_c = Omega_e + term_in_Omega_h / (1.0_wp - term_in_Omega_h * abs(Omega_e - ww_equator_h)) / A_diff**2
 
       Omg(1,:) = Omega_c
       Omg(1:2*SDIV/3,MDIV) = Omega_c
@@ -127,48 +127,53 @@ contains
           mum = mu(m)
           sgp = s_gp(s)
           call zbrent_rot(Omg(s-1,m) * 8.e-1_wp, r_e_new, rsm, wwsm, sgp, mum, 1.e-5_wp, omg(s,m), rotation_law_const_j)
-          F_j(s,m) = (omg(s,m) - wwsm) * sgp**2 * (1.e0_wp - mum**2) &
-                / ((1.e0_wp - sgp)**2 * exp(2.e0_wp * r_e_new**2 * rsm) - (omg(s,m) - wwsm)**2 * sgp**2 * (1.e0_wp - mum**2))
+          F_j(s,m) = (omg(s,m) - wwsm) * sgp**2 * (1.0_wp - mum**2) &
+                / ((1.0_wp - sgp)**2 * exp(2.0_wp * r_e_new**2 * rsm) - (omg(s,m) - wwsm)**2 * sgp**2 * (1.0_wp - mum**2))
         end do
       end do
     end subroutine const_j_rotation
     subroutine uryu_rotation()
       real(wp) :: diff_Fmax, guess, Fa, rsm, wwsm, sgp, mum, omg_max_h
+      real(wp) :: re2, exp_term_eq
       real(wp), dimension(SDIV) :: omg_mu_0
       integer :: imax
       real(wp), parameter :: tolerance = 1.e-5_wp
+      re2 = r_e_new**2; exp_term_eq = exp(2.0_wp * re2 * rho_equator_h)
       metric_diff = gama_pole_h + rho_pole_h - gama_equator_h - rho_equator_h &
-                  + B_coup / 2.e0_wp * ( sphi_equator_h**2 - sphi_pole_h**2 )
-      term_in_Omega_h = 1.e0_wp - exp( r_e_new**2 * metric_diff )
-      if (term_in_Omega_h >= 0.e0_wp) then
-        Omega_e = ww_equator_h + exp(r_e_new**2 * rho_equator_h) * sqrt(term_in_Omega_h)
+                  + B_coup / 2.0_wp * ( sphi_equator_h**2 - sphi_pole_h**2 )
+      term_in_Omega_h = 1.0_wp - exp( r_e_new**2 * metric_diff )
+      if (term_in_Omega_h >= 0.0_wp) then
+        Omega_e = ww_equator_h + exp(re2 * rho_equator_h) * sqrt(term_in_Omega_h)
       else
         stop "L205 in uryu"
       endif
-      Fmax_h = 2.e-2_wp
 
-      diff_Fmax = 1.e0_wp
-      Fmax_h    = Fmax_h / 2.e0_wp
-      do while( abs(diff_Fmax) > 1.e-7_wp)
+      diff_Fmax = 1.0_wp
+      Fmax_h    = 1.e-2_wp ! Empirial guess; not sure why it works well
+      do while(abs(diff_Fmax) > 1.e-7_wp)
         guess = Omega_e
         call find_omege_e(guess, r_e_new,rho_equator_h,gama_equator_h,ww_equator_h, &
                         rho_pole_h,gama_pole_h, tolerance, Fa, diff_rotation_uryu)
         Omega_e = fa
-        F_equator_h  = (Omega_e - ww_equator_h) / ( exp(2.e0_wp*r_e_new**2*rho_equator_h) - (Omega_e-ww_equator_h)**2 )
-        if ( F_equator_h < 0.e0_wp ) stop "negative F_equator_h; L120 in uryu"
+        F_equator_h  = (Omega_e - ww_equator_h) / ( exp_term_eq - (Omega_e-ww_equator_h)**2 )
+        if ( F_equator_h < 0.0_wp ) stop "negative F_equator_h; L120 in uryu"
 
         Omega_c = Omega_e / lambda2
         omg_mu_0(1) = Omega_c
-        mum = 0.e0_wp
+        omg_max_h = Omega_c
+        mum = 0.0_wp
         do s = 2, SDIV*2/3
             rsm = rho(s,1)
             wwsm= ww (s,1)
             sgp = s_gp(s)
             guess  = omg_mu_0(s-1)
             call zbrent_rot( guess, r_e_new, rsm, wwsm, sgp, mum, 1.e-5_wp, omg_mu_0(s), rotation_law_uryu)
+            if (omg_mu_0(s) > omg_max_h) then 
+              omg_max_h = omg_mu_0(s)
+            else
+              exit
+            end if
         enddo
-        imax      = maxloc( omg_mu_0, 1 )
-        omg_max_h = omg_mu_0(imax)
         diff_Fmax = ( lambda1 - omg_max_h / Omega_c )
         Fmax_h    = Fmax_h - diff_Fmax * 1.e-2_wp
       enddo
@@ -183,8 +188,8 @@ contains
           sgp = s_gp(s)
           guess  = Omg(s-1,m)
           call zbrent_rot( guess, r_e_new, rsm, wwsm, sgp, mum, 1.e-5_wp, omg(s,m), rotation_law_uryu)
-          F_j(s,m) = (omg(s,m) - wwsm) * sgp**2 * (1.e0_wp - mum**2) &
-                / ((1.e0_wp - sgp)**2 * exp(2.e0_wp * r_e_new**2 * rsm) - (omg(s,m) - wwsm)**2 * sgp**2 * (1.e0_wp - mum**2))
+          F_j(s,m) = (omg(s,m) - wwsm) * sgp**2 * (1.0_wp - mum**2) &
+                / ((1.0_wp - sgp)**2 * exp(2.0_wp * re2 * rsm) - (omg(s,m) - wwsm)**2 * sgp**2 * (1.0_wp - mum**2))
         enddo
       enddo
     end subroutine uryu_rotation
@@ -205,15 +210,15 @@ contains
 
     re2 = r_e_new**2
 
-    if (abs(r_ratio - 1.e0_wp) < epsilon(r_ratio)) then
-      velocity_sq = 0.e0_wp
-      enthalpy = enthalpy_min + 0.5e0_wp * re2 * ( gama_pole_h + rho_pole_h - gama - rho + ( sphi**2 - sphi_pole_h**2 ) * B_coup / 2.e0_wp )
+    if (abs(r_ratio - 1.0_wp) < epsilon(r_ratio)) then
+      velocity_sq = 0.0_wp
+      enthalpy = enthalpy_min + 0.5e0_wp * re2 * ( gama_pole_h + rho_pole_h - gama - rho + ( sphi**2 - sphi_pole_h**2 ) * B_coup / 2.0_wp )
     else
       velocity_sq = ((Omg - ww) * sgp_term_2d_cache_arg * sin_theta_2d_cache_arg * exp(-rho * re2))**2
-      where (velocity_sq > 1.e0_wp) velocity_sq = 0.e0_wp
+      where (velocity_sq > 1.0_wp) velocity_sq = 0.0_wp
       enthalpy = enthalpy_min + 0.5e0_wp * ( &
-            re2 * ( gama_pole_h + rho_pole_h - gama - rho + ( sphi**2 - sphi_pole_h**2 ) * B_coup / 2.e0_wp ) &
-            - log( max(1.e-300_wp, 1.e0_wp-velocity_sq) )  )
+            re2 * ( gama_pole_h + rho_pole_h - gama - rho + ( sphi**2 - sphi_pole_h**2 ) * B_coup / 2.0_wp ) &
+            - log( max(1.e-300_wp, 1.0_wp-velocity_sq) )  )
     end if
 
     if ( trim(solver_type) == "const_j" ) then
@@ -235,8 +240,8 @@ contains
           energy(s,m)   = exp(log_e_val)
         else
           enthalpy(s,m) = enthalpy_min
-          pressure(s,m) = 0.e0_wp
-          energy(s,m)   = 0.e0_wp
+          pressure(s,m) = 0.0_wp
+          energy(s,m)   = 0.0_wp
         end if
       end do
     end do

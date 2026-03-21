@@ -93,49 +93,15 @@ subroutine mass_radius()
 contains
 
   real(wp) function Kepler() result(val)
-    integer :: s
+    integer :: s 
     real(wp) :: doe, dge, dre, vek
     real(wp) :: s_p, gama_pole, rho_pole, gama_equator, rho_equator, sphi_equator, wwe
-    real(wp) :: inv_12ds
     s_p = r_ratio**(1.e0_wp/dble(s_pwr)) / (1.e0_wp + r_ratio**(1.e0_wp/dble(s_pwr)))
-
-    block
-      use para_mod, only: ds
-      if (SDIV < 5) then
-        do s = 1, SDIV
-          if (s == 1) then
-            d_r_e(s) = (rho(2,1) - rho(1,1)) / ds
-            d_g_e(s) = (gama(2,1) - gama(1,1)) / ds
-            d_o_e(s) = (ww(2,1) - ww(1,1)) / ds
-          elseif (s == SDIV) then
-            d_r_e(s) = (rho(SDIV,1) - rho(SDIV-1,1)) / ds
-            d_g_e(s) = (gama(SDIV,1) - gama(SDIV-1,1)) / ds
-            d_o_e(s) = (ww(SDIV,1) - ww(SDIV-1,1)) / ds
-          else
-            d_r_e(s) = (rho(s+1,1) - rho(s-1,1)) / (2.e0_wp * ds)
-            d_g_e(s) = (gama(s+1,1) - gama(s-1,1)) / (2.e0_wp * ds)
-            d_o_e(s) = (ww(s+1,1) - ww(s-1,1)) / (2.e0_wp * ds)
-          end if
-        end do
-      else
-        inv_12ds = 1.e0_wp / (12.e0_wp * ds)
-        d_r_e(1) = (-25.e0_wp*rho(1,1) + 48.e0_wp*rho(2,1) - 36.e0_wp*rho(3,1) + 16.e0_wp*rho(4,1) - 3.e0_wp*rho(5,1)) * inv_12ds
-        d_g_e(1) = (-25.e0_wp*gama(1,1) + 48.e0_wp*gama(2,1) - 36.e0_wp*gama(3,1) + 16.e0_wp*gama(4,1) - 3.e0_wp*gama(5,1)) * inv_12ds
-        d_o_e(1) = (-25.e0_wp*ww(1,1) + 48.e0_wp*ww(2,1) - 36.e0_wp*ww(3,1) + 16.e0_wp*ww(4,1) - 3.e0_wp*ww(5,1)) * inv_12ds
-        d_r_e(2) = (-3.e0_wp*rho(1,1) - 10.e0_wp*rho(2,1) + 18.e0_wp*rho(3,1) - 6.e0_wp*rho(4,1) + rho(5,1)) * inv_12ds
-        d_g_e(2) = (-3.e0_wp*gama(1,1) - 10.e0_wp*gama(2,1) + 18.e0_wp*gama(3,1) - 6.e0_wp*gama(4,1) + gama(5,1)) * inv_12ds
-        d_o_e(2) = (-3.e0_wp*ww(1,1) - 10.e0_wp*ww(2,1) + 18.e0_wp*ww(3,1) - 6.e0_wp*ww(4,1) + ww(5,1)) * inv_12ds
-        d_r_e(3:SDIV-2) = (-rho(1:SDIV-4,1) + 8.e0_wp*rho(2:SDIV-3,1) - 8.e0_wp*rho(4:SDIV-1,1) + rho(5:SDIV,1)) * inv_12ds
-        d_g_e(3:SDIV-2) = (-gama(1:SDIV-4,1) + 8.e0_wp*gama(2:SDIV-3,1) - 8.e0_wp*gama(4:SDIV-1,1) + gama(5:SDIV,1)) * inv_12ds
-        d_o_e(3:SDIV-2) = (-ww(1:SDIV-4,1) + 8.e0_wp*ww(2:SDIV-3,1) - 8.e0_wp*ww(4:SDIV-1,1) + ww(5:SDIV,1)) * inv_12ds
-        d_r_e(SDIV-1) = (3.e0_wp*rho(SDIV,1) + 10.e0_wp*rho(SDIV-1,1) - 18.e0_wp*rho(SDIV-2,1) + 6.e0_wp*rho(SDIV-3,1) - rho(SDIV-4,1)) * inv_12ds
-        d_g_e(SDIV-1) = (3.e0_wp*gama(SDIV,1) + 10.e0_wp*gama(SDIV-1,1) - 18.e0_wp*gama(SDIV-2,1) + 6.e0_wp*gama(SDIV-3,1) - gama(SDIV-4,1)) * inv_12ds
-        d_o_e(SDIV-1) = (3.e0_wp*ww(SDIV,1) + 10.e0_wp*ww(SDIV-1,1) - 18.e0_wp*ww(SDIV-2,1) + 6.e0_wp*ww(SDIV-3,1) - ww(SDIV-4,1)) * inv_12ds
-        d_r_e(SDIV) = (25.e0_wp*rho(SDIV,1) - 48.e0_wp*rho(SDIV-1,1) + 36.e0_wp*rho(SDIV-2,1) - 16.e0_wp*rho(SDIV-3,1) + 3.e0_wp*rho(SDIV-4,1)) * inv_12ds
-        d_g_e(SDIV) = (25.e0_wp*gama(SDIV,1) - 48.e0_wp*gama(SDIV-1,1) + 36.e0_wp*gama(SDIV-2,1) - 16.e0_wp*gama(SDIV-3,1) + 3.e0_wp*gama(SDIV-4,1)) * inv_12ds
-        d_o_e(SDIV) = (25.e0_wp*ww(SDIV,1) - 48.e0_wp*ww(SDIV-1,1) + 36.e0_wp*ww(SDIV-2,1) - 16.e0_wp*ww(SDIV-3,1) + 3.e0_wp*ww(SDIV-4,1)) * inv_12ds
-      end if
-    end block
+    do s = 1, SDIV
+      d_r_e(s) = deriv_s_1d(rho(:,1),s)
+      d_g_e(s) = deriv_s_1d(gama(:,1),s)
+      d_o_e(s) = deriv_s_1d(ww(:,1) ,s)
+    end do
     call interp(s_gp, gama_mu_1,  SDIV, s_p, gama_pole)
     call interp(s_gp,  rho_mu_1,  SDIV, s_p, rho_pole)
     call interp(s_gp, gama_mu_0,  SDIV, s_e, gama_equator)
@@ -164,38 +130,12 @@ contains
       write(*,*) 'Error opening file Cont/velocity.dat, IOSTAT=', ios
       return
     end if
-    block
-      use para_mod, only: ds
-      real(wp) :: inv_12ds
-      if (SDIV >= 5) then
-        inv_12ds = 1.e0_wp / (12.e0_wp * ds)
-        dd_r_e(1) = (-25.e0_wp*d_r_e(1) + 48.e0_wp*d_r_e(2) - 36.e0_wp*d_r_e(3) + 16.e0_wp*d_r_e(4) - 3.e0_wp*d_r_e(5)) * inv_12ds
-        dd_g_e(1) = (-25.e0_wp*d_g_e(1) + 48.e0_wp*d_g_e(2) - 36.e0_wp*d_g_e(3) + 16.e0_wp*d_g_e(4) - 3.e0_wp*d_g_e(5)) * inv_12ds
-        dd_o_e(1) = (-25.e0_wp*d_o_e(1) + 48.e0_wp*d_o_e(2) - 36.e0_wp*d_o_e(3) + 16.e0_wp*d_o_e(4) - 3.e0_wp*d_o_e(5)) * inv_12ds
-        dd_r_e(2) = (-3.e0_wp*d_r_e(1) - 10.e0_wp*d_r_e(2) + 18.e0_wp*d_r_e(3) - 6.e0_wp*d_r_e(4) + d_r_e(5)) * inv_12ds
-        dd_g_e(2) = (-3.e0_wp*d_g_e(1) - 10.e0_wp*d_g_e(2) + 18.e0_wp*d_g_e(3) - 6.e0_wp*d_g_e(4) + d_g_e(5)) * inv_12ds
-        dd_o_e(2) = (-3.e0_wp*d_o_e(1) - 10.e0_wp*d_o_e(2) + 18.e0_wp*d_o_e(3) - 6.e0_wp*d_o_e(4) + d_o_e(5)) * inv_12ds
-        dd_r_e(3:SDIV-2) = (-d_r_e(1:SDIV-4) + 8.e0_wp*d_r_e(2:SDIV-3) - 8.e0_wp*d_r_e(4:SDIV-1) + d_r_e(5:SDIV)) * inv_12ds
-        dd_g_e(3:SDIV-2) = (-d_g_e(1:SDIV-4) + 8.e0_wp*d_g_e(2:SDIV-3) - 8.e0_wp*d_g_e(4:SDIV-1) + d_g_e(5:SDIV)) * inv_12ds
-        dd_o_e(3:SDIV-2) = (-d_o_e(1:SDIV-4) + 8.e0_wp*d_o_e(2:SDIV-3) - 8.e0_wp*d_o_e(4:SDIV-1) + d_o_e(5:SDIV)) * inv_12ds
-        dd_r_e(SDIV-1) = (3.e0_wp*d_r_e(SDIV) + 10.e0_wp*d_r_e(SDIV-1) - 18.e0_wp*d_r_e(SDIV-2) + 6.e0_wp*d_r_e(SDIV-3) - d_r_e(SDIV-4)) * inv_12ds
-        dd_g_e(SDIV-1) = (3.e0_wp*d_g_e(SDIV) + 10.e0_wp*d_g_e(SDIV-1) - 18.e0_wp*d_g_e(SDIV-2) + 6.e0_wp*d_g_e(SDIV-3) - d_g_e(SDIV-4)) * inv_12ds
-        dd_o_e(SDIV-1) = (3.e0_wp*d_o_e(SDIV) + 10.e0_wp*d_o_e(SDIV-1) - 18.e0_wp*d_o_e(SDIV-2) + 6.e0_wp*d_o_e(SDIV-3) - d_o_e(SDIV-4)) * inv_12ds
-        dd_r_e(SDIV) = (25.e0_wp*d_r_e(SDIV) - 48.e0_wp*d_r_e(SDIV-1) + 36.e0_wp*d_r_e(SDIV-2) - 16.e0_wp*d_r_e(SDIV-3) + 3.e0_wp*d_r_e(SDIV-4)) * inv_12ds
-        dd_g_e(SDIV) = (25.e0_wp*d_g_e(SDIV) - 48.e0_wp*d_g_e(SDIV-1) + 36.e0_wp*d_g_e(SDIV-2) - 16.e0_wp*d_g_e(SDIV-3) + 3.e0_wp*d_g_e(SDIV-4)) * inv_12ds
-        dd_o_e(SDIV) = (25.e0_wp*d_o_e(SDIV) - 48.e0_wp*d_o_e(SDIV-1) + 36.e0_wp*d_o_e(SDIV-2) - 16.e0_wp*d_o_e(SDIV-3) + 3.e0_wp*d_o_e(SDIV-4)) * inv_12ds
-      else
-        do s = 1, SDIV
-          dd_r_e(s) = deriv_s_1d(d_r_e, s)
-          dd_g_e(s) = deriv_s_1d(d_g_e, s)
-          dd_o_e(s) = deriv_s_1d(d_o_e, s)
-        end do
-      end if
-    end block
-
     do s = 1, SDIV
       s1  = s_gp(s) * (1.e0_wp - s_gp(s))
       r_h = r_e * s_gp(s) / (1.e0_wp - s_gp(s))
+      dd_r_e(s) = deriv_s_1d(d_r_e, s)
+      dd_g_e(s) = deriv_s_1d(d_g_e, s)
+      dd_o_e(s) = deriv_s_1d(d_o_e, s)
       sqrt_term = exp(-2.e0_wp*rho(s,1))*r_e**2*s_gp(s)**4*d_o_e(s)**2 + &
                   2.e0_wp*s1*(d_g_e(s)+d_r_e(s)) + s1**2*(d_g_e(s)**2 - d_r_e(s)**2)
       sqrt_term = merge(sqrt(sqrt_term), 0.e0_wp, sqrt_term > 0.e0_wp)
