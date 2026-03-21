@@ -51,7 +51,7 @@ contains
   contains
     subroutine single_model()
       real(wp) :: ee, rho0, t0, t1
-      !r_ratio = .7e0_wp
+      r_ratio = .7e0_wp
       output = .true.; call cpu_time(t0)
       call rotation_solver
       call solution_properties
