@@ -27,8 +27,8 @@ module para_mod
   ! -- Resolutions -----------------------------------------------------------
   integer, parameter :: res  = 10
   integer, parameter :: s_pwr = 1
-  integer :: SDIV = 60 * res + 1
-  integer :: MDIV = 10 * res + 1
+  integer :: SDIV = 300 * res + 1
+  integer :: MDIV = 300 * res + 1
 
   ! -- Target quantities -----------------------------------------------------
   character(len=128) :: eos_file = "MPA1"
@@ -38,8 +38,8 @@ module para_mod
   real(wp) :: chi_goal = 0.1e0_wp
   real(wp) :: omc_goal = 30.e0_wp
 
-  real(wp) :: B_goal   = 6.e5_wp
-  real(wp) :: mphi_goal = 50.e0_wp
+  real(wp) :: B_goal   = 12.0_wp
+  real(wp) :: mphi_goal = 0.01_wp
 
   ! -- Rotation-law parameters (KEH, Uryu enabled) --------------------------
   real(wp) :: A_diff  = 0.5e0_wp
