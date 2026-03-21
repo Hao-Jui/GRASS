@@ -18,7 +18,6 @@ module brent_mod
 contains
 
 subroutine brent_core(x_guess, scale_up, scale_down, tol, return_value, f, small_guess, logfile)
-! Shared Brent-style solver with adaptive bracketing.
   use, intrinsic :: ieee_arithmetic, only: ieee_is_nan
   implicit none
 
@@ -77,7 +76,7 @@ subroutine brent_core(x_guess, scale_up, scale_down, tol, return_value, f, small
       call write_bracket_log(logfile, x_guess, f, a, b, bracketed)
     end if
     if (.not. bracketed) then
-      if (present(logfile)) write(*, *) "check  ", logfile
+      if (present(logfile)) write(*,*) "check  ", logfile
       stop "brent_core: failed to bracket root"
     end if
     call f(a, fa)
