@@ -499,8 +499,6 @@ contains
     real(wp) :: m1, mu_m
     real(wp), dimension(SDIV,MDIV) :: da_dm, d_gama_sm_all
     real(wp), dimension(SDIV) :: sgp_ratio_cache
-    real(wp), dimension(SDIV) :: d_gama_s_col, d_gama_m_col, d_rho_s_col, d_rho_m_col
-    real(wp), dimension(SDIV) :: d_sphi_s_col, d_sphi_m_col, d_gama_sm_col, d_ww_s_col, d_ww_m_col, d_gama_ss_col, d_gama_mm_col
     real(wp), dimension(SDIV) :: temp1_col, temp2_col, temp3_col, temp4_col, temp5_col, temp6_col, temp7_col, temp8_col, temp9_col
     real(wp), dimension(SDIV) :: numer_m, one_plus_s1dgs, da_col
     real(wp) :: adj_const(SDIV)
@@ -516,37 +514,33 @@ contains
       do m = 1, MDIV
         mu_m = mu(m)
         m1   = 1.e0_wp - mu_m**2
-        d_gama_s_col  = dg_s_cache(:,m)
-        d_gama_m_col  = dg_m_cache(:,m)
-        d_rho_s_col   = dr_s_cache(:,m)
-        d_rho_m_col   = dr_m_cache(:,m)
-        d_sphi_s_col  = ds_s_cache(:,m)
-        d_sphi_m_col  = ds_m_cache(:,m)
-        d_gama_sm_col = d_gama_sm_all(:,m)
-        d_ww_s_col    = dww_s_cache(:,m)
-        d_ww_m_col    = dww_m_cache(:,m)
-        d_gama_ss_col = d2g_ss_cache(:,m)
-        d_gama_mm_col = d2g_mm_cache(:,m)
+        associate( gs => dg_s_cache(:,m), gm => dg_m_cache(:,m), &
+             rs => dr_s_cache(:,m), rm => dr_m_cache(:,m), &
+             ss => ds_s_cache(:,m), sm => ds_m_cache(:,m), &
+             gsm => d_gama_sm_all(:,m), wws => dww_s_cache(:,m), &
+             wwm => dww_m_cache(:,m), gss => d2g_ss_cache(:,m), &
+             gmm => d2g_mm_cache(:,m), e_cache => e_rsm_cache(:,m) )
 
-        numer_m        = -mu_m + m1 * d_gama_m_col
-        one_plus_s1dgs =  1.e0_wp + s1_geom * d_gama_s_col
+        numer_m        = -mu_m + m1 * gm
+        one_plus_s1dgs =  1.e0_wp + s1_geom * gs
 
-        temp1_col = 2.e0_wp * s_gp**2 * sgp_ratio_cache * m1 * d_ww_s_col * d_ww_m_col * one_plus_s1dgs &
-          - ( (s_gp**2 * d_ww_s_col)**2 - (s_gp * d_ww_m_col * sgp_ratio_cache)**2 * m1 ) * numer_m
+        temp1_col = 2.e0_wp * s_gp**2 * sgp_ratio_cache * m1 * wws * wwm * one_plus_s1dgs &
+          - ( (s_gp**2 * wws)**2 - (s_gp * wwm * sgp_ratio_cache)**2 * m1 ) * numer_m
         temp2_col = 1.e0_wp / ( m1 * one_plus_s1dgs**2 + numer_m**2 )
-        temp3_col = s1_geom * d_gama_ss_col + (s1_geom * d_gama_s_col)**2
-        temp4_col = d_gama_m_col * numer_m
-        temp5_col = ( (s1_geom * (d_rho_s_col + d_gama_s_col))**2 - m1 * (d_rho_m_col + d_gama_m_col)**2 ) * numer_m
-        temp6_col = s1_geom * m1 * (  (d_rho_s_col + d_gama_s_col) * (d_rho_m_col + d_gama_m_col) / 2.e0_wp + d_gama_sm_col + d_gama_s_col * d_gama_m_col  ) * one_plus_s1dgs
-        temp7_col = s1_geom * mu_m * d_gama_s_col * one_plus_s1dgs
-        temp8_col = m1 * (e_rsm_cache(:,m)**2)
-        temp9_col = -temp2_col * numer_m * ( (s1_geom * d_sphi_s_col)**2 - m1 * d_sphi_m_col**2 ) &
-              - m1 * s1_geom * one_plus_s1dgs * 2.e0_wp * d_sphi_m_col * d_sphi_s_col
+        temp3_col = s1_geom * gss + (s1_geom * gs)**2
+        temp4_col = gm * numer_m
+        temp5_col = ( (s1_geom * (rs + gs))**2 - m1 * (rm + gm)**2 ) * numer_m
+        temp6_col = s1_geom * m1 * (  (rs + gs) * (rm + gm) / 2.e0_wp + gsm + gs * gm  ) * one_plus_s1dgs
+        temp7_col = s1_geom * mu_m * gs * one_plus_s1dgs
+        temp8_col = m1 * e_cache * e_cache
+        temp9_col = -temp2_col * numer_m * ( (s1_geom * ss)**2 - m1 * sm**2 ) &
+              - m1 * s1_geom * one_plus_s1dgs * 2.e0_wp * sm * ss
 
-        da_col = - (d_rho_m_col + d_gama_m_col) / 2.e0_wp &
-          - temp2_col * ( (temp3_col - d_gama_mm_col - temp4_col) * numer_m / 2.e0_wp &
+        da_col = - (rm + gm) / 2.e0_wp &
+          - temp2_col * ( (temp3_col - gmm - temp4_col) * numer_m / 2.e0_wp &
           + temp5_col / 4.e0_wp - temp6_col  + temp7_col + temp8_col * temp1_col / 4.e0_wp ) + temp9_col
         da_dm(2:SDIV,m) = da_col(2:SDIV)
+        end associate
       end do
 
       do m = 1, MDIV-1
