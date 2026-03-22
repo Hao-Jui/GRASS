@@ -65,7 +65,7 @@ contains
     use brent_mod, only : find_omege_e, zbrent_rot
     real(wp), intent(in) :: r_e_new, gama_pole_h, rho_pole_h, gama_equator_h, rho_equator_h
     real(wp), intent(in) :: sphi_pole_h, sphi_equator_h, ww_equator_h
-    real(wp) :: metric_diff, term_in_Omega_h
+    real(wp) :: metric_diff, term_in_Omega_h, re2
     real(wp), parameter :: TOLERANCE = 1.0e-3_wp
     integer :: s, m
 
@@ -74,9 +74,22 @@ contains
       return
     end if
 
+    re2 = r_e_new**2
+    metric_diff = gama_pole_h + rho_pole_h - gama_equator_h - rho_equator_h &
+                + B_coup / 2.0_wp * ( sphi_equator_h**2 - sphi_pole_h**2 )
+    term_in_Omega_h = 1.0_wp - exp( re2 * metric_diff )
+    if (term_in_Omega_h >= 0.0_wp) then
+      Omega_e = ww_equator_h + exp(re2 * rho_equator_h) * sqrt(term_in_Omega_h)
+    else
+      write(*,"('Solving for axis ratio: ', f12.5)") r_ratio
+      write(*,"(10A15)") "gama_pole", "rho_pole", "gama_equator", "rho_equator", "sphi_pole", "sphi_equator"
+      write(*,"(10es15.3)") gama_pole_h, rho_pole_h, gama_equator_h, rho_equator_h, sphi_pole_h, sphi_equator_h
+      stop "Omega can't be found; Line 99 of spin helper"
+    endif
+
     select case(trim(solver_type))
     case("uniform")
-      call uniform_rotation()
+      Omega_c = Omega_e; Omg = Omega_e
     case("const_j")
       call const_j_rotation()
     case("uryu")
@@ -85,32 +98,9 @@ contains
       stop "Unknown solver type"
     end select
   contains
-    subroutine uniform_rotation()
-      metric_diff = gama_pole_h + rho_pole_h - gama_equator_h - rho_equator_h &
-                  + B_coup / 2.0_wp * ( sphi_equator_h**2 - sphi_pole_h**2 )
-      term_in_Omega_h = 1.0_wp - exp( r_e_new**2 * metric_diff )
-      if (term_in_Omega_h >= 0.0_wp) then
-          Omega_c = ww_equator_h + exp(r_e_new**2 * rho_equator_h) * sqrt(term_in_Omega_h)
-      else
-          write(*,"('Solving for axis ratio: ', f12.5)") r_ratio
-          write(*,"(10A15)") "gama_pole", "rho_pole", "gama_equator", "rho_equator", "sphi_pole", "sphi_equator"
-          write(*,"(10es15.3)") gama_pole_h, rho_pole_h, gama_equator_h, rho_equator_h, sphi_pole_h, sphi_equator_h
-          stop "Omega can't be found; Line 99 of spin helper"
-      end if
-      Omg = Omega_c
-      Omega_e = Omega_c
-    end subroutine uniform_rotation
     subroutine const_j_rotation()
       real(wp) :: guess, rsm, wwsm, mum, sgp
       real(wp), parameter :: tolerance = 1.e-5_wp
-      metric_diff = gama_pole_h + rho_pole_h - gama_equator_h - rho_equator_h &
-                  + B_coup / 2.0_wp * ( sphi_equator_h**2 - sphi_pole_h**2 )
-      term_in_Omega_h = 1.0_wp - exp( r_e_new**2 * metric_diff )
-      if (term_in_Omega_h >= 0.0_wp) then
-        Omega_e = ww_equator_h + exp(r_e_new**2 * rho_equator_h) * sqrt(term_in_Omega_h)
-      else
-        stop "L172 in const_j_rotation"
-      endif
       guess = Omega_e * 0.8e0_wp
       call find_omege_e(guess, r_e_new, rho_equator_h, gama_equator_h, &
                       ww_equator_h, rho_pole_h, gama_pole_h, tolerance, Omega_e, diff_rotation_const_j)
@@ -134,19 +124,11 @@ contains
     end subroutine const_j_rotation
     subroutine uryu_rotation()
       real(wp) :: diff_Fmax, guess, Fa, rsm, wwsm, sgp, mum, omg_max_h
-      real(wp) :: re2, exp_term_eq
+      real(wp) :: exp_term_eq
       real(wp), dimension(SDIV) :: omg_mu_0
       integer :: imax
       real(wp), parameter :: tolerance = 1.e-5_wp
-      re2 = r_e_new**2; exp_term_eq = exp(2.0_wp * re2 * rho_equator_h)
-      metric_diff = gama_pole_h + rho_pole_h - gama_equator_h - rho_equator_h &
-                  + B_coup / 2.0_wp * ( sphi_equator_h**2 - sphi_pole_h**2 )
-      term_in_Omega_h = 1.0_wp - exp( r_e_new**2 * metric_diff )
-      if (term_in_Omega_h >= 0.0_wp) then
-        Omega_e = ww_equator_h + exp(re2 * rho_equator_h) * sqrt(term_in_Omega_h)
-      else
-        stop "L205 in uryu"
-      endif
+      exp_term_eq = exp(2.0_wp * re2 * rho_equator_h)
 
       diff_Fmax = 1.0_wp
       Fmax_h    = 1.e-2_wp ! Empirial guess; not sure why it works well
@@ -212,7 +194,8 @@ contains
 
     if (abs(r_ratio - 1.0_wp) < epsilon(r_ratio)) then
       velocity_sq = 0.0_wp
-      enthalpy = enthalpy_min + 0.5e0_wp * re2 * ( gama_pole_h + rho_pole_h - gama - rho + ( sphi**2 - sphi_pole_h**2 ) * B_coup / 2.0_wp )
+      enthalpy = enthalpy_min + 0.5e0_wp * re2 * &
+               ( gama_pole_h + rho_pole_h - gama - rho + ( sphi**2 - sphi_pole_h**2 ) * B_coup / 2.0_wp )
     else
       velocity_sq = ((Omg - ww) * sgp_term_2d_cache_arg * sin_theta_2d_cache_arg * exp(-rho * re2))**2
       where (velocity_sq > 1.0_wp) velocity_sq = 0.0_wp
@@ -233,16 +216,18 @@ contains
 
     do m = 1, MDIV
       do s = 1, SDIV
-        if (enthalpy(s,m) > enthalpy_min .and. sgp_2d_cache_arg(s,m) <= s_e) then
-          log_p_val = interp_log_h_to_p(log(enthalpy(s,m)))
-          log_e_val = interp_log_p_to_e(log_p_val)
-          pressure(s,m) = exp(log_p_val)
-          energy(s,m)   = exp(log_e_val)
+        associate( h => enthalpy(s,m), p => pressure(s,m), &
+                 e => energy(s,m),   g => sgp_2d_cache_arg(s,m) )
+        if (h > enthalpy_min .and. g <= s_e) then
+          ! Direct scalar calls are usually the fastest path for the CPU
+          p = exp(interp_log_h_to_p(log(h)))
+          e = exp(interp_log_p_to_e(log(p)))
         else
-          enthalpy(s,m) = enthalpy_min
-          pressure(s,m) = 0.0_wp
-          energy(s,m)   = 0.0_wp
+          h = enthalpy_min
+          p = 0.0_wp
+          e = 0.0_wp
         end if
+        end associate
       end do
     end do
 
