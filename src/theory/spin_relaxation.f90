@@ -6,7 +6,7 @@ module spin_relaxation
                       rho, gama, alpha, ww, omg, sphi, &
                       energy, pressure, enthalpy, velocity_sq, F_j, &
                       P_2n, P1_2n_1, sin_2n_1_theta, &
-                      r_ratio, r_e, h_center, enthalpy_min, &
+                      r_ratio, r_e, enthalpy_min, &
                       Omega_c, Omega_e, M2, S3, M4, sphi_m, &
                       has_scalar, B_coup, mphi_r, &
                       l_uni, KAPPA, C, G, MSUN, MB, pi, KSCALE, &
@@ -139,56 +139,65 @@ contains
     real(wp), dimension(SDIV) :: e2alpha_s2_col, source_common_col, e_rsm2_col
     real(wp), dimension(SDIV) :: dg_s_scaled_col, dg_m_scaled_col, rho_bracket_col
     real(wp), dimension(SDIV) :: omega_matter_col, omega_bracket_col, sphi_source_col
-    real(wp), dimension(SDIV) :: vsq_col, one_plus_vsq_col, ww_col
+    real(wp), dimension(SDIV) :: vsq_col, one_plus_vsq_col
 
     do m = 1, MDIV
       mum = mu(m)
       m1 = m1_geom(m)
 
-      esm_col = energy(:,m) * Acoup4_cache(:,m)
-      psm_col = pressure(:,m) * Acoup4_cache(:,m)
-      vphi_col = sphi(:,m)**2 * mphi_r * 0.5e0_wp * e2alpha_r2_cache(:,m)
-      scal_p_col = sphi(:,m) * e_gsm_cache(:,m)
+      associate( gs => dg_s_cache(:,m), gm => dg_m_cache(:,m), &
+                 rs => dr_s_cache(:,m), rm => dr_m_cache(:,m), &
+                 wws => dww_s_cache(:,m), wwm => dww_m_cache(:,m), &
+                 ss => ds_s_cache(:,m), sm => ds_m_cache(:,m), &
+                 gss => d2g_ss_cache(:,m), gmm => d2g_mm_cache(:,m), &
+                 egsm => e_gsm_cache(:,m), ersm => e_rsm_cache(:,m), &
+                 e2ar2 => e2alpha_r2_cache(:,m), Ac4 => Acoup4_cache(:,m), &
+                 ww_col => ww(:,m), omg_col => omg(:,m), &
+                 rho_col => rho(:,m), gama_col => gama(:,m), sphi_col => sphi(:,m) )
+
+      esm_col = energy(:,m) * Ac4
+      psm_col = pressure(:,m) * Ac4
+      vphi_col = sphi_col**2 * mphi_r * 0.5e0_wp * e2ar2
+      scal_p_col = sphi_col * egsm
       vsq_col = velocity_sq(:,m)
       one_plus_vsq_col = 1.e0_wp + vsq_col
-      ww_col = ww(:,m)
       vel_fac_col = 1.e0_wp / (1.e0_wp - vsq_col)
       matter_sum_col = esm_col + psm_col
       matter_trace_col = esm_col - 3.e0_wp * psm_col
-      e_rsm2_col = e_rsm_cache(:,m)**2
-      e2alpha_s2_col = e2alpha_r2_cache(:,m) * s2_geom
+      e_rsm2_col = ersm**2
+      e2alpha_s2_col = e2ar2 * s2_geom
       source_common_col = 16.e0_wp * pi * e2alpha_s2_col * psm_col - 4.e0_wp * vphi_col * s2_geom
-      dg_s_scaled_col = s1_geom * dg_s_cache(:,m)
-      dg_m_scaled_col = m1 * dg_m_cache(:,m)
+      dg_s_scaled_col = s1_geom * gs
+      dg_m_scaled_col = m1 * gm
 
       rho_bracket_col = source_common_col &
         - dg_s_scaled_col * (0.5e0_wp * dg_s_scaled_col + 1.e0_wp) &
-        - dg_m_cache(:,m) * (0.5e0_wp * dg_m_scaled_col - mum)
+        - gm * (0.5e0_wp * dg_m_scaled_col - mum)
 
-      S_metric_rho(:,m) = e_gsm_cache(:,m) * ( &
+      S_metric_rho(:,m) = egsm * ( &
           8.e0_wp * pi * e2alpha_s2_col * matter_sum_col * one_plus_vsq_col * vel_fac_col &
-        + s2_geom * m1 * e_rsm2_col * ((s1_geom * dww_s_cache(:,m))**2 + m1 * dww_m_cache(:,m)**2) &
-        + dg_s_scaled_col - mum * dg_m_cache(:,m) &
-        + rho(:,m) * 0.5e0_wp * rho_bracket_col )
+        + s2_geom * m1 * e_rsm2_col * ((s1_geom * wws)**2 + m1 * wwm**2) &
+        + dg_s_scaled_col - mum * gm &
+        + rho_col * 0.5e0_wp * rho_bracket_col )
 
-      S_metric_gama(:,m) = e_gsm_cache(:,m) * (source_common_col &
-        + gama(:,m) * 0.5e0_wp * (source_common_col - 0.5e0_wp * dg_s_scaled_col**2 &
-        - 0.5e0_wp * dg_m_scaled_col * dg_m_cache(:,m)) )
-    
+      S_metric_gama(:,m) = egsm * (source_common_col &
+        + gama_col * 0.5e0_wp * (source_common_col - 0.5e0_wp * dg_s_scaled_col**2 &
+        - 0.5e0_wp * dg_m_scaled_col * gm) )
+
       if (abs(r_ratio - 1.e0_wp) < epsilon(r_ratio)) then
         S_metric_omega(:,m) = 0.e0_wp
       else
         omega_matter_col = (one_plus_vsq_col * esm_col + 2.e0_wp * vsq_col * psm_col) * vel_fac_col
         omega_bracket_col = -8.e0_wp * pi * e2alpha_s2_col * omega_matter_col &
-          - s1_geom * (2.e0_wp * dr_s_cache(:,m) + 0.5e0_wp * dg_s_cache(:,m)) &
-          + mum * (2.e0_wp * dr_m_cache(:,m) + 0.5e0_wp * dg_m_cache(:,m)) &
-          + 0.25e0_wp * s1_sq_geom * (4.e0_wp * dr_s_cache(:,m)**2 - dg_s_cache(:,m)**2) &
-          + 0.25e0_wp * m1 * (4.e0_wp * dr_m_cache(:,m)**2 - dg_m_cache(:,m)**2) &
-          - m1 * e_rsm2_col * (sgp4_geom * dww_s_cache(:,m)**2 + s2_geom * m1 * dww_m_cache(:,m)**2) &
+          - s1_geom * (2.e0_wp * rs + 0.5e0_wp * gs) &
+          + mum * (2.e0_wp * rm + 0.5e0_wp * gm) &
+          + 0.25e0_wp * s1_sq_geom * (4.e0_wp * rs**2 - gs**2) &
+          + 0.25e0_wp * m1 * (4.e0_wp * rm**2 - gm**2) &
+          - m1 * e_rsm2_col * (sgp4_geom * wws**2 + s2_geom * m1 * wwm**2) &
           - 2.e0_wp * vphi_col * s2_geom
 
-        S_metric_omega(:,m) = e_gsm_cache(:,m) * e_rsm_cache(:,m) * ( &
-          -16.e0_wp * pi * e2alpha_s2_col * (Omg(:,m) - ww_col) * matter_sum_col * vel_fac_col &
+        S_metric_omega(:,m) = egsm * ersm * ( &
+          -16.e0_wp * pi * e2alpha_s2_col * (omg_col - ww_col) * matter_sum_col * vel_fac_col &
           + ww_col * omega_bracket_col )
       endif
 
@@ -196,13 +205,14 @@ contains
         sphi_source_col = -2.e0_wp * pi * B_coup * matter_trace_col + mphi_r
         S_metric_sphi(:,m) = -r_e_new**2 * s2_geom * scal_p_col * mphi_r &
           + e2alpha_s2_col * scal_p_col * sphi_source_col &
-          + scal_p_col * (s1_one_minus_s_geom * dg_s_cache(:,m) + s1_sq_geom * (0.5e0_wp * d2g_ss_cache(:,m) + 0.25e0_wp * dg_s_cache(:,m)**2) &
-          + m1 * (0.5e0_wp * d2g_mm_cache(:,m) + 0.25e0_wp * dg_m_cache(:,m)**2) - mum * dg_m_cache(:,m))
+          + scal_p_col * (s1_one_minus_s_geom * gs + s1_sq_geom * (0.5e0_wp * gss + 0.25e0_wp * gs**2) &
+          + m1 * (0.5e0_wp * gmm + 0.25e0_wp * gm**2) - mum * gm)
       else
         sphi_source_col = -2.e0_wp * pi * B_coup * matter_trace_col
-        S_metric_sphi(:,m) = -s1_sq_geom * dg_s_cache(:,m) * ds_s_cache(:,m) - dg_m_scaled_col * ds_m_cache(:,m) &
-          + sphi(:,m) * sphi_source_col * e2alpha_s2_col
+        S_metric_sphi(:,m) = -s1_sq_geom * gs * ss - dg_m_scaled_col * sm &
+          + sphi_col * sphi_source_col * e2alpha_s2_col
       endif
+      end associate
     end do
   end subroutine build_source_terms
 

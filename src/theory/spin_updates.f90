@@ -144,18 +144,21 @@ contains
         omg_mu_0(1) = Omega_c
         omg_max_h = Omega_c
         mum = 0.0_wp
-        do s = 2, SDIV*2/3
+        do s = 2, (SDIV-1)/2
             rsm = rho(s,1)
             wwsm= ww (s,1)
             sgp = s_gp(s)
             guess  = omg_mu_0(s-1)
             call zbrent_rot( guess, r_e_new, rsm, wwsm, sgp, mum, 1.e-5_wp, omg_mu_0(s), rotation_law_uryu)
+            !write(*,"(es15.6)",advance='no') omg_mu_0(s)
             if (omg_mu_0(s) > omg_max_h) then 
-              omg_max_h = omg_mu_0(s)
+              omg_max_h = omg_mu_0(s)!; write(*,"(A)",advance='no') " <----"
             else
               exit
             end if
+            !write(*,*)" "
         enddo
+        !stop 803
         diff_Fmax = ( lambda1 - omg_max_h / Omega_c )
         Fmax_h    = Fmax_h - diff_Fmax * 1.e-2_wp
       enddo
@@ -179,7 +182,7 @@ contains
 
   subroutine update_eos_and_velocity(r_e_new, gama_pole_h, rho_pole_h, sphi_pole_h, &
                                      sgp_term_2d_cache_arg, sin_theta_2d_cache_arg, sgp_2d_cache_arg)
-    use para_mod, only : wp, SDIV, MDIV, r_ratio, &
+    use para_mod, only : wp, SDIV, MDIV, r_ratio, h_center, &
                          rho, gama, alpha, sphi, velocity_sq, enthalpy, pressure, energy, &
                          Omg, ww, Omega_c, omg, F_j, &
                          s_gp, has_scalar, B_coup, A_diff, solver_type, enthalpy_min, s_e
@@ -188,7 +191,7 @@ contains
     real(wp), intent(in) :: r_e_new, gama_pole_h, rho_pole_h, sphi_pole_h
     real(wp), intent(in) :: sgp_term_2d_cache_arg(:,:), sin_theta_2d_cache_arg(:,:), sgp_2d_cache_arg(:,:)
     integer :: s, m
-    real(wp) :: re2, log_p_val, log_e_val
+    real(wp) :: re2, log_p_val, log_e_val, pp, ee
 
     re2 = r_e_new**2
 
@@ -217,7 +220,7 @@ contains
     do m = 1, MDIV
       do s = 1, SDIV
         associate( h => enthalpy(s,m), p => pressure(s,m), &
-                 e => energy(s,m),   g => sgp_2d_cache_arg(s,m) )
+                   e => energy(s,m),   g => sgp_2d_cache_arg(s,m) )
         if (h > enthalpy_min .and. g <= s_e) then
           ! Direct scalar calls are usually the fastest path for the CPU
           p = exp(interp_log_h_to_p(log(h)))

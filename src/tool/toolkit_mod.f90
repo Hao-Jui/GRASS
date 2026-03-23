@@ -23,16 +23,13 @@ contains
     implicit none
     real(wp), intent(in) :: x
     real(wp) :: y
-    integer :: i
 
     if (x <= log_h(1)) then
       y = log_p(1)
     elseif (x >= log_h(num_tab)) then
       y = log_p(num_tab)
     else
-      i = binary_search_index(log_h, num_tab, x)
-      y = log_p(i) + (log_p(i+1)-log_p(i)) * &
-            (x - log_h(i)) / (log_h(i+1)-log_h(i))
+      call interp(log_h, log_p, num_tab, x, y)
     end if
   end function interp_log_h_to_p
 
@@ -41,16 +38,13 @@ contains
     implicit none
     real(wp), intent(in) :: x
     real(wp) :: y
-    integer :: i
 
     if (x <= log_p(1)) then
       y = log_e(1)
     elseif (x >= log_p(num_tab)) then
       y = log_e(num_tab)
     else
-      i = binary_search_index(log_p, num_tab, x)
-      y = log_e(i) + (log_e(i+1)-log_e(i)) * &
-            (x - log_p(i)) / (log_p(i+1)-log_p(i))
+      call interp(log_p, log_e, num_tab, x, y)
     end if
   end function interp_log_p_to_e
 
