@@ -5,7 +5,6 @@ module miscellaneous_mod
                       Omega_c, Omega_e, Omega_K, &
                       s_gp, s_pwr, SDIV, &
                       r_e, mass, Mb_goal, sphi_c
-  use nag_compat_mod, only: e02baf, e02bbf
   implicit none
 
 contains

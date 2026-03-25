@@ -50,17 +50,21 @@ contains
     call single_model()
   contains
     subroutine single_model()
-      real(wp) :: ee, rho0, t0, t1
-      r_ratio = .7e0_wp
-      output = .true.; call cpu_time(t0)
-      call rotation_solver
-      call solution_properties
+      use constrain_mod, only: hamiltonian
+      real(wp) :: ee, rho0, hamL2, t0, t1
+      !r_ratio = .7e0_wp
 
-      rho0 = n0_at_h(h_center)
-      ee   = e_at_h(h_center)
-      call print_converged_block(rho0, ee)
+      output = .true.; call cpu_time(t0)
+          call rotation_solver
+          call solution_properties
+          rho0 = n0_at_h(h_center)
+          ee   = e_at_h(h_center)
+          call print_converged_block(rho0, ee)
       output = .false.; call cpu_time(t1)
-      write(*,*) " "; write(*,"(A, f10.4)") "Elapsed time [s]: ", t1-t0; write(*,*) " "
+
+      write(*,*) " "; write(*,"(A, f10.4)") "Elapsed time [s]: ", t1-t0
+      call hamiltonian(hamL2)
+      write(*,"(A18,es27.16)") "Ham L2:", hamL2; write(*,*) " "
       !stop "One model solved!"
     end subroutine single_model
   end subroutine initialize_starting_model

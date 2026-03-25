@@ -8,6 +8,7 @@ program grass
                       solver_type, A_diff, lambda1, lambda2, &
                       s_gp, SDIV, MDIV, s_pwr, e_surface, C, KSCALE
   use constrain_mod, only: hamiltonian
+  use MRcurve_mod, only: MRcurve
   implicit none
   real(wp) :: hamL2
 

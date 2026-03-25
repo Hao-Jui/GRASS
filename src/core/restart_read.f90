@@ -43,7 +43,7 @@ subroutine regrid_read(target_sdiv, target_mdiv, interpolation_order)
   real(wp), allocatable :: s_quad_weight(:,:), m_quad_weight(:,:)
   real(wp) :: ds_source, dm_source, ds_target, dm_target
   integer :: i0, i1, j0, j1
-  real(wp) :: ws, wm
+  real(wp) :: ws, wm, t0, t1
   integer :: interp_order, unit
   logical :: use_quadratic
   if (target_sdiv < 2 .or. target_mdiv < 2) then
@@ -55,7 +55,7 @@ subroutine regrid_read(target_sdiv, target_mdiv, interpolation_order)
     interp_order = interpolation_order
   end if
   if (interp_order < 1) interp_order = 1
-
+  call cpu_time(t0)
   open(newunit=unit, file="./Res/res.dat")
   read(unit,'(A)',iostat=ios) line
   if (ios /= 0) stop "regrid_read: failed to read header"
@@ -213,8 +213,10 @@ subroutine regrid_read(target_sdiv, target_mdiv, interpolation_order)
     sphi = 0._wp
     has_scalar = .false.
   end if
+
+  call cpu_time(t1)
   write(*, fmt=*) " "
-  write(*, fmt=*) "Regrid-read OK!"
+  write(*, fmt='(A,f12.6,A)') "Regrid-read ---", t1-t0, " [s]"
 
 contains
 
