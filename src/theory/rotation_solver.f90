@@ -6,7 +6,7 @@ module rotation_uniform
                       r_e, r_ratio, h_center, SDIV, MDIV, &
                       B_coup, mphi_r, F_j, &
                       sphi_c, sphi_m, Omega_c, Omega_e, &
-                      Fmax_h, n_of_relaxation_steps, timing
+                      Fmax_h, n_of_relaxation_steps, timing, solver_type
   use spin_relaxation, only: dif, &
     target_rho, target_gama, target_ww, target_sphi, &
     metric_method, scalar_method, &
@@ -19,6 +19,7 @@ module rotation_uniform
     update_equatorial_radius, update_angular_velocity, &
     update_eos_and_velocity, get_all_targets, &
     relaxation, update_alpha_potential, output_helper
+  use spin_updates, only: reset_uryu_peak_cache
   implicit none
 contains
 
@@ -36,6 +37,7 @@ subroutine rotation_solver
   ! ---------------------------------------------------------------
   ! Setup phase
   ! ---------------------------------------------------------------
+  call reset_uryu_peak_cache()
   zero_scalar_mode = merge(.true., .false., active_theory == THEORY_GR)
   sqrt_B_coup = sqrt(B_coup)
   dif = 1.e0_wp
@@ -48,6 +50,7 @@ subroutine rotation_solver
   if ( any(isnan(sphi)) ) stop "NaN found in sphi"
 
   call allocate_workspace
+  if (trim(solver_type) == "uryu") call reset_uryu_peak_cache()
 
   ! ---------------------------------------------------------------
   ! Main iteration loop
@@ -129,13 +132,13 @@ subroutine rotation_solver
         q_sphi = contraction_ratio(dsphi_norm, dsphi_prev)
         q_re   = contraction_ratio(dre_norm,   dre_prev)
 
-        !if ( n_of_it > 50 .and. mod(n_of_it,50)==0 ) then
+        if ( n_of_it > 50 .and. mod(n_of_it,50)==0 ) then
           write(*,'(A,i4,A,es10.3,A,2es12.4,A,1X,A,1X,A,A,5es12.4)') &
             'it= ', n_of_it, ', dif:', dif, &
             ' sphi:', sphi_center_h*r_e_old*sqrt_B_coup, sphi_m, &
             ' ', trim(metric_method), trim(scalar_method), &
             '  |', q_rho, q_gama, q_re, q_ww, q_sphi
-        !endif
+        endif
 
         drho_prev  = drho_norm
         dgama_prev = dgama_norm
@@ -175,7 +178,9 @@ subroutine rotation_solver
     sphi_m = maxval( sphi(:,1) * sqrt_B_coup )
   end if
   call mass_radius()
+
   call output_helper(D2_metric_rho, D2_metric_omega)
+  
   call deallocate_workspace
 
 contains

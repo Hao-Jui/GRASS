@@ -11,11 +11,11 @@ module para_mod
   integer, parameter :: MODE_REGRID  = 1
   integer, parameter :: MODE_DEFAULT = 2
 
-  integer :: run_mode = MODE_DEFAULT
+  integer :: run_mode = MODE_REGRID
 
   ! -- Rotation configuration ------------------------------------------------
   ! uniform / const_j / uryu
-  character(len=20) :: solver_type = "uryu"
+  character(len=20) :: solver_type = "uniform"
 
   ! -- Solver state ----------------------------------------------------------
   logical :: output = .false.
@@ -25,21 +25,21 @@ module para_mod
   character(len=20) :: FIX2 = "chi_goal"
 
   ! -- Resolutions -----------------------------------------------------------
-  integer, parameter :: res  = 10
+  integer, parameter :: res  = 800
   integer, parameter :: s_pwr = 1
-  integer :: SDIV = 60 * res + 1
-  integer :: MDIV = 10 * res + 1
+  integer :: SDIV = 2 * res + 1
+  integer :: MDIV = 1201
 
   ! -- Target quantities -----------------------------------------------------
   character(len=128) :: eos_file = "MPA1"
   real(wp) :: M_goal   = 1.2e0_wp
-  real(wp) :: Mb_goal  = 1.8e0_wp
+  real(wp) :: Mb_goal  = 2.4e0_wp
   real(wp) :: J_goal   = 1.6e0_wp
   real(wp) :: chi_goal = 0.1e0_wp
   real(wp) :: omc_goal = 30.e0_wp
 
-  real(wp) :: B_goal   = 12.0_wp
-  real(wp) :: mphi_goal = 0.01_wp
+  real(wp) :: B_goal   = 2.5e4_wp
+  real(wp) :: mphi_goal = 10.0_wp
 
   ! -- Rotation-law parameters (KEH, Uryu enabled) --------------------------
   real(wp) :: A_diff  = 0.5e0_wp
@@ -103,10 +103,10 @@ module para_mod
   real(wp) :: sphi_m     = 0.e0_wp
   real(wp) :: r_sphi_max = 0.e0_wp  ! physical equatorial radius at max(sphi)
 
-  real(wp) :: B_burn_init = 13.e0_wp
-  real(wp) :: mphi_burn_seed = 0.05e0_wp
+  real(wp) :: B_burn_init = 16.e0_wp
+  real(wp) :: mphi_burn_seed = 0.1e0_wp
   integer, parameter :: scalar_burn_max_iter = 200
-  real(wp), parameter :: mphi_burn_threshold = 0.05e0_wp
+  real(wp), parameter :: mphi_burn_threshold = 0.1e0_wp
 
   ! Bulk properties
   real(wp) :: Omega_c = 0.e0_wp

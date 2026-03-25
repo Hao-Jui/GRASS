@@ -956,7 +956,7 @@ contains
 
   subroutine output_helper(D2_metric_rho, D2_metric_omega)
     real(wp), intent(in) :: D2_metric_rho(SDIV,LMAX+1), D2_metric_omega(SDIV,LMAX+1)
-    real(wp) :: r_inf, rho_0
+    real(wp) :: r_inf, rho_0, t0, t1
     character(32) :: fil1, fil2, fil3, fil4, fil5, fil6, fil7, fil8
     character(64) :: tail_fmt
     integer :: s, unit, ios, sig_digits, field_width
@@ -966,7 +966,12 @@ contains
     S3 = - D2_metric_omega(SDIV-1,2+1 ) / 2.e0_wp * r_inf**5 * ( C**2 / G / Mass )**4 / sqrt(KAPPA)
     M4 =   D2_metric_rho  (SDIV-1,2+1 ) / 2.e0_wp * r_inf**5 * ( C**2 / G / Mass )**5
 
-    if (.not. output) return
+    if (.not. output) &
+      return
+    
+    call cpu_time(t0); write(*,*) " "
+    write(*,"(A)",advance='no') " Off-loading data ..."
+
     open(newunit=unit, file="Cont/moment_tail.dat", status='replace', action='write', iostat=ios)
     if (ios /= 0) then
       write(*,*) "write_eq_profile: failed to open file ", trim("Cont/moment_tail.dat")
@@ -979,8 +984,6 @@ contains
       write(unit,tail_fmt) s_gp(s), D2_metric_rho(s,:), D2_metric_omega(s,:)
     end do
     close(unit)
-
-    write(*,"(A)") " ", " Off-loading data ..."
     
     write(fil1,"(f6.2)") ang_mom
     write(fil2,"(f16.3)") mass_0/MSUN
@@ -1009,6 +1012,8 @@ contains
       "_mphi"//trim(adjustl(fil4))//"_rhoc"//trim(adjustl(fil5))//"_sphim"//trim(adjustl(fil6))//trim(adjustl(fil7)) )
 
     call write_output_file("./Res/res.dat")
+
+    call cpu_time(t1); write(*,"(A, f12.6, A)") "   took ", t1-t0, " [s]"
   end subroutine output_helper
 
   subroutine write_output_file(filename)

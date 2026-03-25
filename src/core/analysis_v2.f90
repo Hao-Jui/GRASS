@@ -28,37 +28,37 @@ subroutine mass_radius()
   real(wp) :: l_minus, e_minus
 
   call prepare_common_data(rho_0, gama_mu_0, rho_mu_0, ww_mu_0, gama_mu_1, rho_mu_1, sphi_mu_0, use_scalar)
-  Mass   = 0.e0_wp
-  mass_0 = 0.e0_wp
-  mass_p = 0.e0_wp
-  T_kin  = 0.e0_wp
-  j_local = 0.e0_wp
-  if (.not. use_scalar) sphi = 0.e0_wp
+  Mass   = 0.0_wp
+  mass_0 = 0.0_wp
+  mass_p = 0.0_wp
+  T_kin  = 0.0_wp
+  j_local = 0.0_wp
+  if (.not. use_scalar) sphi = 0.0_wp
 
   do s = 1, SDIV
     block
       real(wp), dimension(MDIV) :: acoup, acoup3, acoup4, vphi, vel_safe, e2ag, e_mr, ehgr, invlf, sqrlf, sqr1mmu2
-      acoup = exp(-sphi(s,:)**2 * B_coup / 4.e0_wp)
+      acoup = exp(-sphi(s,:)**2 * B_coup / 4.0_wp)
       acoup3 = acoup**3
       acoup4 = acoup**4
-      vphi  = mphi_r * sphi(s,:)**2 / 2.e0_wp
-      s1 = (s_gp(s)/(1.e0_wp-s_gp(s)))**s_pwr
-      vel_safe = min(max(velocity_sq(s,:), 0.e0_wp), 1.e0_wp - 1.e-12_wp)
+      vphi  = mphi_r * sphi(s,:)**2 / 2.0_wp
+      s1 = (s_gp(s)/(1.0_wp-s_gp(s)))**s_pwr
+      vel_safe = min(max(velocity_sq(s,:), 0.0_wp), 1.0_wp - 1.e-12_wp)
 
-      e2ag = exp(2.e0_wp*alpha(s,:)+gama(s,:))
+      e2ag = exp(2.0_wp*alpha(s,:)+gama(s,:))
       e_mr = exp(-rho(s,:))
-      ehgr = exp(2.e0_wp*alpha(s,:) + (gama(s,:) - rho(s,:))/2.e0_wp)
-      invlf = 1.e0_wp / (1.e0_wp - vel_safe)
+      ehgr = exp(2.0_wp*alpha(s,:) + (gama(s,:) - rho(s,:))/2.0_wp)
+      invlf = 1.0_wp / (1.0_wp - vel_safe)
       sqrlf = sqrt(vel_safe)
-      sqr1mmu2 = sqrt(1.e0_wp-mu(:)**2)
+      sqr1mmu2 = sqrt(1.0_wp-mu(:)**2)
 
       mu_integrand_buffer(:,1) = e2ag * &
                                 ( ( ( energy(s,:) + pressure(s,:) ) * acoup4 * invlf ) * &
-                                  ( 1.e0_wp + vel_safe + 2.e0_wp * sqrlf * s1 * sqr1mmu2 * r_e * ww(s,:) * e_mr ) &
-                                  + 2.e0_wp*pressure(s,:) * acoup4 - vphi / (2.e0_wp*pi) )
-      mu_integrand_buffer(:,2) = ehgr * rho_0(s,:) * acoup3 / sqrt(1.e0_wp-vel_safe)
-      mu_integrand_buffer(:,3) = ehgr * energy(s,:) * acoup4 / sqrt(1.e0_wp-vel_safe)
-      mu_integrand_buffer(:,4) = sqr1mmu2 * exp(2.e0_wp*alpha(s,:) + gama(s,:) - rho(s,:)) * &
+                                  ( 1.0_wp + vel_safe + 2.0_wp * sqrlf * s1 * sqr1mmu2 * r_e * ww(s,:) * e_mr ) &
+                                  + 2.0_wp*pressure(s,:) * acoup4 - vphi / (2.0_wp*pi) )
+      mu_integrand_buffer(:,2) = ehgr * rho_0(s,:) * acoup3 / sqrt(1.0_wp-vel_safe)
+      mu_integrand_buffer(:,3) = ehgr * energy(s,:) * acoup4 / sqrt(1.0_wp-vel_safe)
+      mu_integrand_buffer(:,4) = sqr1mmu2 * exp(2.0_wp*alpha(s,:) + gama(s,:) - rho(s,:)) * &
                                 (energy(s,:) + pressure(s,:)) * acoup4 * sqrlf * invlf
       mu_integrand_buffer(:,5) = mu_integrand_buffer(:,4) * omg(s,:)
       call integrate_profiles(mu, mu_integrand_buffer, mu_results)
@@ -70,8 +70,8 @@ subroutine mass_radius()
     end block
   enddo
 
-  mass_weight = (s_gp(:)/(1.e0_wp-s_gp(:)))**(3*s_pwr-1) / (1.e0_wp-s_gp(:))**2 * dble(s_pwr)
-  ang_weight  = (s_gp(:)/(1.e0_wp-s_gp(:)))**(4*s_pwr-1) / (1.e0_wp-s_gp(:))**2 * dble(s_pwr)
+  mass_weight = (s_gp(:)/(1.0_wp-s_gp(:)))**(3*s_pwr-1) / (1.0_wp-s_gp(:))**2 * dble(s_pwr)
+  ang_weight  = (s_gp(:)/(1.0_wp-s_gp(:)))**(4*s_pwr-1) / (1.0_wp-s_gp(:))**2 * dble(s_pwr)
 
   integrand_buffer(:,1) = mass_weight * d_m(:)
   integrand_buffer(:,2) = mass_weight * d_m0(:)
@@ -81,11 +81,11 @@ subroutine mass_radius()
 
   call integrate_profiles(s_gp, integrand_buffer, integral_results)
 
-  Mass    = integral_results(1) * 4.e0_wp * pi * sqrt(kappa)*C**2 * r_e**3 / G
-  mass_0  = integral_results(2) * 4.e0_wp * pi * sqrt(kappa)*C**2 * r_e**3 / G
-  mass_p  = integral_results(3) * 4.e0_wp * pi * sqrt(kappa)*C**2 * r_e**3 / G
-  j_local = integral_results(4) * 4.e0_wp * pi * kappa * C**3 * r_e**4 / G
-  T_kin   = integral_results(5) * 2.e0_wp * pi * sqrt(kappa) * C**2 * r_e**4 / G
+  Mass    = integral_results(1) * 4.0_wp * pi * sqrt(kappa)*C**2 * r_e**3 / G
+  mass_0  = integral_results(2) * 4.0_wp * pi * sqrt(kappa)*C**2 * r_e**3 / G
+  mass_p  = integral_results(3) * 4.0_wp * pi * sqrt(kappa)*C**2 * r_e**3 / G
+  j_local = integral_results(4) * 4.0_wp * pi * kappa * C**3 * r_e**4 / G
+  T_kin   = integral_results(5) * 2.0_wp * pi * sqrt(kappa) * C**2 * r_e**4 / G
   Omega_K = Kepler()
 
   ang_mom = j_local * C / (G*MSUN**2)
@@ -96,7 +96,7 @@ contains
     integer :: s 
     real(wp) :: doe, dge, dre, vek
     real(wp) :: s_p, gama_pole, rho_pole, gama_equator, rho_equator, sphi_equator, wwe
-    s_p = r_ratio**(1.e0_wp/dble(s_pwr)) / (1.e0_wp + r_ratio**(1.e0_wp/dble(s_pwr)))
+    s_p = r_ratio**(1.0_wp/dble(s_pwr)) / (1.0_wp + r_ratio**(1.0_wp/dble(s_pwr)))
     do s = 1, SDIV
       d_r_e(s) = deriv_s_1d(rho(:,1),s)
       d_g_e(s) = deriv_s_1d(gama(:,1),s)
@@ -107,18 +107,18 @@ contains
     call interp(s_gp, gama_mu_0,  SDIV, s_e, gama_equator)
     call interp(s_gp,  rho_mu_0,  SDIV, s_e, rho_equator)
     call interp(s_gp, sphi_mu_0,  SDIV, s_e, sphi_equator)
-    if (r_ratio >= 1.e0_wp) then
-      wwe = 0.e0_wp
+    if (r_ratio >= 1.0_wp) then
+      wwe = 0.0_wp
     else
       call interp(s_gp, ww_mu_0, SDIV, s_e, wwe)
     end if
     call interp(s_gp, d_o_e, SDIV, s_e, doe)
     call interp(s_gp, d_g_e, SDIV, s_e, dge)
     call interp(s_gp, d_r_e, SDIV, s_e, dre)
-    vek = ( doe / ( 8.e0_wp + dge - dre ) ) * r_e * exp(-rho_equator) + sqrt( ( (dge+dre) / (8.e0_wp+dge-dre) ) &
-        +(( doe / ( 8.e0_wp + dge - dre ) ) * r_e * exp(-rho_equator) )**2 )
+    vek = ( doe / ( 8.0_wp + dge - dre ) ) * r_e * exp(-rho_equator) + sqrt( ( (dge+dre) / (8.0_wp+dge-dre) ) &
+        +(( doe / ( 8.0_wp + dge - dre ) ) * r_e * exp(-rho_equator) )**2 )
     val = (C/sqrt(kappa)) * (wwe + vek*exp(rho_equator)/r_e)
-    r_circ  = sqrt(kappa) * r_e * exp((gama_equator-rho_equator)/2.e0_wp) * exp(-sphi_equator**2 * B_coup / 4.e0_wp)
+    r_circ  = sqrt(kappa) * r_e * exp((gama_equator-rho_equator)/2.0_wp) * exp(-sphi_equator**2 * B_coup / 4.0_wp)
     if (output) call write_velocity_table
   end function Kepler
 
@@ -131,16 +131,16 @@ contains
       return
     end if
     do s = 1, SDIV
-      s1  = s_gp(s) * (1.e0_wp - s_gp(s))
-      r_h = r_e * s_gp(s) / (1.e0_wp - s_gp(s))
+      s1  = s_gp(s) * (1.0_wp - s_gp(s))
+      r_h = r_e * s_gp(s) / (1.0_wp - s_gp(s))
       dd_r_e(s) = deriv_s_1d(d_r_e, s)
       dd_g_e(s) = deriv_s_1d(d_g_e, s)
       dd_o_e(s) = deriv_s_1d(d_o_e, s)
-      sqrt_term = exp(-2.e0_wp*rho(s,1))*r_e**2*s_gp(s)**4*d_o_e(s)**2 + &
-                  2.e0_wp*s1*(d_g_e(s)+d_r_e(s)) + s1**2*(d_g_e(s)**2 - d_r_e(s)**2)
-      sqrt_term = merge(sqrt(sqrt_term), 0.e0_wp, sqrt_term > 0.e0_wp)
-      v_plus(s)  = ( exp(-rho(s,1)) * r_e * s_gp(s)**2 * d_o_e(s) + sqrt_term ) / ( 2.e0_wp + s1 * (d_g_e(s) - d_r_e(s)) )
-      v_minus(s) = ( exp(-rho(s,1)) * r_e * s_gp(s)**2 * d_o_e(s) - sqrt_term ) / ( 2.e0_wp + s1 * (d_g_e(s) - d_r_e(s)) )
+      sqrt_term = exp(-2.0_wp*rho(s,1))*r_e**2*s_gp(s)**4*d_o_e(s)**2 + &
+                  2.0_wp*s1*(d_g_e(s)+d_r_e(s)) + s1**2*(d_g_e(s)**2 - d_r_e(s)**2)
+      sqrt_term = merge(sqrt(sqrt_term), 0.0_wp, sqrt_term > 0.0_wp)
+      v_plus(s)  = ( exp(-rho(s,1)) * r_e * s_gp(s)**2 * d_o_e(s) + sqrt_term ) / ( 2.0_wp + s1 * (d_g_e(s) - d_r_e(s)) )
+      v_minus(s) = ( exp(-rho(s,1)) * r_e * s_gp(s)**2 * d_o_e(s) - sqrt_term ) / ( 2.0_wp + s1 * (d_g_e(s) - d_r_e(s)) )
       call compute_velocity_curvature(s, r_h)
       write(unit,"(10es18.9)") s_gp(s), v_plus(s), V_rr_p(s), v_minus(s), V_rr_m(s), l_minus*sqrt(KAPPA)/1.e5_wp, e_minus
     end do
@@ -153,9 +153,9 @@ contains
     real(wp) :: o_r, g_r, r_r, o_rr, g_rr, r_rr, term1, term2, term3
     real(wp) :: r_h_inv, s_gp_s, r_e_inv_rh_cubed, r_e2_s_gp4_rh4
 
-    r_h_inv = 1.e0_wp / r_h
+    r_h_inv = 1.0_wp / r_h
     s_gp_s = s_gp(s)
-    r_e_inv_rh_cubed = -2.e0_wp * r_e / (r_e + r_h)**3
+    r_e_inv_rh_cubed = -2.0_wp * r_e / (r_e + r_h)**3
     r_e2_s_gp4_rh4 = (r_e * s_gp_s**2 * r_h_inv**2)**2
 
     o_r  = r_e * s_gp_s**2 * r_h_inv**2 * d_o_e(s)
@@ -165,14 +165,14 @@ contains
     g_rr = r_e_inv_rh_cubed * d_g_e(s) + r_e2_s_gp4_rh4 * dd_g_e(s)
     r_rr = r_e_inv_rh_cubed * d_r_e(s) + r_e2_s_gp4_rh4 * dd_r_e(s)
 
-    term1 = r_h**2 * (g_rr - r_rr + g_r**2 - r_r**2) + 2.e0_wp * ( exp(-rho_mu_0(s)) * r_h**2 * o_r )**2 + 4.e0_wp * r_h * r_r - 6.e0_wp
-    term2 = r_h**3 * exp(-rho_mu_0(s)) * ( 2.e0_wp * r_r * o_r - o_rr )
+    term1 = r_h**2 * (g_rr - r_rr + g_r**2 - r_r**2) + 2.0_wp * ( exp(-rho_mu_0(s)) * r_h**2 * o_r )**2 + 4.0_wp * r_h * r_r - 6.0_wp
+    term2 = r_h**3 * exp(-rho_mu_0(s)) * ( 2.0_wp * r_r * o_r - o_rr )
     term3 = r_h**2 * ( g_rr + r_rr + g_r**2 - r_r**2 )
 
-    V_rr_p(s) = (v_plus(s)**2 * term1 + 2.e0_wp * v_plus(s) * term2 - term3) * r_h_inv**2 / (1.e0_wp - v_plus(s)**2) * exp(gama_mu_0(s))
-    V_rr_m(s) = (v_minus(s)**2 * term1 + 2.e0_wp * v_minus(s) * term2 - term3) * r_h_inv**2 / (1.e0_wp - v_minus(s)**2) * exp(gama_mu_0(s))
-    l_minus = v_minus(s) * r_h * exp( (gama_mu_0(s) + rho_mu_0(s))/2.e0_wp ) / sqrt(1.e0_wp - v_minus(s)**2)
-    e_minus = exp( (gama_mu_0(s) + rho_mu_0(s))/2.e0_wp ) / sqrt(1.e0_wp - v_minus(s)**2) + ww_mu_0(s) * l_minus
+    V_rr_p(s) = (v_plus(s)**2 * term1 + 2.0_wp * v_plus(s) * term2 - term3) * r_h_inv**2 / (1.0_wp - v_plus(s)**2) * exp(gama_mu_0(s))
+    V_rr_m(s) = (v_minus(s)**2 * term1 + 2.0_wp * v_minus(s) * term2 - term3) * r_h_inv**2 / (1.0_wp - v_minus(s)**2) * exp(gama_mu_0(s))
+    l_minus = v_minus(s) * r_h * exp( (gama_mu_0(s) + rho_mu_0(s))/2.0_wp ) / sqrt(1.0_wp - v_minus(s)**2)
+    e_minus = exp( (gama_mu_0(s) + rho_mu_0(s))/2.0_wp ) / sqrt(1.0_wp - v_minus(s)**2) + ww_mu_0(s) * l_minus
   end subroutine compute_velocity_curvature
 end subroutine mass_radius
 
@@ -206,24 +206,24 @@ subroutine solution_properties()
 
   call prepare_common_data(rho_0, gama_mu_0, rho_mu_0, ww_mu_0, gama_mu_1, rho_mu_1, sphi_mu_0, use_scalar)
 
-  T_trace = - energy(:,1) + 3.e0_wp * pressure(:,1)
+  T_trace = - energy(:,1) + 3.0_wp * pressure(:,1)
 
   if (use_scalar) then
     do s = 1, SDIV
       call interp_dual(s_gp, sphi(:,1), SDIV, dual_var(s_gp(s)), sphi_dual)
       sphi_deriv(s) = sphi_dual%der
     end do
-    effective_pressure = sphi_deriv**2 / (8.e0_wp * pi) - mphi_r * sphi_mu_0**2 / (4.e0_wp * pi)
-    effective_energy   = sphi_deriv**2 / (8.e0_wp * pi) + mphi_r * sphi_mu_0**2 / (4.e0_wp * pi)
-    scal_potential = ( 2.e0_wp * pi * B_goal * T_trace &
-          * exp( - B_goal * sphi_mu_0**2 / 2.e0_wp ) + mphi_r ) * exp( gama(:,1) ) &
-          + (1.e0_wp-s_gp)**3 / max(s_gp, 1.e-10_wp) / r_e**2 * exp( rho(:,1) ) * d_r_e
+    effective_pressure = sphi_deriv**2 / (8.0_wp * pi) - mphi_r * sphi_mu_0**2 / (4.0_wp * pi)
+    effective_energy   = sphi_deriv**2 / (8.0_wp * pi) + mphi_r * sphi_mu_0**2 / (4.0_wp * pi)
+    scal_potential = ( 2.0_wp * pi * B_goal * T_trace &
+          * exp( - B_goal * sphi_mu_0**2 / 2.0_wp ) + mphi_r ) * exp( gama(:,1) ) &
+          + (1.0_wp-s_gp)**3 / max(s_gp, 1.e-10_wp) / r_e**2 * exp( rho(:,1) ) * d_r_e
   else
-    effective_pressure = 0.e0_wp; effective_energy = 0.e0_wp; scal_potential = 0.e0_wp; sphi_deriv = 0.e0_wp
+    effective_pressure = 0.0_wp; effective_energy = 0.0_wp; scal_potential = 0.0_wp; sphi_deriv = 0.0_wp
   end if
 
   do s = 1, SDIV
-    if (energy(s,1) > 0.e0_wp) then
+    if (energy(s,1) > 0.0_wp) then
       energy_dual = dual_var(energy(s,1))
       pressure_dual = p_at_e_dual(energy_dual)
       pres_deriv(s) = pressure_dual%der
@@ -233,9 +233,9 @@ subroutine solution_properties()
       effective_cs(s)   = pressure_slope(s) / energy_slope(s)
       call pressure_derivative_n(energy(s,1), 2, susceptibility(s), ifail)
     else
-      sound_speed(s) = 0.e0_wp
-      pressure_slope(s) = 0.e0_wp
-      energy_slope(s) = 0.e0_wp
+      sound_speed(s) = 0.0_wp
+      pressure_slope(s) = 0.0_wp
+      energy_slope(s) = 0.0_wp
     end if
   end do
   do s = 1, SDIV
@@ -243,7 +243,7 @@ subroutine solution_properties()
     suscep_slope(s) = deriv_s_1d(susceptibility, s)
   enddo
 
-  if (output) call radial_configuration()
+  !if (output) call radial_configuration()
   !call to_alexis()
   !call to_sizeng()
   call mass_radius()
@@ -252,11 +252,11 @@ subroutine solution_properties()
 
   cc = (mass/MSUN*l_uni) / (r_circ/1.e5_wp)
   yy = moi_love(2)
-  dom = 2.e0_wp * cc * (6.e0_wp - 3.e0_wp * yy + 3.e0_wp * cc * (5.e0_wp * yy - 8.e0_wp)) &
-      + 4.e0_wp * cc**3 * (13.e0_wp - 11.e0_wp * yy + cc * (3.e0_wp * yy - 2.e0_wp) + 2.e0_wp * cc**2 * (1.e0_wp + yy)) &
-      + 3.e0_wp * (1.e0_wp - 2.e0_wp * cc)**2 * (2.e0_wp * cc * (yy - 1.e0_wp) - yy + 2.e0_wp) * log(1.e0_wp - 2.e0_wp * cc)
-  Love2 = 8.e0_wp / 5.e0_wp * cc**5 * (1.e0_wp - 2.e0_wp * cc)**2 * (2.e0_wp * cc * (yy - 1.e0_wp) - yy + 2.e0_wp) &
-        / dom * 2.e0_wp / cc**(2*2+1) / dble(2*2-1)
+  dom = 2.0_wp * cc * (6.0_wp - 3.0_wp * yy + 3.0_wp * cc * (5.0_wp * yy - 8.0_wp)) &
+      + 4.0_wp * cc**3 * (13.0_wp - 11.0_wp * yy + cc * (3.0_wp * yy - 2.0_wp) + 2.0_wp * cc**2 * (1.0_wp + yy)) &
+      + 3.0_wp * (1.0_wp - 2.0_wp * cc)**2 * (2.0_wp * cc * (yy - 1.0_wp) - yy + 2.0_wp) * log(1.0_wp - 2.0_wp * cc)
+  Love2 = 8.0_wp / 5.0_wp * cc**5 * (1.0_wp - 2.0_wp * cc)**2 * (2.0_wp * cc * (yy - 1.0_wp) - yy + 2.0_wp) &
+        / dom * 2.0_wp / cc**(2*2+1) / dble(2*2-1)
   !call spectral_analysis()
 contains
 
@@ -280,7 +280,7 @@ contains
       end subroutine dgeev
     end interface
     
-    scale = 2.e0_wp / max(s_e, 1.e-12_wp)
+    scale = 2.0_wp / max(s_e, 1.e-12_wp)
 
     write(mphi_str,"(f10.0)") mphi_goal
     profile_file = './Cont/eigenvalues_mphi'//trim(adjustl(mphi_str))//'log'
@@ -303,7 +303,7 @@ contains
       end do
       call cheb_diff_matrix(N, D)
       D = scale * D
-      s_collocate = 0.5e0_wp * s_e * (x + 1.e0_wp)
+      s_collocate = 0.5e0_wp * s_e * (x + 1.0_wp)
       do i = 0, N
         call interp(s_gp, d_g_e, SDIV, s_collocate(i), dgama_coll(i))
         call interp(s_gp, scal_potential, SDIV, s_collocate(i), src_coll(i))
@@ -311,9 +311,9 @@ contains
       
       op = matmul(D, D)
       do i = 0, N
-        op(i, :) = op(i, :) * ( (1.e0_wp-s_collocate(i))**2 / r_e )**2 &
-                  + (dgama_coll(i)*( (1.e0_wp-s_collocate(i))**2 / r_e )**2 &
-                  - 2.e0_wp*( (1.e0_wp-s_collocate(i)) / r_e )**2) * D(i, :)
+        op(i, :) = op(i, :) * ( (1.0_wp-s_collocate(i))**2 / r_e )**2 &
+                  + (dgama_coll(i)*( (1.0_wp-s_collocate(i))**2 / r_e )**2 &
+                  - 2.0_wp*( (1.0_wp-s_collocate(i)) / r_e )**2) * D(i, :)
         op(i, i) = op(i, i) - src_coll(i)
       end do
 
@@ -332,31 +332,25 @@ contains
   end subroutine spectral_analysis
 
   subroutine radial_configuration()
-    write(mphi_str,"(es8.2)") mphi_goal
-    write(B_str,"(es8.2)") B_goal
-    write(M_str,"(f8.0)") mass/MSUN*1.e2_wp
-    write(sdiv_str,"(i0)") SDIV
-    write(mdiv_str,"(i0)") MDIV
-    profile_file = "/Users/horay/Data4Projects/crazy/Dat/1dprofile_" &
-              // trim(adjustl(sdiv_str)) //"_"// trim(adjustl(mdiv_str)) //"_" &
-              // trim(adjustl(B_str)) //"_" &
-              // trim(adjustl(mphi_str)) //"_M" &
-              // trim(adjustl(M_str)) // "dat"
+    use para_mod, only: mass_0
+    write(profile_file, '(A,I0,"_",I0,"_B",ES0.2,"_mphi",ES0.2,"_M",F0.2,"_Mb",F0.4,".dat")') &
+      "/Users/horay/Data4Projects/crazy/Map/1dprofile_", &
+      SDIV, MDIV, B_goal, mphi_goal, mass / MSUN, mass_0 / MSUN
     call write_eq_profile(profile_file,(SDIV-1)/2,&
         gama(:,1), rho(:,1), alpha(:,1),         &
         ww(:,1), omg(:,1),                       &
         enthalpy(:,1),                           & ! 7
-        rho_0(:,1)/(KSCALE*C**2)/ n_sat,         &
+        rho_0(:,1)/(KSCALE*C**2) / n_sat,        &
         energy(:,1)/(C*C*KSCALE),                &
         pressure(:,1)/KSCALE,                    &
-        sphi(:,1) * sqrt(B_coup),                &
+        sphi(:,1) * sqrt(B_coup),                & ! 11
         sphi_deriv * sqrt(B_coup),               &
         sound_speed,                             &
         effective_cs,                            &
         effective_pressure/KSCALE,               & 
         effective_energy/(C*C*KSCALE)  )
 
-    if (.true.) then ! Debug: Chebyshev fit of gama over the stellar interior [s_gp(1), s_gp(res+1)]
+    if (.false.) then ! Debug: Chebyshev fit of gama over the stellar interior [s_gp(1), s_gp(res+1)]
       block
         integer, parameter :: n_cheb = 39
         integer :: res, i
@@ -371,7 +365,7 @@ contains
         end do
         write(*,'(A,2es12.4)') 'cheb err (abs, rel):', &
             maxval(abs(Y_cheb - Y)), &
-            maxval(abs(Y_cheb/Y - 1.e0_wp))
+            maxval(abs(Y_cheb/Y - 1.0_wp))
         block
           integer :: uid
           open(newunit=uid, file='./Cont/cheb_check.dat', status='replace', action='write')
@@ -387,10 +381,10 @@ contains
 
   subroutine to_alexis()
     profile_file = "./Cont/alexis.dat"
-    gamj  = sound_speed * (energy(:,1)/pressure(:,1) - 1.e0_wp) / (1.e0_wp+delt)
-    schwarz  = pres_deriv / pressure(:,1)/ gamj * delt / (1.e0_wp+delt)
-    gg    = -exp(2.e0_wp*rho(:,1)) * pres_deriv / ( energy(:,1) + pressure(:,1) )
-    BV    = sqrt( - gg * schwarz ) / r_e * ( 1.e0_wp - s_gp )**2 * sqrt(KAPPA) / C
+    gamj  = sound_speed * (energy(:,1)/pressure(:,1) - 1.0_wp) / (1.0_wp+delt)
+    schwarz  = pres_deriv / pressure(:,1)/ gamj * delt / (1.0_wp+delt)
+    gg    = -exp(2.0_wp*rho(:,1)) * pres_deriv / ( energy(:,1) + pressure(:,1) )
+    BV    = sqrt( - gg * schwarz ) / r_e * ( 1.0_wp - s_gp )**2 * sqrt(KAPPA) / C
     call write_eq_profile(profile_file, (SDIV+1)/2, &
         gama(:,1), rho(:,1), alpha(:,1), & ! 1-3
         enthalpy(:,1), rho_0(:,1)/(KSCALE*C**2), pressure(:,1)/KSCALE, & ! 4-6
@@ -424,21 +418,19 @@ subroutine prepare_common_data(rho_0, gama_mu_0, rho_mu_0, ww_mu_0, gama_mu_1, r
   gama_mu_0(:) = gama(:,1)
   rho_mu_0(:)  = rho (:,1)
   ww_mu_0 (:)  = ww  (:,1)
-  sphi_mu_0(:) = merge( sphi(:,1), 0.e0_wp, use_scalar )
+  sphi_mu_0(:) = merge( sphi(:,1), 0.0_wp, use_scalar )
 
   block
     integer :: s_, m_
     real(wp) :: n0_val
-    do m_ = 1, MDIV
-      do s_ = 1, SDIV
+    do m_ = 1, MDIV; do s_ = 1, SDIV
         if (energy(s_,m_) > e_surface) then
           n0_val = n0_at_e(energy(s_,m_))
           rho_0(s_,m_) = n0_val * MB * KSCALE * C**2
         else
-          rho_0(s_,m_) = 0.e0_wp
+          rho_0(s_,m_) = 0.0_wp
         end if
-      end do
-    end do
+    end do; end do
   end block
 end subroutine prepare_common_data
   
@@ -455,18 +447,18 @@ function moment_inertia() result(val)
   logical :: debug = .false.
 
   r_surf = r_e * sqrt(KAPPA) / 1.e5_wp
-  r_in = r_surf * s_gp(2) / ( 1.e0_wp - s_gp(2) )
+  r_in = r_surf * s_gp(2) / ( 1.0_wp - s_gp(2) )
   ec = energy(1,1) / (C*C*KSCALE) * rho_uni
   pc = pressure(1,1) / KSCALE * prs_uni
 
   y(1) = r_in - pi * ec * r_in**3
-  y(2) = 8.e0_wp * pi / 15.e0_wp * y(1)**5 * (ec+pc)
-  y(3) = 4.e0_wp * pi * ec * y(1)**2 * (1.e0_wp + 4.e0_wp * pi * ec * y(1)**2 / 3.e0_wp)
-  y(4) = 2.e0_wp
-  yp(1)= 1 - 3.e0_wp * pi * ec * r_in**2
-  yp(2)= 8.e0_wp * pi / 3.e0_wp * y(1)**4 * (ec+pc)
-  yp(3)= 8.e0_wp * pi * ec * y(1) * (1.e0_wp + 2.e0_wp * pi * ec * y(1)**2)
-  yp(4)= 0.e0_wp
+  y(2) = 8.0_wp * pi / 15.0_wp * y(1)**5 * (ec+pc)
+  y(3) = 4.0_wp * pi * ec * y(1)**2 * (1.0_wp + 4.0_wp * pi * ec * y(1)**2 / 3.0_wp)
+  y(4) = 2.0_wp
+  yp(1)= 1 - 3.0_wp * pi * ec * r_in**2
+  yp(2)= 8.0_wp * pi / 3.0_wp * y(1)**4 * (ec+pc)
+  yp(3)= 8.0_wp * pi * ec * y(1) * (1.0_wp + 2.0_wp * pi * ec * y(1)**2)
+  yp(4)= 0.0_wp
 
   flag = 1
   call d02pcf(deriv, neqn, y, yp, r_in, r_surf, relerr, abserr, flag, step_count, debug)
@@ -477,7 +469,7 @@ function moment_inertia() result(val)
   val(1) = y(2)
   val(2) = y(4)
   !write(*,"('Double check Schwarzschild radius:',es18.9,'  ADM mass:',es18.9, '  RK45 steps :', i5)") &
-  !  abs(1.e0_wp-r_circ/1.e5_wp/y(1)), abs(1.e0_wp-y(3)/l_uni/(mass/MSUN)), step_count
+  !  abs(1.0_wp-r_circ/1.e5_wp/y(1)), abs(1.0_wp-y(3)/l_uni/(mass/MSUN)), step_count
 
 end function moment_inertia
 
@@ -508,25 +500,25 @@ subroutine deriv(t, y, yp)
   dalphads = alpha_d%der
   dsphids  = sphi_d%der
 
-  logP = ( 4.e0_wp * alpha_d%val + gama_val - rho_val ) / 12.e0_wp
+  logP = ( 4.0_wp * alpha_d%val + gama_val - rho_val ) / 12.0_wp
 
   e = e / (C*C*KSCALE) * rho_uni
   p = p / KSCALE * prs_uni
 
-  elm = 1.e0_wp / ( 1.e0_wp + s_h * (1.e0_wp - s_h) * dalphads )**2
-  dpdr= - (e+p) * (y(3) + 4.e0_wp * pi * y(1)**3 * p) / (y(1) * (y(1) - 2.e0_wp * y(3)))
+  elm = 1.0_wp / ( 1.0_wp + s_h * (1.0_wp - s_h) * dalphads )**2
+  dpdr= - (e+p) * (y(3) + 4.0_wp * pi * y(1)**3 * p) / (y(1) * (y(1) - 2.0_wp * y(3)))
 
-  yp(1) = exp(2.e0_wp * logP) * ( 1.e0_wp + s_h * (1.e0_wp - s_h) * dalphads )
-  yp(2) = 8.e0_wp / 3.e0_wp * pi * y(1)**4 * (e+p) * ( 1.e0_wp - 5.e0_wp * y(2) / 2.e0_wp / y(1)**3 + y(2)**2 / y(1)**6 ) * elm
-  yp(3) = 4.e0_wp * pi * y(1)**2 * e
+  yp(1) = exp(2.0_wp * logP) * ( 1.0_wp + s_h * (1.0_wp - s_h) * dalphads )
+  yp(2) = 8.0_wp / 3.0_wp * pi * y(1)**4 * (e+p) * ( 1.0_wp - 5.0_wp * y(2) / 2.0_wp / y(1)**3 + y(2)**2 / y(1)**6 ) * elm
+  yp(3) = 4.0_wp * pi * y(1)**2 * e
 
   QQ  = -dble((1+1)*(1+2)) * elm / y(1)**2 - dpdr**2 &
-      + 4.e0_wp * pi * elm * (5.e0_wp * e + 9.e0_wp * p + (e+p) / vs2)
-  yp(4) = -y(4)**2 / y(1) - y(4) * elm / y(1) * (1.e0_wp + 4.e0_wp * pi * y(1)**2 * (p-e)) - QQ * y(1)
+      + 4.0_wp * pi * elm * (5.0_wp * e + 9.0_wp * p + (e+p) / vs2)
+  yp(4) = -y(4)**2 / y(1) - y(4) * elm / y(1) * (1.0_wp + 4.0_wp * pi * y(1)**2 * (p-e)) - QQ * y(1)
 
   if (has_scalar) then
-    yp(2) = yp(2) + y(2) * y(1) * ( 1.e0_wp - 2.e0_wp * y(2) / y(1)**3 ) / yp(1)**2 &
-          * ( (1.e0_wp - s_h)**2 / r_surf * dsphids )**2
+    yp(2) = yp(2) + y(2) * y(1) * ( 1.0_wp - 2.0_wp * y(2) / y(1)**3 ) / yp(1)**2 &
+          * ( (1.0_wp - s_h)**2 / r_surf * dsphids )**2
   endif
 
   yp(2) = yp(2) * yp(1)

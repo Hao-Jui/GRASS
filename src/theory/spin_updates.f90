@@ -2,9 +2,17 @@ module spin_updates
   use, intrinsic :: iso_fortran_env, only: wp => real64
   implicit none
   private
-  public :: update_equatorial_radius, update_angular_velocity, update_eos_and_velocity
+  public :: update_equatorial_radius, update_angular_velocity, update_eos_and_velocity, reset_uryu_peak_cache
+
+  ! Persistent state for narrow peak search in uryu_rotation
+  real(wp), allocatable, save :: omg_mu_0_saved(:)
+  integer, save :: s_peak_prev = 0
 
 contains
+
+  subroutine reset_uryu_peak_cache()
+    s_peak_prev = 0
+  end subroutine reset_uryu_peak_cache
 
   subroutine update_equatorial_radius(r_e_old, r_e_new, dif, sphi_pole_h, gama_pole_h, rho_pole_h, &
                                       gama_equator_h, rho_equator_h, ww_equator_h, sphi_equator_h, &
@@ -57,7 +65,7 @@ contains
 
   subroutine update_angular_velocity(r_e_new, gama_pole_h, rho_pole_h, gama_equator_h, rho_equator_h, &
                                     sphi_pole_h, sphi_equator_h, ww_equator_h)
-    use para_mod, only : wp, SDIV, MDIV, s_gp, mu, rho, ww, r_ratio, &
+    use para_mod, only : wp, SDIV, MDIV, s_gp, mu, rho, ww, omg, r_ratio, &
                          Omega_c, Omega_e, Omg, F_j, has_scalar, B_coup, A_diff, solver_type, &
                          lambda1, lambda2, Fmax_h, F_equator_h
     use rotation_law_mod, only: diff_rotation_const_j, rotation_law_const_j, &
@@ -65,118 +73,145 @@ contains
     use brent_mod, only : find_omege_e, zbrent_rot
     real(wp), intent(in) :: r_e_new, gama_pole_h, rho_pole_h, gama_equator_h, rho_equator_h
     real(wp), intent(in) :: sphi_pole_h, sphi_equator_h, ww_equator_h
-    real(wp) :: metric_diff, term_in_Omega_h, re2
-    real(wp), parameter :: TOLERANCE = 1.0e-3_wp
+    real(wp) :: metric_diff, term_in_Omega_h
+    real(wp), parameter :: TOLERANCE_SPHERICAL = 1.0e-3_wp
+    real(wp), parameter :: GUESS_FACTOR = 0.8_wp
+    real(wp), parameter :: TOLERANCE_ROOT = 1.e-5_wp
+    real(wp), parameter :: TOLERANCE_FMAX = 1.e-7_wp
+    real(wp), parameter :: FMAX_INITIAL = 1.0e-2_wp
+    real(wp), parameter :: FMAX_STEP = 1.e-2_wp
     integer :: s, m
 
-    if (abs(r_ratio - 1.0e0_wp) < TOLERANCE) then
-      Omega_c = 0.0e0_wp; Omega_e = 0.0e0_wp; Omg = 0.0e0_wp
+    if (abs(r_ratio - 1.0_wp) < TOLERANCE_SPHERICAL) then
+      Omega_c = 0.0_wp; Omega_e = 0.0_wp; Omg = 0.0_wp
       return
     end if
 
-    re2 = r_e_new**2
-    metric_diff = gama_pole_h + rho_pole_h - gama_equator_h - rho_equator_h &
-                + B_coup / 2.0_wp * ( sphi_equator_h**2 - sphi_pole_h**2 )
-    term_in_Omega_h = 1.0_wp - exp( re2 * metric_diff )
-    if (term_in_Omega_h >= 0.0_wp) then
-      Omega_e = ww_equator_h + exp(re2 * rho_equator_h) * sqrt(term_in_Omega_h)
-    else
-      write(*,"('Solving for axis ratio: ', f12.5)") r_ratio
-      write(*,"(10A15)") "gama_pole", "rho_pole", "gama_equator", "rho_equator", "sphi_pole", "sphi_equator"
-      write(*,"(10es15.3)") gama_pole_h, rho_pole_h, gama_equator_h, rho_equator_h, sphi_pole_h, sphi_equator_h
-      stop "Omega can't be found; Line 99 of spin helper"
-    endif
+    associate(re2_val => r_e_new**2)
+      metric_diff = gama_pole_h + rho_pole_h - gama_equator_h - rho_equator_h &
+                  + B_coup / 2.0_wp * ( sphi_equator_h**2 - sphi_pole_h**2 )
+      term_in_Omega_h = 1.0_wp - exp( re2_val * metric_diff )
+      if (term_in_Omega_h >= 0.0_wp) then
+        Omega_e = ww_equator_h + exp(re2_val * rho_equator_h) * sqrt(term_in_Omega_h)
+      else
+        write(*,"('Solving for axis ratio: ', f12.5)") r_ratio
+        write(*,"(10A15)") "gama_pole", "rho_pole", "gama_equator", "rho_equator", "sphi_pole", "sphi_equator"
+        write(*,"(10es15.3)") gama_pole_h, rho_pole_h, gama_equator_h, rho_equator_h, sphi_pole_h, sphi_equator_h
+        stop "Omega can't be found; Line 99 of spin helper"
+      endif
 
-    select case(trim(solver_type))
-    case("uniform")
-      Omega_c = Omega_e; Omg = Omega_e
-    case("const_j")
-      call const_j_rotation()
-    case("uryu")
-      call uryu_rotation()
-    case default
-      stop "Unknown solver type"
-    end select
+      select case(trim(solver_type))
+      case("uniform")
+        Omega_c = Omega_e; Omg = Omega_e
+      case("const_j")
+        call const_j_rotation(re2_val)
+      case("uryu")
+        call uryu_rotation(re2_val)
+      case default
+        stop "Unknown solver type"
+      end select
+    end associate
   contains
-    subroutine const_j_rotation()
-      real(wp) :: guess, rsm, wwsm, mum, sgp
-      real(wp), parameter :: tolerance = 1.e-5_wp
-      guess = Omega_e * 0.8e0_wp
+    subroutine const_j_rotation(re2_val)
+      real(wp), intent(in) :: re2_val
+      real(wp) :: guess, term_omega_diff
+      guess = Omega_e * GUESS_FACTOR
       call find_omege_e(guess, r_e_new, rho_equator_h, gama_equator_h, &
-                      ww_equator_h, rho_pole_h, gama_pole_h, tolerance, Omega_e, diff_rotation_const_j)
+                      ww_equator_h, rho_pole_h, gama_pole_h, TOLERANCE_ROOT, Omega_e, diff_rotation_const_j)
 
-      term_in_Omega_h = abs(Omega_e - ww_equator_h) * exp(-2.0_wp * r_e_new**2 * rho_equator_h)
-      Omega_c = Omega_e + term_in_Omega_h / (1.0_wp - term_in_Omega_h * abs(Omega_e - ww_equator_h)) / A_diff**2
+      term_omega_diff = abs(Omega_e - ww_equator_h)
+      term_in_Omega_h = term_omega_diff * exp(-2.0_wp * re2_val * rho_equator_h)
+      Omega_c = Omega_e + term_in_Omega_h / (1.0_wp - term_in_Omega_h * term_omega_diff) / A_diff**2
 
       Omg(1,:) = Omega_c
       Omg(1:2*SDIV/3,MDIV) = Omega_c
       do s = 2, 2*SDIV/3
         do m = 1, MDIV-1
-          rsm = rho(s,m)
-          wwsm = ww(s,m)
-          mum = mu(m)
-          sgp = s_gp(s)
-          call zbrent_rot(Omg(s-1,m) * 8.e-1_wp, r_e_new, rsm, wwsm, sgp, mum, 1.e-5_wp, omg(s,m), rotation_law_const_j)
-          F_j(s,m) = (omg(s,m) - wwsm) * sgp**2 * (1.0_wp - mum**2) &
-                / ((1.0_wp - sgp)**2 * exp(2.0_wp * r_e_new**2 * rsm) - (omg(s,m) - wwsm)**2 * sgp**2 * (1.0_wp - mum**2))
+          associate(sg => s_gp(s), mum_loc => mu(m), &
+                    rsm_loc => rho(s,m), wwsm_loc => ww(s,m), o => omg(s,m))
+            call zbrent_rot(Omg(s-1,m) * GUESS_FACTOR, r_e_new, rsm_loc, wwsm_loc, sg, mum_loc, TOLERANCE_ROOT, o, rotation_law_const_j)
+            F_j(s,m) = (o - wwsm_loc) * sg**2 * (1.0_wp - mum_loc**2) &
+                  / ((1.0_wp - sg)**2 * exp(2.0_wp * re2_val * rsm_loc) - (o - wwsm_loc)**2 * sg**2 * (1.0_wp - mum_loc**2))
+          end associate
         end do
       end do
     end subroutine const_j_rotation
-    subroutine uryu_rotation()
-      real(wp) :: diff_Fmax, guess, Fa, rsm, wwsm, sgp, mum, omg_max_h
-      real(wp) :: exp_term_eq
-      real(wp), dimension(SDIV) :: omg_mu_0
-      integer :: imax
-      real(wp), parameter :: tolerance = 1.e-5_wp
-      exp_term_eq = exp(2.0_wp * re2 * rho_equator_h)
+    subroutine uryu_rotation(re2_val)
+      real(wp), intent(in) :: re2_val
+      real(wp) :: diff_Fmax, guess, Fa, omg_max_h, exp_term_eq, mum
+      integer :: s_lo, s_hi, s_peak
+      integer, parameter :: DELTA_PEAK = 3
+
+      if (.not. allocated(omg_mu_0_saved)) allocate(omg_mu_0_saved(SDIV), source=0.0_wp)
+      exp_term_eq = exp(2.0_wp * re2_val * rho_equator_h)
 
       diff_Fmax = 1.0_wp
-      Fmax_h    = 1.e-2_wp ! Empirial guess; not sure why it works well
-      do while(abs(diff_Fmax) > 1.e-7_wp)
+      Fmax_h = FMAX_INITIAL
+      do while(abs(diff_Fmax) > TOLERANCE_FMAX)
         guess = Omega_e
-        call find_omege_e(guess, r_e_new,rho_equator_h,gama_equator_h,ww_equator_h, &
-                        rho_pole_h,gama_pole_h, tolerance, Fa, diff_rotation_uryu)
-        Omega_e = fa
-        F_equator_h  = (Omega_e - ww_equator_h) / ( exp_term_eq - (Omega_e-ww_equator_h)**2 )
+        call find_omege_e(guess, r_e_new, rho_equator_h, gama_equator_h, ww_equator_h, &
+                        rho_pole_h, gama_pole_h, TOLERANCE_ROOT, Fa, diff_rotation_uryu)
+        Omega_e = Fa
+        F_equator_h = (Omega_e - ww_equator_h) / ( exp_term_eq - (Omega_e - ww_equator_h)**2 )
         if ( F_equator_h < 0.0_wp ) stop "negative F_equator_h; L120 in uryu"
 
         Omega_c = Omega_e / lambda2
-        omg_mu_0(1) = Omega_c
-        omg_max_h = Omega_c
         mum = 0.0_wp
-        do s = 2, (SDIV-1)/2
-            rsm = rho(s,1)
-            wwsm= ww (s,1)
-            sgp = s_gp(s)
-            guess  = omg_mu_0(s-1)
-            call zbrent_rot( guess, r_e_new, rsm, wwsm, sgp, mum, 1.e-5_wp, omg_mu_0(s), rotation_law_uryu)
-            !write(*,"(es15.6)",advance='no') omg_mu_0(s)
-            if (omg_mu_0(s) > omg_max_h) then 
-              omg_max_h = omg_mu_0(s)!; write(*,"(A)",advance='no') " <----"
-            else
-              exit
-            end if
-            !write(*,*)" "
-        enddo
-        !stop 803
+        if (s_peak_prev == 0) then
+          ! First call: full scan with chained guess
+          omg_mu_0_saved(1) = Omega_c
+          omg_max_h = Omega_c
+          s_peak = 1
+          do s = 2, (SDIV-1)/2
+            associate(o => omg_mu_0_saved(s), o_prev => omg_mu_0_saved(s-1), sg => s_gp(s), &
+                      rsm_loc => rho(s,1), wwsm_loc => ww(s,1))
+              guess = o_prev
+              call zbrent_rot(guess, r_e_new, rsm_loc, wwsm_loc, sg, mum, TOLERANCE_ROOT, o, rotation_law_uryu)
+              if (o > omg_max_h) then
+                omg_max_h = o
+                s_peak = s
+              else
+                exit
+              end if
+            end associate
+          end do
+          s_peak_prev = s_peak
+        else
+          ! Subsequent calls: narrow window using previous-iteration values as guesses
+          s_lo = max(2, s_peak_prev - DELTA_PEAK)
+          s_hi = min((SDIV-1)/2, s_peak_prev + DELTA_PEAK)
+          omg_max_h = Omega_c
+          s_peak = 1
+          do s = s_lo, s_hi
+            associate(o => omg_mu_0_saved(s), sg => s_gp(s), &
+                      rsm_loc => rho(s,1), wwsm_loc => ww(s,1))
+              guess = o  ! previous iteration's value at this grid point
+              call zbrent_rot(guess, r_e_new, rsm_loc, wwsm_loc, sg, mum, TOLERANCE_ROOT, o, rotation_law_uryu)
+              if (o > omg_max_h) then
+                omg_max_h = o
+                s_peak = s
+              end if
+            end associate
+          end do
+          s_peak_prev = s_peak
+        end if
         diff_Fmax = ( lambda1 - omg_max_h / Omega_c )
-        Fmax_h    = Fmax_h - diff_Fmax * 1.e-2_wp
-      enddo
+        Fmax_h = Fmax_h - diff_Fmax * FMAX_STEP
+      end do
 
       Omg(1,:) = Omega_c
       Omg(1:3*SDIV/4,MDIV) = Omega_c
       do s = 2, SDIV*3/4
         do m = 1, MDIV-1
-          rsm = rho(s,m)
-          wwsm= ww (s,m)
-          mum = mu(m)
-          sgp = s_gp(s)
-          guess  = Omg(s-1,m)
-          call zbrent_rot( guess, r_e_new, rsm, wwsm, sgp, mum, 1.e-5_wp, omg(s,m), rotation_law_uryu)
-          F_j(s,m) = (omg(s,m) - wwsm) * sgp**2 * (1.0_wp - mum**2) &
-                / ((1.0_wp - sgp)**2 * exp(2.0_wp * re2 * rsm) - (omg(s,m) - wwsm)**2 * sgp**2 * (1.0_wp - mum**2))
-        enddo
-      enddo
+          associate(sg => s_gp(s), mum_loc => mu(m), &
+                    rsm_loc => rho(s,m), wwsm_loc => ww(s,m), o => omg(s,m))
+            guess = Omg(s-1,m)
+            call zbrent_rot(guess, r_e_new, rsm_loc, wwsm_loc, sg, mum_loc, TOLERANCE_ROOT, o, rotation_law_uryu)
+            F_j(s,m) = (o - wwsm_loc) * sg**2 * (1.0_wp - mum_loc**2) &
+                  / ((1.0_wp - sg)**2 * exp(2.0_wp * re2_val * rsm_loc) - (o - wwsm_loc)**2 * sg**2 * (1.0_wp - mum_loc**2))
+          end associate
+        end do
+      end do
     end subroutine uryu_rotation
   end subroutine update_angular_velocity
 
