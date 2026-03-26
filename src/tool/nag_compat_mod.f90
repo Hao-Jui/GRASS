@@ -165,10 +165,12 @@ contains
     ! --- Main integration loop ---
     do while (dir * (tout - t) > 0.0_wp)
       if (step_count >= MAX_STEPS) then
+        if (out) call write_step_failure("d02pcf: maximum step count reached", t, h, err, step_count, y, yp)
         flag = 4; return
       end if
       h = dir * min(abs(h), abs(tout - t), hmax)
       if (abs(h) < HMIN) then
+        if (out) call write_step_failure("d02pcf: step size fell below HMIN", t, h, err, step_count, y, yp)
         flag = 6; return
       end if
 
@@ -198,6 +200,7 @@ contains
       err = err / sqrt(real(neqn, wp))
       if (ieee_is_nan(err)) then
         ! NaN detected: shrink step and retry
+        if (out) call write_step_failure("d02pcf: NaN error estimate, retrying with smaller step", t, h, err, step_count, y, yp)
         h = dir * abs(h) * FAC_MIN
         rejected = .true.
         cycle
@@ -223,6 +226,21 @@ contains
     end do
 
     flag = 2
+  contains
+    subroutine write_step_failure(msg, t_now, h_now, err_now, nstep, y_now, yp_now)
+      character(len=*), intent(in) :: msg
+      real(wp), intent(in) :: t_now, h_now, err_now
+      integer, intent(in) :: nstep
+      real(wp), intent(in) :: y_now(:), yp_now(:)
+
+      write(*,'(A)') trim(msg)
+      write(*,'(A,1X,ES22.14)') "  t         :", t_now
+      write(*,'(A,1X,ES22.14)') "  h         :", h_now
+      write(*,'(A,1X,ES22.14)') "  err       :", err_now
+      write(*,'(A,1X,I0)')      "  step_count:", nstep
+      write(*,'(A,1X,*(ES22.14,1X))') "  y         :", y_now
+      write(*,'(A,1X,*(ES22.14,1X))') "  yp        :", yp_now
+    end subroutine write_step_failure
   end subroutine d02pcf
 
 end module nag_compat_mod

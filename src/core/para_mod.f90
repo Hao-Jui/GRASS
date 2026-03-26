@@ -11,7 +11,7 @@ module para_mod
   integer, parameter :: MODE_REGRID  = 1
   integer, parameter :: MODE_DEFAULT = 2
 
-  integer :: run_mode = MODE_REGRID
+  integer :: run_mode = MODE_DEFAULT
 
   ! -- Rotation configuration ------------------------------------------------
   ! uniform / const_j / uryu
@@ -20,26 +20,27 @@ module para_mod
   ! -- Solver state ----------------------------------------------------------
   logical :: output = .false.
   logical :: timing = .false.
-  logical :: use_shoot_1d = .true.      ! adjust hc while keeping rep constant
+  integer, parameter :: SHOOT_FIX1_HC = 1, SHOOT_FIX1_RP = 2, SHOOT_2D = 3
+  integer :: shooting = SHOOT_FIX1_HC
   character(len=20) :: FIX1 = "Mb_goal"
   character(len=20) :: FIX2 = "chi_goal"
 
   ! -- Resolutions -----------------------------------------------------------
-  integer, parameter :: res  = 800
+  integer, parameter :: res  = 500
   integer, parameter :: s_pwr = 1
   integer :: SDIV = 2 * res + 1
-  integer :: MDIV = 1201
+  integer :: MDIV = 301
 
   ! -- Target quantities -----------------------------------------------------
-  character(len=128) :: eos_file = "MPA1"
+  character(len=128) :: eos_file = "hybrid_1_T0"
   real(wp) :: M_goal   = 1.2e0_wp
-  real(wp) :: Mb_goal  = 2.4e0_wp
+  real(wp) :: Mb_goal  = 2.3e0_wp
   real(wp) :: J_goal   = 1.6e0_wp
   real(wp) :: chi_goal = 0.1e0_wp
   real(wp) :: omc_goal = 30.e0_wp
 
-  real(wp) :: B_goal   = 2.5e4_wp
-  real(wp) :: mphi_goal = 10.0_wp
+  real(wp) :: B_goal   = 35.0_wp
+  real(wp) :: mphi_goal = 0.2_wp
 
   ! -- Rotation-law parameters (KEH, Uryu enabled) --------------------------
   real(wp) :: A_diff  = 0.5e0_wp
@@ -146,7 +147,7 @@ module para_mod
   real(wp), parameter :: MB   = 1.6749286e-24_wp
   real(wp), parameter :: pi   = acos(-1.e0_wp)
 
-  real(wp), parameter :: accuracy  = 1.e-7_wp
+  real(wp), parameter :: accuracy  = 1.e-4_wp
   real(wp), parameter :: tov_rmin  = 1.e-15_wp
   real(wp), parameter :: KAPPA     = 1.e-15_wp * C**2 / G
   real(wp), parameter :: KSCALE    = KAPPA * G / C**4

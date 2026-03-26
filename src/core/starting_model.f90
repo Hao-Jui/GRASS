@@ -1,5 +1,6 @@
 module starting_model_mod
   use analysis_mod, only: solution_properties
+  use iso_fortran_env, only: error_unit
   use precision_mod, only: wp
   use eos_mod, only: p_at_e, h_at_p, n0_at_h, e_at_h
   use regrid_mod, only: regrid_read
@@ -7,7 +8,7 @@ module starting_model_mod
   use para_mod, only: run_mode, MODE_REGRID, &
                       SDIV, MDIV, e_center, p_center, h_center, &
                       C, KSCALE, KAPPA, &
-                      solver_type, r_ratio, use_shoot_1d, output, &
+                      solver_type, r_ratio, shooting, SHOOT_2D, output, &
                       active_theory, THEORY_GR, &
                       mphi_goal, mphi_burn_threshold, &
                       B_coup, B_goal, mphi_r, l_uni
@@ -19,16 +20,22 @@ contains
   subroutine initialize_starting_model()
     external :: restart_read, refine_read
     real(wp) :: target_mphi
+    integer :: regrid_status
+    character(len=256) :: regrid_error
 
     select case (run_mode)
     case (MODE_REGRID)
-      call regrid_read(SDIV, MDIV, 2)
+      call regrid_read(SDIV, MDIV, 2, regrid_status, regrid_error)
+      if (regrid_status /= 0) then
+        write(error_unit, '(A)') trim(regrid_error)
+        error stop "initialize_starting_model: regrid_read failed"
+      end if
       e_center = e_center * C * C * KSCALE
       p_center = p_at_e(e_center)
       h_center = h_at_p(p_center)
     case default
       r_ratio  = merge(0.9e0_wp, 1.e0_wp, trim(adjustl(solver_type)) == "uryu")
-      e_center = 8.e14_wp
+      e_center = 8e14_wp
       e_center = e_center * C * C * KSCALE
       p_center = p_at_e(e_center)
       h_center = h_at_p(p_center)
@@ -40,7 +47,7 @@ contains
       end if
     end select
 
-    if (.not. use_shoot_1d .and. abs(r_ratio - 1.e0_wp) < epsilon(r_ratio)) r_ratio = min(r_ratio, 0.9e0_wp)
+    if (shooting == SHOOT_2D .and. abs(r_ratio - 1.e0_wp) < epsilon(r_ratio)) r_ratio = min(r_ratio, 0.9e0_wp)
 
     if (active_theory /= THEORY_GR) then
       B_coup  = B_goal
@@ -52,7 +59,7 @@ contains
     subroutine single_model()
       use constrain_mod, only: hamiltonian
       real(wp) :: ee, rho0, hamL2, t0, t1
-      !r_ratio = .7e0_wp
+      !r_ratio = 0.7_wp
 
       output = .true.; call cpu_time(t0)
           call rotation_solver

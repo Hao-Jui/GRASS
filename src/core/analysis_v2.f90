@@ -247,7 +247,7 @@ subroutine solution_properties()
   !call to_alexis()
   !call to_sizeng()
   call mass_radius()
-  !moi_love = moment_inertia()
+  moi_love = moment_inertia()
   I_inertia = moi_love(1) / (mass/MSUN*l_uni)**3
 
   cc = (mass/MSUN*l_uni) / (r_circ/1.e5_wp)
@@ -435,19 +435,23 @@ subroutine prepare_common_data(rho_0, gama_mu_0, rho_mu_0, ww_mu_0, gama_mu_1, r
 end subroutine prepare_common_data
   
 function moment_inertia() result(val)
-  use para_mod, only: wp, s_gp, r_e, KAPPA, energy, pressure, &
+  use iso_fortran_env, only: error_unit
+  use para_mod, only: wp, SDIV, s_gp, r_e, KAPPA, energy, pressure, sound_speed, &
                       C, KSCALE, rho_uni, prs_uni, pi
   use nag_compat_mod, only: d02pcf
+  use toolkit_mod, only: interp
   implicit none
-  real(wp) :: r_in, r_surf ! in km
+  real(wp) :: r_in, r_surf, r_start ! in km
   integer, parameter :: neqn = 4
   real(wp) :: relerr = 1.e-8_wp, abserr = 1.e-8_wp
   real(wp) :: val(2), ec, pc, y(neqn), yp(neqn)
+  real(wp) :: s_fail, e_fail, p_fail, vs2_fail
   integer :: flag, step_count
   logical :: debug = .false.
 
   r_surf = r_e * sqrt(KAPPA) / 1.e5_wp
   r_in = r_surf * s_gp(2) / ( 1.0_wp - s_gp(2) )
+  r_start = r_in
   ec = energy(1,1) / (C*C*KSCALE) * rho_uni
   pc = pressure(1,1) / KSCALE * prs_uni
 
@@ -463,8 +467,37 @@ function moment_inertia() result(val)
   flag = 1
   call d02pcf(deriv, neqn, y, yp, r_in, r_surf, relerr, abserr, flag, step_count, debug)
   if (abs(flag) /= 2) then
-    write(*,*) "d02pcf failed with flag = ", flag
-    stop
+    write(error_unit,'(A,I0)') "d02pcf failed with flag = ", flag
+    select case (abs(flag))
+    case (4)
+      write(error_unit,'(A)') "  reason    : maximum step count reached"
+    case (6)
+      write(error_unit,'(A)') "  reason    : step size fell below HMIN"
+    case (8)
+      write(error_unit,'(A)') "  reason    : bad input"
+    case default
+      write(error_unit,'(A)') "  reason    : unknown failure"
+    end select
+    write(error_unit,'(A,1X,ES22.14)') "  t_start   :", r_start
+    write(error_unit,'(A,1X,ES22.14)') "  t_fail    :", r_in
+    write(error_unit,'(A,1X,ES22.14)') "  t_out     :", r_surf
+    write(error_unit,'(A,1X,I0)')      "  steps     :", step_count
+    write(error_unit,'(A,1X,ES22.14)') "  ec        :", ec
+    write(error_unit,'(A,1X,ES22.14)') "  pc        :", pc
+    write(error_unit,'(A,1X,4(ES22.14,1X))') "  y         :", y
+    write(error_unit,'(A,1X,4(ES22.14,1X))') "  yp        :", yp
+    s_fail = r_in / (r_in + r_surf)
+    call interp(s_gp, energy(:,1),   SDIV, s_fail, e_fail)
+    call interp(s_gp, pressure(:,1), SDIV, s_fail, p_fail)
+    call interp(s_gp, sound_speed,   SDIV, s_fail, vs2_fail)
+    e_fail = e_fail / (C*C*KSCALE) * rho_uni
+    p_fail = p_fail / KSCALE * prs_uni
+    write(error_unit,'(A,1X,ES22.14)') "  s_fail    :", s_fail
+    write(error_unit,'(A,1X,ES22.14)') "  e_local   :", e_fail
+    write(error_unit,'(A,1X,ES22.14)') "  p_local   :", p_fail
+    write(error_unit,'(A,1X,ES22.14)') "  vs2_local :", vs2_fail
+    write(error_unit,'(A,1X,ES22.14)') "  (e+p)/vs2 :", (e_fail + p_fail) / vs2_fail
+    error stop "moment_inertia: d02pcf failed"
   end if
   val(1) = y(2)
   val(2) = y(4)
@@ -513,7 +546,7 @@ subroutine deriv(t, y, yp)
   yp(3) = 4.0_wp * pi * y(1)**2 * e
 
   QQ  = -dble((1+1)*(1+2)) * elm / y(1)**2 - dpdr**2 &
-      + 4.0_wp * pi * elm * (5.0_wp * e + 9.0_wp * p + (e+p) / vs2)
+      + 4.0_wp * pi * elm * (5.0_wp * e + 9.0_wp * p + merge((e+p) / vs2, 0._wp, vs2 > 1.e-6_wp))
   yp(4) = -y(4)**2 / y(1) - y(4) * elm / y(1) * (1.0_wp + 4.0_wp * pi * y(1)**2 * (p-e)) - QQ * y(1)
 
   if (has_scalar) then

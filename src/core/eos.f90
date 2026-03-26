@@ -41,45 +41,53 @@ contains
     interp_eos_dual = exp(res_log)
   end function interp_eos_dual
 
-subroutine loadEos
-    use para_mod, only: p_at_PT, eos_file, num_tab, &
-                        log_e, log_p, log_h, log_n0, &
-                        enthalpy_min, C, KSCALE
+  subroutine loadEos
+    use iso_fortran_env, only: output_unit
+    use para_mod, only: p_at_PT, eos_file, num_tab, log_e, log_p, log_h, log_n0, enthalpy_min, C, KSCALE
     implicit none
-    integer :: i, unit
+    integer :: i, unit, ios
+    real(wp) :: dle, dlp
+    real(wp), parameter :: GAMMA_PT = 6.e-2_wp  ! polytropic-index ceiling for a phase transition
+    real(wp), parameter :: DLE_MIN  = 1.e-2_wp  ! minimum d(ln e) to count as sizable
 
     p_at_PT = 1
-    
-    open(newunit=unit, file="./eos/"//trim(adjustl(eos_file))//".dat", &
-         status="old", action="read", form='formatted')
-    read(unit,*) num_tab
-    allocate(log_e(num_tab),log_p(num_tab),log_h(num_tab),log_n0(num_tab))
+    if (allocated(log_e)) deallocate(log_e, log_p, log_h, log_n0)
 
-    do i = 1, num_tab
-      read(unit,*) log_e(i), log_p(i), log_h(i), log_n0(i)
-      if ( i == 1 ) then
-        enthalpy_min =   log( log_h(i) )
-      else
-        if (log_p(i) / log_p(i-1) < 1.d0 + 1.d-15 ) then
-          p_at_PT = i
-          !write(*,*) log( log_p(i-1)*KSCALE ), log( log_p(i)*KSCALE ) 
-          !write(*,*) log( log_e(i-1)*C*C*KSCALE ), log( log_e(i)*C*C*KSCALE ) 
-        endif
-      endif
-    enddo
+    open(newunit=unit, file="./eos/" // trim(adjustl(eos_file)) // ".dat", status="old", action="read", iostat=ios)
+    if (ios /= 0) error stop "loadEos: failed to open EOS table"
+
+    read(unit, *, iostat=ios) num_tab
+    if (ios /= 0) error stop "loadEos: failed to read table size"
+
+    allocate(log_e(num_tab), log_p(num_tab), log_h(num_tab), log_n0(num_tab))
+    read(unit, *, iostat=ios) log_e(1), log_p(1), log_h(1), log_n0(1)
+    if (ios /= 0) error stop "loadEos: malformed EOS row"
+    enthalpy_min = log(log_h(1))
+    if (log_h(1) <= 1._wp) error stop "loadEos: first enthalpy h(1) <= 1 — log(log(h)) is undefined"
+
+    do i = 2, num_tab
+      read(unit, *, iostat=ios) log_e(i), log_p(i), log_h(i), log_n0(i)
+      if (ios /= 0) error stop "loadEos: malformed EOS row"
+      dle = log(log_e(i) / log_e(i-1))
+      dlp = log(log_p(i) / log_p(i-1))
+      if (p_at_PT == 1 .and. dle > DLE_MIN .and. abs(dlp / dle) < GAMMA_PT) p_at_PT = i
+    end do
     close(unit)
-    
-    log_e(:) = log( log_e(:)*C*C*KSCALE)
-    log_p(:) = log( log_p(:)*KSCALE)
-    log_h(:) = log( log( log_h(:) ) )
-    log_n0(:)= log( log_n0(:))
 
-    write(*,*) ' '
-    write(*,*) '# EOS: ', eos_file
-    write(*,*) 'EOS data is in with log(h_min) =',enthalpy_min
-    
-    if ( any(isnan(log_e)) .or. any(isnan(log_p)) .or. any(isnan(log_h)) ) stop "wrong table"
+    log_e = log(log_e * C * C * KSCALE)
+    log_p = log(log_p * KSCALE)
+    log_h = log(log(log_h))
+    log_n0 = log(log_n0)
 
+    write(output_unit, *) " "
+    write(output_unit, *) "# EOS: ", eos_file
+    if (p_at_PT .ne. 1) then 
+      write(output_unit, *) " p_at_PT: ", p_at_PT
+      phase_transition=.true.
+    end if
+    write(output_unit, *) "EOS data is in with log(h_min) =", enthalpy_min
+
+    if (any(isnan(log_e)) .or. any(isnan(log_p)) .or. any(isnan(log_h))) error stop "loadEos: wrong table"
   end subroutine loadEos
 
 

@@ -56,7 +56,7 @@ contains
     !KK = 0.5e0_wp * gurr / psi4 / max(lapsesq, 1.e-30_wp) * op%scal(grad_ww, grad_ww) &
     !   / max(r2_2d, 1.e-30_wp) / max(m1_2d, 1.e-30_wp)
     KK = 0.5e0_wp * gurr * exp(-2.e0_wp * rho) * r2_2d * m1_2d * op%scal(grad_ww, grad_ww)
-    ham = ricci + KK - 16.e0_wp * pi * rhoH * acoup4 - 2.e0_wp * (dphidphi + 2.e0_wp * Vphi)
+    ham = ricci + KK - 16.e0_wp * pi * rhoH * acoup4 + gutt * (dphidphi + 2.e0_wp * Vphi)
 
     hamL2 = 4.e0_wp * pi * r_e**3 * DS * DM * &
             sum(ham**2 * spread(s_gp**2 / max(1.e-30_wp, 1.e0_wp - s_gp)**4, dim=2, ncopies=MDIV))
