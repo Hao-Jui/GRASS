@@ -55,10 +55,24 @@ contains
     dif = abs(r_e_old - r_e_new) / r_e_new
 
     if (r_e_new / r_e_old > 2 .or. isnan(r_e_new) ) then
-      write(*,*) "r_e_old :", r_e_old
-      write(*,*) "r_e_new :", r_e_new
-      write(*,*) "grgr    :", grgr
-      write(*,*) "r_e_new_sq :", r_e_new_sq
+      write(*,"(a,es22.14)") " r_e_old        :", r_e_old
+      write(*,"(a,es22.14)") " r_e_new        :", r_e_new
+      write(*,"(a,es22.14)") " grgr           :", grgr
+      write(*,"(a,es22.14)") " r_e_new_sq     :", r_e_new_sq
+      write(*,"(a,es22.14)") " gama_pole_h    :", gama_pole_h
+      write(*,"(a,es22.14)") " rho_pole_h     :", rho_pole_h
+      write(*,"(a,es22.14)") " gama_center_h  :", gama_center_h
+      write(*,"(a,es22.14)") " rho_center_h   :", rho_center_h
+      write(*,"(a,es22.14)") " gama_equator_h :", gama_equator_h
+      write(*,"(a,es22.14)") " rho_equator_h  :", rho_equator_h
+      write(*,"(a,es22.14)") " sphi_pole_h    :", sphi_pole_h
+      write(*,"(a,es22.14)") " sphi_center_h  :", sphi_center_h
+      write(*,"(a,es22.14)") " h_center       :", h_center
+      write(*,"(a,es22.14)") " enthalpy_min   :", enthalpy_min
+      write(*,"(a,es22.14)") " s_e            :", s_e
+      write(*,"(a,es22.14)") " s_p_cached     :", s_p_cached
+      write(*,"(a,es22.14)") " r_ratio        :", r_ratio
+      if (has_scalar) write(*,"(a,es22.14)") " B_coup         :", B_coup
       stop 'r_e cannot be found.'
     endif
   end subroutine update_equatorial_radius

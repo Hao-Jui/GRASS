@@ -2,7 +2,7 @@
 ! to get started and then switches to the more computationally efficient 
 ! Broyden's method (Jacobian updated algebraically) for subsequent steps, 
 ! which is common when function evaluation is expensive.
-module shoot_solver_mod
+module shoot_solver_2d_mod
   use precision_mod, only: wp
   implicit none
   interface
@@ -186,9 +186,9 @@ contains
     final_delta = alpha * delta_x
     if (present(success)) success = ok
   end subroutine line_search
-end module shoot_solver_mod
+end module shoot_solver_2d_mod
 
-module shoot_newton_helpers
+module shoot_solver_2d_helpers_mod
   use analysis_mod, only: mass_radius
   use precision_mod, only: wp
   use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
@@ -196,7 +196,7 @@ module shoot_newton_helpers
   use para_mod, only: r_ratio, h_center, Mass, MSUN, M_goal, Mass_0, Mb_goal, &
                       J_goal, ang_mom, chi, chi_goal, Omega_c, omc_goal, &
                       Omega_K, C, kappa, Omega_e, FIX1, FIX2
-  use shoot_solver_mod, only: newton_state, from_solver_coords
+  use shoot_solver_2d_mod, only: newton_state, from_solver_coords
   use rotation_uniform,  only: rotation_solver
   implicit none
 contains
@@ -280,4 +280,4 @@ contains
     end if
   end subroutine build_jacobian
 
-end module shoot_newton_helpers
+end module shoot_solver_2d_helpers_mod

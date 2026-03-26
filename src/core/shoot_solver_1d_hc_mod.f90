@@ -3,7 +3,7 @@
 ! a finite-difference Jacobian rebuilt at every iteration and an
 ! Armijo backtracking line search for globalization.
 
-module newton_types_mod
+module shoot_solver_1d_types_mod
   implicit none
   type :: newton_state_1d
     logical :: has_jacobian = .false.
@@ -20,10 +20,10 @@ module newton_types_mod
     end subroutine evaluation_function_1d
   end interface
 
-end module newton_types_mod
+end module shoot_solver_1d_types_mod
 
-module shoot_solver_mod_1d
-  use newton_types_mod, only: newton_state_1d
+module shoot_solver_1d_hc_mod
+  use shoot_solver_1d_types_mod, only: newton_state_1d
   implicit none
   ! Adaptive step size cap based on error magnitude
   ! Linear interpolation: cap = CAP_MIN + (CAP_MAX - CAP_MIN) * max(0, 1 - er)
@@ -102,7 +102,7 @@ contains
 
   subroutine line_search_1d(x_current, F_current, delta_x, rep, evaluate_func, final_delta, J_est, success)
     ! Armijo backtracking on phi = 0.5*F^2; uses Jacobian estimate when supplied for slope
-    use newton_types_mod, only: evaluation_function_1d
+    use shoot_solver_1d_types_mod, only: evaluation_function_1d
     real(8), intent(in)    :: x_current, F_current, delta_x, rep
     real(8), intent(out)   :: final_delta
     procedure(evaluation_function_1d) :: evaluate_func
@@ -154,14 +154,14 @@ contains
     if (present(success)) success = ok
   end subroutine line_search_1d
 
-end module shoot_solver_mod_1d
+end module shoot_solver_1d_hc_mod
 
-module shoot_newton_helpers_1d
+module shoot_solver_1d_hc_helpers_mod
   use analysis_mod, only: mass_radius
   use eos_mod, only: n0_at_h, e_at_h
   use para_mod, only: h_center, r_ratio, Mass, Mass_0, MSUN, M_goal, Mb_goal, FIX1
-  use newton_types_mod, only: newton_state_1d, evaluation_function_1d
-  use shoot_solver_mod_1d, only: from_solver_coord_1d
+  use shoot_solver_1d_types_mod, only: newton_state_1d, evaluation_function_1d
+  use shoot_solver_1d_hc_mod, only: from_solver_coord_1d
   use rotation_uniform, only: rotation_solver
   implicit none
 contains  
@@ -219,4 +219,4 @@ contains
     end if
   end subroutine build_jacobian_1d
 
-end module shoot_newton_helpers_1d
+end module shoot_solver_1d_hc_helpers_mod

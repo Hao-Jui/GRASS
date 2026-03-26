@@ -1,224 +1,317 @@
 module regrid_mod
+  use iso_fortran_env, only: output_unit
   use para_mod, only: wp
   use grid_mod, only: make_grid, GridTrig
+  implicit none
+  private
+
+  public :: regrid_read
+
+  integer, parameter :: restart_value_count = 13
+  character(len=*), parameter :: restart_file_path = "./Res/res.dat"
+
+  integer, parameter :: NFIELDS = 10
+  integer, parameter :: F_ALPHA = 1, F_GAMA = 2, F_RHO = 3, F_WW = 4, F_PRESSURE = 5
+  integer, parameter :: F_ENERGY = 6, F_ENTHALPY = 7, F_VELOCITY_SQ = 8, F_OMG = 9, F_SPHI = 10
+
+  type :: restart_meta_t
+    integer :: sdiv = 0
+    integer :: mdiv = 0
+    integer :: spwr = 0
+    real(wp) :: r_e = 0._wp
+    real(wp) :: e_center = 0._wp
+    real(wp) :: r_ratio = 0._wp
+    real(wp) :: omega_e = 0._wp
+    real(wp) :: omega_c = 0._wp
+  end type restart_meta_t
+
 contains
 
-subroutine parse_restart_line(line, vals)
-  implicit none
-  character(len=*), intent(in) :: line
-  real(wp), intent(out) :: vals(13)
-  integer :: ios
+  subroutine regrid_read(new_sdiv, new_mdiv, interpolation_order, ierr, errmsg)
+    use para_mod, only: s_pwr
+    implicit none
+    integer, intent(in) :: new_sdiv, new_mdiv
+    integer, intent(in), optional :: interpolation_order
+    integer, intent(out), optional :: ierr
+    character(len=*), intent(out), optional :: errmsg
+    type(restart_meta_t) :: old_meta
+    real(wp), allocatable :: old_data(:,:,:), new_data(:,:,:)
+    integer :: interp_order, status
+    real(wp) :: t0, t1
+    character(len=256) :: message
 
-  vals = 0._wp
+    status = 0
+    message = ""
+    if (present(ierr)) ierr = 0
+    if (present(errmsg)) errmsg = ""
 
-  read(line,*,iostat=ios) vals
-  if (ios /= 0) stop "restart_read: malformed data"
+    if (new_sdiv < 2 .or. new_mdiv < 2) then
+      status = 1
+      message = "regrid_read: target resolution must be >= 2"
+    else
+      interp_order = 1
+      if (present(interpolation_order)) interp_order = interpolation_order
+      interp_order = max(1, min(2, interp_order))
 
-end subroutine parse_restart_line
+      call cpu_time(t0)
 
-subroutine regrid_read(target_sdiv, target_mdiv, interpolation_order)
-  use para_mod, only: r_e, e_center, r_ratio, Omega_e, Omega_c, &
-                      KAPPA, C, KSCALE, s_pwr, &
-                      SDIV, MDIV, DS, DM, SMAX, &
-                      alpha, gama, rho, ww, pressure, energy, &
-                      enthalpy, velocity_sq, omg, sphi, &
-                      s_gp, mu, sin_theta, P_2n, P1_2n_1, sin_2n_1_theta, &
-                      B_goal, has_scalar, allocate_fields
-  implicit none
-  integer, intent(in) :: target_sdiv, target_mdiv
-  integer, intent(in), optional :: interpolation_order
-  integer :: res_r, res_t, spwr, ios
-  integer :: s, m
-  logical :: need_reinit, need_grid_rebuild
-  character(len=512) :: line
-  real(wp) :: vals(13)
-  real(wp), allocatable :: alpha_src(:,:), gama_src(:,:), rho_src(:,:), &
-                          ww_src(:,:), pressure_src(:,:), energy_src(:,:), &
-                          enthalpy_src(:,:), velocity_sq_src(:,:), omg_src(:,:), &
-                          sphi_src(:,:)
-  real(wp), allocatable :: s_source(:), m_source(:), s_target(:), m_target(:)
-  integer, allocatable :: s_low(:), s_high(:), m_low(:), m_high(:)
-  real(wp), allocatable :: s_weight(:), m_weight(:)
-  integer, allocatable :: s_quad_idx(:,:), m_quad_idx(:,:)
-  real(wp), allocatable :: s_quad_weight(:,:), m_quad_weight(:,:)
-  real(wp) :: ds_source, dm_source, ds_target, dm_target
-  integer :: i0, i1, j0, j1
-  real(wp) :: ws, wm, t0, t1
-  integer :: interp_order, unit
-  logical :: use_quadratic
-  if (target_sdiv < 2 .or. target_mdiv < 2) then
-    stop "regrid_read: target resolution must be >= 2"
-  end if
+      call read_restart_file(restart_file_path, old_meta, old_data, status, message)
+      if (status == 0) then
+        call normalize_restart_meta(old_meta)
 
-  interp_order = 1
-  if (present(interpolation_order)) then
-    interp_order = interpolation_order
-  end if
-  if (interp_order < 1) interp_order = 1
-  call cpu_time(t0)
-  open(newunit=unit, file="./Res/res.dat")
-  read(unit,'(A)',iostat=ios) line
-  if (ios /= 0) stop "regrid_read: failed to read header"
-  read(line,*,iostat=ios) res_r, res_t, spwr, r_e, e_center, r_ratio, Omega_e, Omega_c
-  if (ios /= 0) stop "regrid_read: malformed header"
+        if (old_meta%spwr /= s_pwr) then
+          status = 2
+          message = "regrid_read: s-grid power doesn't match."
+        else
+          call ensure_runtime_grid(new_sdiv, new_mdiv)
 
-  r_e = r_e / (sqrt(KAPPA)/1.e5_wp)
-  Omega_e = Omega_e / (C/sqrt(kappa)) * r_e
-  Omega_c = Omega_c / (C/sqrt(kappa)) * r_e
-  
-  if (spwr /= s_pwr) stop "s-grid power doesn't match."
+          if (old_meta%sdiv == new_sdiv .and. old_meta%mdiv == new_mdiv) then
+            call apply_runtime_meta(old_meta)
+            call apply_runtime_fields(old_data)
+          else
+            call regrid_fields(old_data, old_meta%sdiv, old_meta%mdiv, new_sdiv, new_mdiv, interp_order, new_data)
+            call apply_runtime_meta(old_meta)
+            call apply_runtime_fields(new_data)
+          end if
 
-  if (interp_order > 2) interp_order = 2
-  use_quadratic = (interp_order == 2) .and. res_r >= 3 .and. res_t >= 3
-  if (.not. use_quadratic) interp_order = 1  ! fallback to bilinear when not enough source points
-
-  allocate(alpha_src(res_r,res_t), gama_src(res_r,res_t), rho_src(res_r,res_t))
-  allocate(ww_src(res_r,res_t), pressure_src(res_r,res_t), energy_src(res_r,res_t))
-  allocate(enthalpy_src(res_r,res_t), velocity_sq_src(res_r,res_t), omg_src(res_r,res_t))
-  allocate(sphi_src(res_r,res_t))
-
-  do s = 1, res_r
-    do m = 1, res_t
-      read(unit,'(A)',iostat=ios) line
-      if (ios /= 0) stop "regrid_read: unexpected end of file"
-      call parse_restart_line(line, vals)
-
-      alpha_src(s,m)       = vals(3)
-      gama_src (s,m)       = vals(4)
-      rho_src  (s,m)       = vals(5)
-      ww_src   (s,m)       = vals(6)
-      pressure_src(s,m)    = vals(7) * KSCALE
-      energy_src  (s,m)    = vals(8) * (C*C*KSCALE)
-      enthalpy_src(s,m)    = vals(9)
-      velocity_sq_src(s,m) = vals(11)
-      omg_src     (s,m)    = vals(12)
-      sphi_src(s,m) = vals(13)
-    end do
-  end do
-  close(unit)
-
-  need_reinit = (.not. allocated(alpha)) .or. (.not. allocated(gama)) .or. &
-                size(alpha,1) /= target_sdiv .or. size(alpha,2) /= target_mdiv
-  need_grid_rebuild = (.not. allocated(s_gp)) .or. (.not. allocated(mu)) .or. (.not. allocated(sin_theta)) .or. &
-                      (.not. allocated(P_2n)) .or. (.not. allocated(P1_2n_1)) .or. (.not. allocated(sin_2n_1_theta)) .or. &
-                      size(s_gp) /= target_sdiv .or. size(mu) /= target_mdiv .or. size(P_2n,1) /= target_mdiv
-
-  if (need_reinit .or. SDIV /= target_sdiv .or. MDIV /= target_mdiv) then
-    SDIV = target_sdiv
-    MDIV = target_mdiv
-    DS   = SMAX / (real(SDIV, wp) - 1._wp)
-    DM   = 1._wp  / (real(MDIV, wp) - 1._wp)
-    call allocate_fields()
-    need_grid_rebuild = .true.
-  end if
-
-  if (need_grid_rebuild) then
-    call make_grid
-    call GridTrig
-  end if
-
-  if (res_r == target_sdiv .and. res_t == target_mdiv) then
-    alpha       = alpha_src
-    gama        = gama_src
-    rho         = rho_src
-    ww          = ww_src
-    pressure    = pressure_src
-    energy      = energy_src
-    enthalpy    = enthalpy_src
-    velocity_sq = velocity_sq_src
-    omg         = omg_src
-    sphi        = sphi_src
-  else
-    ds_source = SMAX / (real(res_r, wp) - 1._wp)
-    dm_source = 1._wp  / (real(res_t, wp) - 1._wp)
-    ds_target = SMAX / (real(target_sdiv, wp) - 1._wp)
-    dm_target = 1._wp  / (real(target_mdiv, wp) - 1._wp)
-
-    allocate(s_source(res_r), m_source(res_t))
-    allocate(s_target(target_sdiv), m_target(target_mdiv))
-    allocate(s_low(target_sdiv), s_high(target_sdiv), s_weight(target_sdiv))
-    allocate(m_low(target_mdiv), m_high(target_mdiv), m_weight(target_mdiv))
-    if (use_quadratic) then
-      allocate(s_quad_idx(3,target_sdiv), s_quad_weight(3,target_sdiv))
-      allocate(m_quad_idx(3,target_mdiv), m_quad_weight(3,target_mdiv))
+          call cpu_time(t1)
+          write(output_unit, fmt=*) " "
+          write(output_unit, fmt='(A,f12.6,A)') "Regrid-read ---", t1 - t0, " [s]"
+        end if
+      end if
     end if
 
-    do s = 1, res_r
-      s_source(s) = (real(s, wp) - 1._wp) * ds_source
-    end do
-    s_source(res_r) = SMAX
+    if (present(ierr)) ierr = status
+    if (present(errmsg)) errmsg = trim(message)
+  end subroutine regrid_read
 
-    do m = 1, res_t
-      m_source(m) = (real(m, wp) - 1._wp) * dm_source
-    end do
-    m_source(res_t) = 1._wp
+  subroutine read_restart_file(path, old_meta, old_data, ierr, errmsg)
+    use para_mod, only: C, KSCALE
+    implicit none
+    character(len=*), intent(in) :: path
+    type(restart_meta_t), intent(out) :: old_meta
+    real(wp), allocatable, intent(out) :: old_data(:,:,:)
+    integer, intent(out) :: ierr
+    character(len=*), intent(out) :: errmsg
+    integer :: unit, ios, s, m
+    character(len=512) :: line
+    real(wp) :: vals(restart_value_count)
+    integer, parameter :: val_idx(NFIELDS) = [3, 4, 5, 6, 7, 8, 9, 11, 12, 13]
+    real(wp) :: scale(NFIELDS)
 
-    do s = 1, target_sdiv
-      if (s == target_sdiv) then
-        s_target(s) = SMAX
-      else
-        s_target(s) = (real(s, wp) - 1._wp) * ds_target
-      end if
-      call locate(s_source, res_r, s_target(s), s_low(s), s_high(s), s_weight(s))
-      if (use_quadratic) then
-        call quadratic_weights(s_source, res_r, s_target(s), s_quad_idx(:,s), s_quad_weight(:,s))
-      end if
+    ierr = 0
+    errmsg = ""
+
+    open(newunit=unit, file=path, status="old", action="read", iostat=ios)
+    if (ios /= 0) then
+      ierr = 1; errmsg = "regrid_read: failed to open restart file"; return
+    end if
+
+    read(unit, '(A)', iostat=ios) line
+    if (ios /= 0) then
+      ierr = 2; errmsg = "regrid_read: failed to read header"; close(unit); return
+    end if
+
+    read(line, *, iostat=ios) old_meta%sdiv, old_meta%mdiv, old_meta%spwr, &
+                              old_meta%r_e, old_meta%e_center, old_meta%r_ratio, &
+                              old_meta%omega_e, old_meta%omega_c
+    if (ios /= 0) then
+      ierr = 3; errmsg = "regrid_read: malformed header"; close(unit); return
+    end if
+
+    allocate(old_data(NFIELDS, old_meta%sdiv, old_meta%mdiv), source=0._wp)
+
+    scale = 1._wp
+    scale(F_PRESSURE) = KSCALE
+    scale(F_ENERGY) = C * C * KSCALE
+
+    do s = 1, old_meta%sdiv
+      do m = 1, old_meta%mdiv
+        read(unit, '(A)', iostat=ios) line
+        if (ios /= 0) then
+          ierr = 4; errmsg = "regrid_read: unexpected end of file"; close(unit); return
+        end if
+
+        vals = 0._wp
+        read(line, *, iostat=ios) vals
+        if (ios /= 0) then
+          ierr = 1; errmsg = "restart_read: malformed data"; close(unit); return
+        end if
+
+        old_data(:, s, m) = vals(val_idx) * scale
+      end do
     end do
 
-    do m = 1, target_mdiv
-      if (m == target_mdiv) then
-        m_target(m) = 1._wp
-      else
-        m_target(m) = (real(m, wp) - 1._wp) * dm_target
-      end if
-      call locate(m_source, res_t, m_target(m), m_low(m), m_high(m), m_weight(m))
-      if (use_quadratic) then
-        call quadratic_weights(m_source, res_t, m_target(m), m_quad_idx(:,m), m_quad_weight(:,m))
-      end if
+    close(unit)
+  end subroutine read_restart_file
+
+  subroutine normalize_restart_meta(old_meta)
+    use para_mod, only: C, KAPPA
+    implicit none
+    type(restart_meta_t), intent(inout) :: old_meta
+
+    old_meta%r_e = old_meta%r_e / (sqrt(KAPPA) / 1.e5_wp)
+    old_meta%omega_e = old_meta%omega_e / (C / sqrt(KAPPA)) * old_meta%r_e
+    old_meta%omega_c = old_meta%omega_c / (C / sqrt(KAPPA)) * old_meta%r_e
+  end subroutine normalize_restart_meta
+
+  subroutine apply_runtime_meta(old_meta)
+    use para_mod, only: e_center, Omega_e, Omega_c, r_e, r_ratio
+    implicit none
+    type(restart_meta_t), intent(in) :: old_meta
+
+    r_e = old_meta%r_e
+    e_center = old_meta%e_center
+    r_ratio = old_meta%r_ratio
+    Omega_e = old_meta%omega_e
+    Omega_c = old_meta%omega_c
+  end subroutine apply_runtime_meta
+
+  subroutine apply_runtime_fields(new_data)
+    use para_mod, only: B_goal, C, KAPPA, alpha, gama, rho, ww, pressure, energy, &
+                        enthalpy, velocity_sq, omg, sphi, has_scalar
+    implicit none
+    real(wp), intent(in) :: new_data(:,:,:)
+    real(wp) :: angular_scale
+
+    angular_scale = C / sqrt(KAPPA)
+
+    alpha = new_data(F_ALPHA,:,:)
+    gama = new_data(F_GAMA,:,:)
+    rho = new_data(F_RHO,:,:)
+    ww = new_data(F_WW,:,:) / angular_scale
+    pressure = new_data(F_PRESSURE,:,:)
+    energy = new_data(F_ENERGY,:,:)
+    enthalpy = new_data(F_ENTHALPY,:,:)
+    velocity_sq = new_data(F_VELOCITY_SQ,:,:)
+    omg = new_data(F_OMG,:,:) / angular_scale
+
+    if (has_scalar) then
+      sphi = new_data(F_SPHI,:,:) / sqrt(max(B_goal, 1.e-30_wp))
+    else
+      sphi = 0._wp
+      has_scalar = .false.
+    end if
+  end subroutine apply_runtime_fields
+
+  subroutine ensure_runtime_grid(new_sdiv, new_mdiv)
+    use para_mod, only: MDIV, SDIV, SMAX, DS, DM, allocate_fields, &
+                        alpha, gama, s_gp, mu, sin_theta, P_2n, P1_2n_1, sin_2n_1_theta
+    implicit none
+    integer, intent(in) :: new_sdiv, new_mdiv
+    logical :: need_reinit, need_grid_rebuild
+
+    need_reinit = (.not. allocated(alpha)) .or. (.not. allocated(gama)) .or. &
+                  size(alpha, 1) /= new_sdiv .or. size(alpha, 2) /= new_mdiv
+
+    need_grid_rebuild = (.not. allocated(s_gp)) .or. (.not. allocated(mu)) .or. &
+                        (.not. allocated(sin_theta)) .or. (.not. allocated(P_2n)) .or. &
+                        (.not. allocated(P1_2n_1)) .or. (.not. allocated(sin_2n_1_theta)) .or. &
+                        size(s_gp) /= new_sdiv .or. size(mu) /= new_mdiv .or. &
+                        size(P_2n, 1) /= new_mdiv
+
+    if (need_reinit .or. SDIV /= new_sdiv .or. MDIV /= new_mdiv) then
+      SDIV = new_sdiv
+      MDIV = new_mdiv
+      DS = SMAX / (real(SDIV, wp) - 1._wp)
+      DM = 1._wp / (real(MDIV, wp) - 1._wp)
+      call allocate_fields()
+      need_grid_rebuild = .true.
+    end if
+
+    if (need_grid_rebuild) then
+      call make_grid
+      call GridTrig
+    end if
+  end subroutine ensure_runtime_grid
+
+  subroutine regrid_fields(old_data, old_sdiv, old_mdiv, new_sdiv, new_mdiv, interp_order, new_data)
+    use para_mod, only: SMAX
+    implicit none
+    real(wp), intent(in) :: old_data(:,:,:)
+    integer, intent(in) :: old_sdiv, old_mdiv, new_sdiv, new_mdiv, interp_order
+    real(wp), allocatable, intent(out) :: new_data(:,:,:)
+    integer :: s, m, i, j, i0, i1, j0, j1
+    real(wp) :: old_ds, old_dm, new_ds, new_dm
+    real(wp) :: c00, c10, c01, c11, w_s, w_m, wij
+    real(wp) :: acc(NFIELDS)
+    logical :: use_quadratic
+    real(wp), allocatable :: old_s(:), old_m(:)
+    integer, allocatable :: s_lo(:), s_hi(:), m_lo(:), m_hi(:)
+    real(wp), allocatable :: s_wt(:), m_wt(:)
+    integer, allocatable :: sq_idx(:,:), mq_idx(:,:)
+    real(wp), allocatable :: sq_wt(:,:), mq_wt(:,:)
+
+    allocate(new_data(NFIELDS, new_sdiv, new_mdiv), source=0._wp)
+
+    old_ds = SMAX / (real(old_sdiv, wp) - 1._wp)
+    old_dm = 1._wp / (real(old_mdiv, wp) - 1._wp)
+    new_ds = SMAX / (real(new_sdiv, wp) - 1._wp)
+    new_dm = 1._wp / (real(new_mdiv, wp) - 1._wp)
+
+    use_quadratic = (interp_order == 2) .and. old_sdiv >= 3 .and. old_mdiv >= 3
+
+    allocate(old_s(old_sdiv), old_m(old_mdiv))
+    allocate(s_lo(new_sdiv), s_hi(new_sdiv), s_wt(new_sdiv))
+    allocate(m_lo(new_mdiv), m_hi(new_mdiv), m_wt(new_mdiv))
+
+    if (use_quadratic) then
+      allocate(sq_idx(3, new_sdiv), sq_wt(3, new_sdiv))
+      allocate(mq_idx(3, new_mdiv), mq_wt(3, new_mdiv))
+    end if
+
+    do s = 1, old_sdiv
+      old_s(s) = (real(s, wp) - 1._wp) * old_ds
+    end do
+    old_s(old_sdiv) = SMAX
+
+    do m = 1, old_mdiv
+      old_m(m) = (real(m, wp) - 1._wp) * old_dm
+    end do
+    old_m(old_mdiv) = 1._wp
+
+    do s = 1, new_sdiv
+      w_s = merge(SMAX, (real(s, wp) - 1._wp) * new_ds, s == new_sdiv)
+      call locate(old_s, old_sdiv, w_s, s_lo(s), s_hi(s), s_wt(s))
+      if (use_quadratic) call quadratic_weights(old_s, old_sdiv, w_s, sq_idx(:,s), sq_wt(:,s))
+    end do
+
+    do m = 1, new_mdiv
+      w_m = merge(1._wp, (real(m, wp) - 1._wp) * new_dm, m == new_mdiv)
+      call locate(old_m, old_mdiv, w_m, m_lo(m), m_hi(m), m_wt(m))
+      if (use_quadratic) call quadratic_weights(old_m, old_mdiv, w_m, mq_idx(:,m), mq_wt(:,m))
     end do
 
     if (use_quadratic) then
-      do s = 1, target_sdiv
-        do m = 1, target_mdiv
-          call biquadratic_all( &
-            s_quad_idx(:,s), m_quad_idx(:,m), s_quad_weight(:,s), m_quad_weight(:,m), &
-            alpha(s,m), gama(s,m), rho(s,m), ww(s,m), pressure(s,m), &
-            energy(s,m), enthalpy(s,m), velocity_sq(s,m), omg(s,m), sphi(s,m))
+      do m = 1, new_mdiv
+        do s = 1, new_sdiv
+          acc = 0._wp
+          do j = 1, 3
+            do i = 1, 3
+              wij = sq_wt(i, s) * mq_wt(j, m)
+              acc = acc + wij * old_data(:, sq_idx(i,s), mq_idx(j,m))
+            end do
+          end do
+          new_data(:, s, m) = acc
         end do
       end do
     else
-      do s = 1, target_sdiv
-        i0 = s_low(s)
-        i1 = s_high(s)
-        ws = s_weight(s)
-        do m = 1, target_mdiv
-          j0 = m_low(m)
-          j1 = m_high(m)
-          wm = m_weight(m)
-
-          call bilinear_all(i0, i1, j0, j1, ws, wm, &
-            alpha(s,m), gama(s,m), rho(s,m), ww(s,m), pressure(s,m), &
-            energy(s,m), enthalpy(s,m), velocity_sq(s,m), omg(s,m), sphi(s,m))
+      do m = 1, new_mdiv
+        j0 = m_lo(m); j1 = m_hi(m)
+        w_m = merge(0._wp, m_wt(m), j0 == j1)
+        do s = 1, new_sdiv
+          i0 = s_lo(s); i1 = s_hi(s)
+          w_s = merge(0._wp, s_wt(s), i0 == i1)
+          c00 = (1._wp - w_s) * (1._wp - w_m)
+          c10 = w_s * (1._wp - w_m)
+          c01 = (1._wp - w_s) * w_m
+          c11 = w_s * w_m
+          new_data(:, s, m) = c00 * old_data(:, i0, j0) + c10 * old_data(:, i1, j0) + &
+                              c01 * old_data(:, i0, j1) + c11 * old_data(:, i1, j1)
         end do
       end do
     end if
-  end if
-
-  ww  = ww  / (C/sqrt(kappa))
-  omg = omg / (C/sqrt(kappa))
-
-  if (has_scalar) then
-    sphi = sphi / sqrt(max(B_goal, 1.e-30_wp))
-  else
-    sphi = 0._wp
-    has_scalar = .false.
-  end if
-
-  call cpu_time(t1)
-  write(*, fmt=*) " "
-  write(*, fmt='(A,f12.6,A)') "Regrid-read ---", t1-t0, " [s]"
-
-contains
+  end subroutine regrid_fields
 
   subroutine locate(grid, n, value, idx_low, idx_high, weight)
     implicit none
@@ -226,15 +319,13 @@ contains
     real(wp), intent(in) :: grid(n), value
     integer, intent(out) :: idx_low, idx_high
     real(wp), intent(out) :: weight
-    real(wp) :: inv_h, t
+    real(wp) :: t
 
     if (n < 2) then
-      idx_low = 1; idx_high = 1; weight = 0._wp
-      return
+      idx_low = 1; idx_high = 1; weight = 0._wp; return
     end if
 
-    inv_h = real(n - 1, wp) / (grid(n) - grid(1))
-    t = (value - grid(1)) * inv_h
+    t = (value - grid(1)) * real(n - 1, wp) / (grid(n) - grid(1))
 
     if (t <= 0._wp) then
       idx_low = 1; idx_high = 1; weight = 0._wp
@@ -257,11 +348,8 @@ contains
     real(wp) :: x(3), denom, sum_w
 
     if (n < 3) then
-      idx(1) = 1
-      idx(2) = min(2, n)
-      idx(3) = max(idx(2), 1)
-      weights = 0._wp
-      weights(1) = 1._wp
+      idx(1) = 1; idx(2) = min(2, n); idx(3) = max(idx(2), 1)
+      weights = 0._wp; weights(1) = 1._wp
       if (idx(2) > 1) then
         weights(1) = (grid(idx(2)) - value) / (grid(idx(2)) - grid(idx(1)))
         weights(2) = 1._wp - weights(1)
@@ -270,25 +358,20 @@ contains
     end if
 
     if (value <= grid(2)) then
-      idx = (/1, 2, 3/)
-    else if (value >= grid(n-1)) then
-      idx = (/n-2, n-1, n/)
+      idx = [1, 2, 3]
+    else if (value >= grid(n - 1)) then
+      idx = [n - 2, n - 1, n]
     else
       idx = 0
       do k = 2, n - 2
-        if (value <= grid(k+1)) then
-          idx = (/k-1, k, k+1/)
-          exit
+        if (value <= grid(k + 1)) then
+          idx = [k - 1, k, k + 1]; exit
         end if
       end do
-      if (idx(1) == 0) then
-        idx = (/n-2, n-1, n/)
-      end if
+      if (idx(1) == 0) idx = [n - 2, n - 1, n]
     end if
 
-    x(1) = grid(idx(1))
-    x(2) = grid(idx(2))
-    x(3) = grid(idx(3))
+    x = grid(idx)
 
     do i = 1, 3
       weights(i) = 1._wp
@@ -296,128 +379,14 @@ contains
         if (j == i) cycle
         denom = x(i) - x(j)
         if (abs(denom) <= 1.e-14_wp) then
-          weights = 0._wp
-          weights(i) = 1._wp
-          return
+          weights = 0._wp; weights(i) = 1._wp; return
         end if
         weights(i) = weights(i) * (value - x(j)) / denom
       end do
     end do
 
-    sum_w = weights(1) + weights(2) + weights(3)
-    if (abs(sum_w) > 0._wp) then
-      weights = weights / sum_w
-    end if
+    sum_w = sum(weights)
+    if (abs(sum_w) > 0._wp) weights = weights / sum_w
   end subroutine quadratic_weights
-
-  real(wp) function biquadratic(field, idx_s, idx_m, ws, wm)
-    implicit none
-    real(wp), intent(in) :: field(:,:)
-    integer, intent(in) :: idx_s(3), idx_m(3)
-    real(wp), intent(in) :: ws(3), wm(3)
-    real(wp) :: interp_s(3)
-    integer :: j, i
-
-    do j = 1, 3
-      interp_s(j) = 0._wp
-      do i = 1, 3
-        interp_s(j) = interp_s(j) + ws(i) * field(idx_s(i), idx_m(j))
-      end do
-    end do
-
-    biquadratic = wm(1) * interp_s(1) + wm(2) * interp_s(2) + wm(3) * interp_s(3)
-  end function biquadratic
-
-  subroutine biquadratic_all(idx_s, idx_m, ws, wm, alpha_out, gama_out, rho_out, ww_out, &
-                            pressure_out, energy_out, enthalpy_out, velocity_sq_out, omg_out, sphi_out)
-    implicit none
-    integer, intent(in) :: idx_s(3), idx_m(3)
-    real(wp), intent(in) :: ws(3), wm(3)
-    real(wp), intent(out) :: alpha_out, gama_out, rho_out, ww_out, pressure_out
-    real(wp), intent(out) :: energy_out, enthalpy_out, velocity_sq_out, omg_out, sphi_out
-    real(wp) :: interp_col(3,10)
-    integer :: i, j
-
-    interp_col = 0._wp
-    do j = 1, 3
-      associate(is => idx_s, jm => idx_m(j))
-        do i = 1, 3
-          interp_col(j,1)  = interp_col(j,1)  + ws(i) * alpha_src(is(i), jm)
-          interp_col(j,2)  = interp_col(j,2)  + ws(i) * gama_src(is(i), jm)
-          interp_col(j,3)  = interp_col(j,3)  + ws(i) * rho_src(is(i), jm)
-          interp_col(j,4)  = interp_col(j,4)  + ws(i) * ww_src(is(i), jm)
-          interp_col(j,5)  = interp_col(j,5)  + ws(i) * pressure_src(is(i), jm)
-          interp_col(j,6)  = interp_col(j,6)  + ws(i) * energy_src(is(i), jm)
-          interp_col(j,7)  = interp_col(j,7)  + ws(i) * enthalpy_src(is(i), jm)
-          interp_col(j,8)  = interp_col(j,8)  + ws(i) * velocity_sq_src(is(i), jm)
-          interp_col(j,9)  = interp_col(j,9)  + ws(i) * omg_src(is(i), jm)
-          interp_col(j,10) = interp_col(j,10) + ws(i) * sphi_src(is(i), jm)
-        end do
-      end associate
-    end do
-
-    alpha_out       = dot_product(wm, interp_col(:,1))
-    gama_out        = dot_product(wm, interp_col(:,2))
-    rho_out         = dot_product(wm, interp_col(:,3))
-    ww_out          = dot_product(wm, interp_col(:,4))
-    pressure_out    = dot_product(wm, interp_col(:,5))
-    energy_out      = dot_product(wm, interp_col(:,6))
-    enthalpy_out    = dot_product(wm, interp_col(:,7))
-    velocity_sq_out = dot_product(wm, interp_col(:,8))
-    omg_out         = dot_product(wm, interp_col(:,9))
-    sphi_out        = dot_product(wm, interp_col(:,10))
-  end subroutine biquadratic_all
-
-  real(wp) function bilinear(field, i0, i1, j0, j1, ws, wm)
-    implicit none
-    real(wp), intent(in) :: field(:,:)
-    integer, intent(in) :: i0, i1, j0, j1
-    real(wp), intent(in) :: ws, wm
-    real(wp) :: w_s, w_m
-    real(wp) :: f00, f10, f01, f11
-
-    w_s = merge(0._wp, ws, i0 == i1)
-    w_m = merge(0._wp, wm, j0 == j1)
-
-    f00 = field(i0,j0)
-    f10 = field(i1,j0)
-    f01 = field(i0,j1)
-    f11 = field(i1,j1)
-
-    bilinear = f00*(1._wp-w_s)*(1._wp-w_m) + f10*w_s*(1._wp-w_m) + &
-              f01*(1._wp-w_s)*w_m + f11*w_s*w_m
-  end function bilinear
-
-  subroutine bilinear_all(i0, i1, j0, j1, ws, wm, alpha_out, gama_out, rho_out, ww_out, &
-                          pressure_out, energy_out, enthalpy_out, velocity_sq_out, omg_out, sphi_out)
-    implicit none
-    integer, intent(in) :: i0, i1, j0, j1
-    real(wp), intent(in) :: ws, wm
-    real(wp), intent(out) :: alpha_out, gama_out, rho_out, ww_out, pressure_out
-    real(wp), intent(out) :: energy_out, enthalpy_out, velocity_sq_out, omg_out, sphi_out
-    real(wp) :: w_s, w_m
-    real(wp) :: c00, c10, c01, c11
-
-    w_s = merge(0._wp, ws, i0 == i1)
-    w_m = merge(0._wp, wm, j0 == j1)
-
-    c00 = (1._wp - w_s) * (1._wp - w_m)
-    c10 = w_s * (1._wp - w_m)
-    c01 = (1._wp - w_s) * w_m
-    c11 = w_s * w_m
-
-    alpha_out       = c00*alpha_src(i0,j0)       + c10*alpha_src(i1,j0)       + c01*alpha_src(i0,j1)       + c11*alpha_src(i1,j1)
-    gama_out        = c00*gama_src(i0,j0)        + c10*gama_src(i1,j0)        + c01*gama_src(i0,j1)        + c11*gama_src(i1,j1)
-    rho_out         = c00*rho_src(i0,j0)         + c10*rho_src(i1,j0)         + c01*rho_src(i0,j1)         + c11*rho_src(i1,j1)
-    ww_out          = c00*ww_src(i0,j0)          + c10*ww_src(i1,j0)          + c01*ww_src(i0,j1)          + c11*ww_src(i1,j1)
-    pressure_out    = c00*pressure_src(i0,j0)    + c10*pressure_src(i1,j0)    + c01*pressure_src(i0,j1)    + c11*pressure_src(i1,j1)
-    energy_out      = c00*energy_src(i0,j0)      + c10*energy_src(i1,j0)      + c01*energy_src(i0,j1)      + c11*energy_src(i1,j1)
-    enthalpy_out    = c00*enthalpy_src(i0,j0)    + c10*enthalpy_src(i1,j0)    + c01*enthalpy_src(i0,j1)    + c11*enthalpy_src(i1,j1)
-    velocity_sq_out = c00*velocity_sq_src(i0,j0) + c10*velocity_sq_src(i1,j0) + c01*velocity_sq_src(i0,j1) + c11*velocity_sq_src(i1,j1)
-    omg_out         = c00*omg_src(i0,j0)         + c10*omg_src(i1,j0)         + c01*omg_src(i0,j1)         + c11*omg_src(i1,j1)
-    sphi_out        = c00*sphi_src(i0,j0)        + c10*sphi_src(i1,j0)        + c01*sphi_src(i0,j1)        + c11*sphi_src(i1,j1)
-  end subroutine bilinear_all
-
-end subroutine regrid_read
 
 end module regrid_mod

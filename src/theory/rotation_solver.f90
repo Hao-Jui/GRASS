@@ -7,7 +7,7 @@ module rotation_uniform
                       B_coup, mphi_r, F_j, &
                       sphi_c, sphi_m, Omega_c, Omega_e, &
                       Fmax_h, n_of_relaxation_steps, timing, solver_type
-  use spin_relaxation, only: dif, &
+  use spin_workspace, only: dif, &
     target_rho, target_gama, target_ww, target_sphi, &
     metric_method, scalar_method, &
     dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, &
@@ -15,11 +15,11 @@ module rotation_uniform
     d2g_ss_cache, d2g_mm_cache, e_rsm_cache, &
     sgp_term_2d_cache, sin_theta_2d_cache, sgp_2d_cache, &
     D2_metric_rho, D2_metric_omega, &
-    allocate_workspace, deallocate_workspace, &
-    update_equatorial_radius, update_angular_velocity, &
-    update_eos_and_velocity, get_all_targets, &
-    relaxation, update_alpha_potential, output_helper
-  use spin_updates, only: reset_uryu_peak_cache
+    allocate_workspace, deallocate_workspace
+  use spin_integration, only: get_all_targets, update_alpha_potential, output_helper
+  use spin_relaxation, only: relaxation
+  use spin_updates, only: reset_uryu_peak_cache, &
+    update_equatorial_radius, update_angular_velocity, update_eos_and_velocity
   implicit none
 contains
 
@@ -67,7 +67,7 @@ subroutine rotation_solver
     drho_prev = -1.e0_wp; dgama_prev = -1.e0_wp; dww_prev = -1.e0_wp
     dsphi_prev = -1.e0_wp; dre_prev = -1.e0_wp
 
-    do while( dif > 1.e-8_wp .or. n_of_it < 2 )
+    do while( dif > 1.e-7_wp .or. n_of_it < 2 )
       if (zero_scalar_mode) sphi = 0.e0_wp
       sphi_m = maxval( sphi(:,1) * sqrt_B_coup )
       call rescale_metric(r_e_new_sq)
@@ -159,7 +159,7 @@ subroutine rotation_solver
 
     deallocate(rho_prev_iter, gama_prev_iter, ww_prev_iter, sphi_prev_iter)
   end block iteration
-
+  !write(*,*) n_of_it
   n_of_relaxation_steps = n_of_relaxation_steps + n_of_it
 
   ! ---------------------------------------------------------------

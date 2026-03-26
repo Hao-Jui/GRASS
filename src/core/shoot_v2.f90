@@ -5,51 +5,67 @@ subroutine shoot_v2
   use analysis_mod, only: solution_properties
   use eos_mod, only: n0_at_h, e_at_h
   use para_mod, only: wp, h_center, r_ratio, mass, mass_0, mass_p, chi, chi_goal, &
-                      Omega_c, KAPPA, C, KSCALE, MB, MSUN, pi, n_sat, &
+                      Omega_e, KAPPA, C, KSCALE, MB, MSUN, pi, n_sat, &
                       I_inertia, Love2, M2, M4, S3, T_kin, &
                       mphi_goal, B_goal, eos_file, sound_speed, r_circ, &
-                      accuracy, output, use_shoot_1d, start, finish, &
+                      accuracy, output, shooting, SHOOT_FIX1_HC, SHOOT_FIX1_RP, SHOOT_2D, &
+                      start, finish, &
                       n_of_relaxation_steps
-  use shoot_solver_mod, only: newton_state, init_newton_state, reset_newton_state, &
-                              solve_linear, clamp_step, from_solver_coords, to_solver_coords, &
-                              broyden_update, commit_state
-  use shoot_solver_mod_1d, only: newton_state_1d, reset_newton_state_1d, solve_linear_1d, &
+  use shoot_solver_2d_mod, only: newton_state, init_newton_state, reset_newton_state, &
+                                 solve_linear, clamp_step, from_solver_coords, to_solver_coords, &
+                                 broyden_update, commit_state
+  use shoot_solver_1d_types_mod, only: newton_state_1d
+  use shoot_solver_1d_hc_mod, only: reset_newton_state_1d, solve_linear_1d, &
     line_search_1d, from_solver_coord_1d, to_solver_coord_1d, &
     clamp_step_1d, broyden_update_1d, commit_state_1d
   use rotation_uniform,  only: rotation_solver
   use starting_model_mod, only: initialize_starting_model
   use miscellaneous_mod, only: log_kepler_sequence, print_converged_block
-  use shoot_newton_helpers, only: evaluate_solution, build_jacobian
-  use shoot_newton_helpers_1d, only: evaluate_solution_1d, build_jacobian_1d
+  use shoot_solver_2d_helpers_mod, only: evaluate_solution, build_jacobian
+  use shoot_solver_1d_hc_helpers_mod, only: evaluate_solution_1d, build_jacobian_1d
+  use shoot_solver_1d_r_ratio_mod, only: from_solver_coord_rp, to_solver_coord_rp, &
+                                         clamp_step_rp, line_search_rp
+  use shoot_solver_1d_r_ratio_helpers_mod, only: evaluate_solution_rp, build_jacobian_rp
   implicit none
   integer :: it, i_idx, iteration_cap
   real(wp) :: er, rho0, ee
   real(wp) :: F(2), x(2), delta_x(2), rhs(2), h_new, r_new
   real(wp) :: F1d, x1d, delta_x1d, rhs1d
+  real(wp) :: F_rp, x_rp, delta_x_rp, rhs_rp, r_new_rp
   type(newton_state)    :: solver_state
   type(newton_state_1d) :: solver_state_1d
+  type(newton_state_1d) :: solver_state_rp
   logical :: step_ok, need_cycle
-  real(wp) :: prev_er1d, prev_er2d
+  real(wp) :: prev_er1d, prev_er2d, prev_er_rp
+  real(wp) :: er_best
+  integer  :: n_stall
+  integer, parameter :: STALL_LIMIT = 8
+  real(wp), parameter :: STALL_TOL = 1.e-6_wp
   call initialize_starting_model()
   ! Always initialize 2D state since the run can switch from 1D to 2D mid-sequence.
   call init_newton_state(solver_state, 2)
 
   write(unit=*, fmt=*) " "
-  chi_goal = 0.e0_wp
-  iteration_cap = 1
+  !chi_goal = 0.e0_wp
+  iteration_cap = 100
 
   do i_idx = 1, iteration_cap
-    if (use_shoot_1d) then
+    select case (shooting)
+    case (SHOOT_FIX1_HC)
       call reset_newton_state_1d(solver_state_1d); prev_er1d = huge(1.e0_wp)
-    else
+    case (SHOOT_FIX1_RP)
+      call reset_newton_state_1d(solver_state_rp); prev_er_rp = huge(1.e0_wp)
+    case (SHOOT_2D)
       call reset_newton_state(solver_state); prev_er2d = huge(1.e0_wp)
-    endif
+    end select
 
     ! ---------------------------------------------------------------
     ! Shooting stellar parameters
     ! ---------------------------------------------------------------
     it = 1
     er = 1.e99_wp
+    er_best = huge(1.e0_wp)
+    n_stall = 0
     do
       call cpu_time(start)
       n_of_relaxation_steps = 0; call evaluate_and_update
@@ -61,9 +77,20 @@ subroutine shoot_v2
 
       if (er <= accuracy .or. output) exit
 
+      if (er < er_best * (1.e0_wp - STALL_TOL)) then
+        er_best = er
+        n_stall = 0
+      else
+        n_stall = n_stall + 1
+      end if
+      if (n_stall >= STALL_LIMIT) then
+        write(*,"(A,ES10.3,A)") "  Shooting stalled (er=", er, "), accepting solution."
+        exit
+      end if
+
       call apply_newton_step
       if (need_cycle) cycle
-      
+
       it = it + 1
       if (it == 1000) stop "Required bulk properties cannot be reached."
     end do
@@ -82,37 +109,53 @@ subroutine shoot_v2
     call print_converged_block(rho0, ee)
 
     call output_seq()
-    chi_goal = 0.2e0_wp + dble(i_idx-1) * 0.05e0_wp
-    if (use_shoot_1d) then
-      ! Avoid entering 2D Newton from the quasi-spherical limit (r_ratio ~ 1),
-      ! where the rotation update treats the model as non-rotating.
-      r_ratio = min(r_ratio, 0.9e0_wp)
-    end if
-    use_shoot_1d = .false.
+
+    back_bending_project: block
+        real(wp) :: Oe
+        Oe = Omega_e * (C/sqrt(kappa)) / 2.0_wp / pi
+        h_center = merge(h_center - 0.002_wp, h_center - 0.004_wp, Oe < 350.0_wp )
+        if (shooting == SHOOT_FIX1_HC) then
+          r_ratio = min(r_ratio, 0.95_wp)
+        end if
+        shooting = SHOOT_FIX1_RP
+    end block back_bending_project
+
     !call log_kepler_sequence()
   end do ! looping models
 
 contains
   subroutine output_seq()
-    real(wp) :: Q_bar, T_over_W
-    integer  :: unit
-    character(16) :: fil1, fil2
+    use para_mod, only: rho_uni, ang_mom
+    use eos_mod, only: p_at_e
+    character(len=1024) :: filename
+    real(wp) :: Q_bar, T_over_W, pp, traceT
+    integer  :: unit, ios
+    traceT  = 3.0_wp*pp*1.80171810e-39_wp/KSCALE - ee*rho_uni/(C * C * KSCALE)
     Q_bar = merge(-1.d0, M2/chi**2, chi < 1.e-30_wp)
     T_over_W=merge(-1.d0, T_kin/abs(Mass_p - Mass + T_kin), chi < 1.e-30_wp)
-    write(fil1,"(f10.1)") mphi_goal
-    write(fil2,"(es12.1)") B_goal
-    open(newunit=unit,file="/Users/horay/Data4Projects/HT/Seq_"//trim(adjustl(eos_file))//".dat",access='append')
-    write(unit,"(99es18.9e3)") ee/(C * C * KSCALE), rho0*MB/n_sat, h_center, sound_speed(1), & ! 1-4
-            Mass/MSUN, Mass_0/MSUN, r_circ/1e5, & ! 5-7
-            0.d0, 0.d0, & ! 8, 9
-            I_inertia, Love2, Q_bar, & ! 10-12
-            T_over_W, M2, S3, M4, chi, omega_c/(2.e0_wp*pi)*(C/sqrt(kappa)) ! 13-18
+
+    
+    write(filename, '(A, A, A)') &
+      "/Users/horay/Data4Projects/HT/Seq_", trim(eos_file), ".dat"
+
+    open(newunit=unit, file=trim(filename), access='append', action='write', iostat=ios)
+    if (ios /= 0) then
+      write(*,'(A,I0,A)') 'ERROR: Cannot open output file. IOSTAT = ', ios, trim(filename)
+    end if
+    write(unit,"(99es18.9e3)") &
+            ee/(C * C * KSCALE), rho0*MB/n_sat,    & ! 1-2
+            h_center, traceT, sound_speed(1),      & ! 3-5
+            Mass/MSUN, Mass_0/MSUN,                & ! 6-7
+            I_inertia, Love2, Q_bar,               & ! 8-10
+            M2, S3, M4, chi, T_over_W, ang_mom,    & ! 11-16
+            Omega_e*(C/sqrt(kappa)), r_circ/1e5_wp
     close(unit)
   end subroutine output_seq
 
   subroutine apply_newton_step
     need_cycle = .false.
-    if (use_shoot_1d) then
+    select case (shooting)
+    case (SHOOT_FIX1_HC)
       rhs1d = -F1d
       step_ok = solve_linear_1d(solver_state_1d%J, rhs1d, delta_x1d)
       if (.not. step_ok) then
@@ -133,7 +176,30 @@ contains
       x1d = x1d + delta_x1d
       call from_solver_coord_1d(x1d, h_new)
       h_center = h_new
-    else
+
+    case (SHOOT_FIX1_RP)
+      rhs_rp = -F_rp
+      step_ok = solve_linear_1d(solver_state_rp%J, rhs_rp, delta_x_rp)
+      if (.not. step_ok) then
+        call reset_newton_state_1d(solver_state_rp)
+        need_cycle = .true.; return
+      endif
+      call clamp_step_rp(delta_x_rp, er)
+
+      if (er > 1.e-4_wp) then
+        call line_search_rp(x_rp, F_rp, delta_x_rp, h_center, evaluate_solution_rp, delta_x_rp, &
+                              J_est=solver_state_rp%J, success=step_ok)
+        if (.not. step_ok) then
+          call reset_newton_state_1d(solver_state_rp)
+          need_cycle = .true.; return
+        end if
+      end if
+
+      x_rp = x_rp + delta_x_rp
+      call from_solver_coord_rp(x_rp, r_new_rp)
+      r_ratio = r_new_rp
+
+    case (SHOOT_2D)
       rhs = -F
       step_ok = solve_linear(solver_state%J, rhs, delta_x)
       if (.not. step_ok) then
@@ -154,11 +220,12 @@ contains
       h_center = h_new
       r_ratio  = r_new
       solver_state%has_jacobian = .true.
-    end if
+    end select
   end subroutine apply_newton_step
 
   subroutine evaluate_and_update
-    if (use_shoot_1d) then
+    select case (shooting)
+    case (SHOOT_FIX1_HC)
       call evaluate_solution_1d(h_center, r_ratio, F1d, rho0, ee)
       call to_solver_coord_1d(h_center, x1d)
       er = abs(F1d)
@@ -172,7 +239,23 @@ contains
         call to_solver_coord_1d(h_center, x1d)
       end if
       call commit_state_1d(solver_state_1d, x1d, F1d)
-    else
+
+    case (SHOOT_FIX1_RP)
+      call evaluate_solution_rp(r_ratio, h_center, F_rp, rho0, ee)
+      call to_solver_coord_rp(r_ratio, x_rp)
+      er = abs(F_rp)
+      if (solver_state_rp%has_jacobian .and. er > prev_er_rp) &
+        call reset_newton_state_1d(solver_state_rp)
+      prev_er_rp = er
+      if (solver_state_rp%has_jacobian) then
+        call broyden_update_1d(solver_state_rp, x_rp, F_rp)
+      else
+        call build_jacobian_rp(solver_state_rp, x_rp, F_rp, r_ratio, h_center, rho0, ee, reuse_base=.true.)
+        call to_solver_coord_rp(r_ratio, x_rp)
+      end if
+      call commit_state_1d(solver_state_rp, x_rp, F_rp)
+
+    case (SHOOT_2D)
       call evaluate_solution(h_center, r_ratio, F, rho0, ee, er)
       call to_solver_coords(h_center, r_ratio, x)
 
@@ -185,7 +268,7 @@ contains
       endif
 
       call commit_state(solver_state, x, F)
-    end if
+    end select
   end subroutine evaluate_and_update
 
 end subroutine shoot_v2

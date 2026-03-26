@@ -46,10 +46,13 @@ SOURCES := \
   $(SRC_THEORY)/rotational_law_mod.f90 \
   $(SRC_THEORY)/spin_derivatives.f90 \
   $(SRC_THEORY)/spin_updates.f90 \
+  $(SRC_THEORY)/spin_workspace.f90 \
+  $(SRC_THEORY)/spin_integration.f90 \
   $(SRC_THEORY)/spin_relaxation.f90 \
   $(SRC_THEORY)/rotation_solver.f90 \
-  $(SRC_CORE)/newton_mod.f90 \
-  $(SRC_CORE)/newton1d_mod.f90 \
+  $(SRC_CORE)/shoot_solver_2d_mod.f90 \
+  $(SRC_CORE)/shoot_solver_1d_hc_mod.f90 \
+  $(SRC_CORE)/shoot_solver_1d_r_ratio_mod.f90 \
   $(SRC_CORE)/eos.f90 \
   $(SRC_CORE)/grid.f90 \
   $(SRC_CORE)/sphere.f90 \
@@ -74,10 +77,13 @@ $(OBJDIR)/$(SRC_THEORY)/relaxation_mod.o: $(OBJDIR)/$(SRC_CORE)/para_mod.o
 $(OBJDIR)/$(SRC_THEORY)/rotational_law_mod.o: $(OBJDIR)/$(SRC_TOOL)/brent.o $(OBJDIR)/$(SRC_CORE)/para_mod.o
 $(OBJDIR)/$(SRC_THEORY)/spin_derivatives.o: $(OBJDIR)/$(SRC_CORE)/para_mod.o
 $(OBJDIR)/$(SRC_THEORY)/spin_updates.o: $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_THEORY)/rotational_law_mod.o $(OBJDIR)/$(SRC_TOOL)/brent.o
-$(OBJDIR)/$(SRC_THEORY)/spin_relaxation.o: $(OBJDIR)/$(SRC_TOOL)/nag_compat_mod.o $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_CORE)/eos.o $(OBJDIR)/$(SRC_THEORY)/spin_derivatives.o $(OBJDIR)/$(SRC_THEORY)/spin_updates.o
-$(OBJDIR)/$(SRC_THEORY)/rotation_solver.o: $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_THEORY)/spin_relaxation.o $(OBJDIR)/$(SRC_CORE)/analysis_v2.o
-$(OBJDIR)/$(SRC_CORE)/newton_mod.o: $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_THEORY)/rotation_solver.o $(OBJDIR)/$(SRC_CORE)/eos.o $(OBJDIR)/$(SRC_CORE)/analysis_v2.o
-$(OBJDIR)/$(SRC_CORE)/newton1d_mod.o: $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_THEORY)/rotation_solver.o $(OBJDIR)/$(SRC_CORE)/eos.o $(OBJDIR)/$(SRC_CORE)/analysis_v2.o
+$(OBJDIR)/$(SRC_THEORY)/spin_workspace.o: $(OBJDIR)/$(SRC_TOOL)/nag_compat_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o
+$(OBJDIR)/$(SRC_THEORY)/spin_integration.o: $(OBJDIR)/$(SRC_THEORY)/spin_workspace.o $(OBJDIR)/$(SRC_THEORY)/spin_derivatives.o $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_CORE)/eos.o
+$(OBJDIR)/$(SRC_THEORY)/spin_relaxation.o: $(OBJDIR)/$(SRC_THEORY)/spin_workspace.o $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_THEORY)/relaxation_mod.o
+$(OBJDIR)/$(SRC_THEORY)/rotation_solver.o: $(OBJDIR)/$(SRC_THEORY)/spin_workspace.o $(OBJDIR)/$(SRC_THEORY)/spin_integration.o $(OBJDIR)/$(SRC_THEORY)/spin_relaxation.o $(OBJDIR)/$(SRC_THEORY)/spin_updates.o $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_CORE)/analysis_v2.o
+$(OBJDIR)/$(SRC_CORE)/shoot_solver_2d_mod.o: $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_THEORY)/rotation_solver.o $(OBJDIR)/$(SRC_CORE)/eos.o $(OBJDIR)/$(SRC_CORE)/analysis_v2.o
+$(OBJDIR)/$(SRC_CORE)/shoot_solver_1d_hc_mod.o: $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_THEORY)/rotation_solver.o $(OBJDIR)/$(SRC_CORE)/eos.o $(OBJDIR)/$(SRC_CORE)/analysis_v2.o
+$(OBJDIR)/$(SRC_CORE)/shoot_solver_1d_r_ratio_mod.o: $(OBJDIR)/$(SRC_CORE)/shoot_solver_1d_hc_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_THEORY)/rotation_solver.o $(OBJDIR)/$(SRC_CORE)/eos.o $(OBJDIR)/$(SRC_CORE)/analysis_v2.o
 $(OBJDIR)/$(SRC_CORE)/eos.o: $(OBJDIR)/$(SRC_TOOL)/ad_mod.o $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o
 $(OBJDIR)/$(SRC_CORE)/grid.o: $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o
 $(OBJDIR)/$(SRC_CORE)/sphere.o: $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_CORE)/eos.o $(OBJDIR)/$(SRC_CORE)/set_disk.o
@@ -85,7 +91,7 @@ $(OBJDIR)/$(SRC_CORE)/restart_read.o: $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)
 $(OBJDIR)/$(SRC_CORE)/analysis_v2.o: $(OBJDIR)/$(SRC_TOOL)/ad_mod.o $(OBJDIR)/$(SRC_TOOL)/cheb_mod.o $(OBJDIR)/$(SRC_TOOL)/nag_compat_mod.o $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/$(SRC_CORE)/miscellaneous.o $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_CORE)/eos.o
 $(OBJDIR)/$(SRC_CORE)/scalar_burning.o: $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_THEORY)/rotation_solver.o
 $(OBJDIR)/$(SRC_CORE)/starting_model.o: $(OBJDIR)/$(SRC_THEORY)/rotation_solver.o $(OBJDIR)/$(SRC_CORE)/miscellaneous.o $(OBJDIR)/$(SRC_CORE)/scalar_burning.o $(OBJDIR)/$(SRC_CORE)/eos.o $(OBJDIR)/$(SRC_CORE)/analysis_v2.o $(OBJDIR)/$(SRC_CORE)/restart_read.o $(OBJDIR)/$(SRC_CORE)/sphere.o
-$(OBJDIR)/$(SRC_CORE)/shoot_v2.o: $(OBJDIR)/$(SRC_CORE)/starting_model.o $(OBJDIR)/$(SRC_CORE)/eos.o $(OBJDIR)/$(SRC_CORE)/analysis_v2.o
+$(OBJDIR)/$(SRC_CORE)/shoot_v2.o: $(OBJDIR)/$(SRC_CORE)/starting_model.o $(OBJDIR)/$(SRC_CORE)/eos.o $(OBJDIR)/$(SRC_CORE)/analysis_v2.o $(OBJDIR)/$(SRC_CORE)/shoot_solver_2d_mod.o $(OBJDIR)/$(SRC_CORE)/shoot_solver_1d_hc_mod.o $(OBJDIR)/$(SRC_CORE)/shoot_solver_1d_r_ratio_mod.o
 $(OBJDIR)/$(SRC_CORE)/MRcurve.o: $(OBJDIR)/$(SRC_THEORY)/rotation_solver.o $(OBJDIR)/$(SRC_CORE)/starting_model.o $(OBJDIR)/$(SRC_CORE)/eos.o $(OBJDIR)/$(SRC_CORE)/analysis_v2.o
 $(OBJDIR)/$(SRC_CORE)/set_disk.o: $(OBJDIR)/$(SRC_CORE)/eos.o
 $(OBJDIR)/src/main.o: $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_CORE)/constraint_eq.o $(OBJDIR)/$(SRC_CORE)/eos.o $(OBJDIR)/$(SRC_CORE)/grid.o $(OBJDIR)/$(SRC_CORE)/shoot_v2.o
