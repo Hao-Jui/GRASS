@@ -10,14 +10,94 @@
 ! Cost: O(2N+1) per evaluation vs O((2N+1)^2) for naive Lagrange.
 module toolkit_mod
   use precision_mod, only: wp
+  use spectral_hub, only: legendre_sequence
   implicit none
 
   ! Stencil order shared by interp, interp_pt, interp_dual
   integer, parameter :: n_order = 4 ! only this order is implemented
+  integer, parameter :: pt_window = n_order + 1
   real(wp), parameter :: bary_w(-n_order:n_order) = &
-      [1.e0_wp, -8.e0_wp, 28.e0_wp, -56.e0_wp, 70.e0_wp, -56.e0_wp, 28.e0_wp, -8.e0_wp, 1.e0_wp] / 40320.e0_wp
+      [1.0_wp, -8.0_wp, 28.0_wp, -56.0_wp, 70.0_wp, -56.0_wp, 28.0_wp, -8.0_wp, 1.0_wp] / 40320.0_wp
 
 contains
+  pure elemental logical function same_abscissa(xa, xb) result(is_same)
+    implicit none
+    real(wp), intent(in) :: xa, xb
+    real(wp) :: scale
+
+    scale = max(1.0_wp, abs(xa), abs(xb))
+    is_same = abs(xa - xb) <= 16.0_wp * epsilon(scale) * scale
+  end function same_abscissa
+
+  integer function nearest_transition_point(n_nearest_pt) result(pt)
+    use para_mod, only: p_at_PT, n_PT
+    implicit none
+    integer, intent(in) :: n_nearest_pt
+    integer :: j_closest
+
+    pt = 0
+    if (n_PT <= 0) return
+
+    j_closest = minloc(abs(p_at_PT - n_nearest_pt), 1)
+    if (abs(p_at_PT(j_closest) - n_nearest_pt) <= pt_window) pt = p_at_PT(j_closest)
+  end function nearest_transition_point
+
+  ! PT decision logic shared by scalar and dual interp_pt variants.
+  ! action=0: full barycentric (no PT nearby or invalid)
+  ! action=1: linear segment between il and ir
+  ! action=2: constant value at il (inside the PT gap)
+  subroutine pt_interp_action(xp, np, xb_val, n_nearest_pt, action, il, ir)
+    implicit none
+    integer, intent(in) :: np, n_nearest_pt
+    real(wp), intent(in) :: xp(np), xb_val
+    integer, intent(out) :: action, il, ir
+    integer :: pt
+
+    pt = nearest_transition_point(n_nearest_pt)
+    if (pt <= 0 .or. pt <= 1 .or. pt > np) then
+      action = 0; return
+    end if
+
+    if (n_nearest_pt == pt .or. n_nearest_pt == pt - 1) then
+      if (xb_val < xp(pt - 1)) then
+        action = 1; il = max(1, pt - 2); ir = pt - 1
+      elseif (xb_val > xp(pt)) then
+        action = 1; il = pt; ir = min(np, pt + 1)
+      else
+        action = 2; il = pt - 1; ir = il
+      end if
+    else
+      if (n_nearest_pt <= 1) then
+        action = 2; il = 1; ir = 1
+      elseif (n_nearest_pt >= np) then
+        action = 2; il = np; ir = np
+      elseif (xb_val < xp(n_nearest_pt)) then
+        action = 1; il = n_nearest_pt - 1; ir = n_nearest_pt
+      else
+        action = 1; il = n_nearest_pt; ir = n_nearest_pt + 1
+      end if
+    end if
+  end subroutine pt_interp_action
+
+  pure subroutine interp_linear_segment(xp, yp, i_left, i_right, xb, yb)
+    implicit none
+    integer, intent(in) :: i_left, i_right
+    real(wp), intent(in) :: xp(:), yp(:), xb
+    real(wp), intent(out) :: yb
+
+    if (i_left >= i_right) then
+      yb = yp(i_left)
+    elseif (same_abscissa(xb, xp(i_left))) then
+      yb = yp(i_left)
+    elseif (same_abscissa(xb, xp(i_right))) then
+      yb = yp(i_right)
+    elseif (same_abscissa(xp(i_left), xp(i_right))) then
+      yb = yp(i_left)
+    else
+      yb = yp(i_left) + (xb - xp(i_left)) * (yp(i_right) - yp(i_left)) / (xp(i_right) - xp(i_left))
+    end if
+  end subroutine interp_linear_segment
+
   pure elemental function interp_log_h_to_p(x) result(y)
     use para_mod, only: log_h, log_p, num_tab
     implicit none
@@ -73,8 +153,8 @@ contains
 
     ir = min(np - n_order, max(1 + n_order, n_nearest_pt - 1))
 
-    num = 0.e0_wp
-    den = 0.e0_wp
+    num = 0.0_wp
+    den = 0.0_wp
     do ii = -n_order, n_order
       dx = xb - xp(ir + ii)
       if (abs(dx) < epsilon(dx)) then   ! xb lands exactly on a node
@@ -88,47 +168,24 @@ contains
     yb = num / den
   end subroutine interp
 
-  pure subroutine interp_pt(xp,yp,np, xb,yb)
-    use para_mod, only: p_at_PT
+  subroutine interp_pt(xp, yp, np, xb, yb)
     implicit none
-    integer,intent(in) :: np
-    integer :: n_nearest_pt, ii, kk, ir
-    real(wp),intent(in)  :: xp(np), yp(np)
-    real(wp),intent(in)  :: xb
-    real(wp),intent(out) :: yb
-    real(wp) :: fr 
-    
-    n_nearest_pt = minloc( abs(xb-xp), 1 )
+    integer, intent(in) :: np
+    real(wp), intent(in) :: xp(np), yp(np), xb
+    real(wp), intent(out) :: yb
+    integer :: n_nearest_pt, action, il, ir
 
-    if ( abs(n_nearest_pt-p_at_PT) > n_order+1 ) then
-      ir = min(np - n_order, max(1 + n_order, n_nearest_pt - 1))
-      yb = 0.e0_wp
-      do ii = -n_order, n_order
-        fr = 1.e0_wp
-        do kk = -n_order, n_order
-          if ( ii == kk ) cycle
-          fr = fr * ( xb - xp(ir+kk) ) / ( xp(ir+ii) - xp(ir+kk) )
-        enddo
-        yb  = yb + fr * yp(ir+ii)
-      enddo
-    elseif ( n_nearest_pt == p_at_PT .or. n_nearest_pt == p_at_PT-1 ) then
-      if (xp(p_at_PT) < xb ) then 
-        yb = yp(p_at_PT+1) + ( xb - xp(p_at_PT+1) ) * ( yp(p_at_PT) - yp(p_at_PT+1) ) &
-            / ( xp(p_at_PT) - xp(p_at_PT+1) )
-      elseif ( xp(p_at_PT-1) < xb .and. xp(p_at_PT) > xb  ) then
-        yb = yp(p_at_PT-1)
-      else
-        yb = yp(p_at_PT-2) + ( xb - xp(p_at_PT-2) ) * ( yp(p_at_PT-1) - yp(p_at_PT-2) ) &
-          / ( xp(p_at_PT-1) - xp(p_at_PT-2) )
-      endif
-    else
-      yb = merge( yp(n_nearest_pt-1) + ( xb - xp(n_nearest_pt-1) ) * ( yp(n_nearest_pt) - yp(n_nearest_pt-1) ) &
-                          / ( xp(n_nearest_pt) - xp(n_nearest_pt-1) ), &
-          yp(n_nearest_pt+1) + ( xb - xp(n_nearest_pt+1) ) * ( yp(n_nearest_pt) - yp(n_nearest_pt+1) ) &
-                                      / ( xp(n_nearest_pt) - xp(n_nearest_pt+1) ), &
-          xp(n_nearest_pt) > xb )
-    endif
+    n_nearest_pt = minloc(abs(xb - xp), 1)
+    if (same_abscissa(xb, xp(n_nearest_pt))) then
+      yb = yp(n_nearest_pt); return
+    end if
 
+    call pt_interp_action(xp, np, xb, n_nearest_pt, action, il, ir)
+    select case (action)
+    case (1); call interp_linear_segment(xp, yp, il, ir, xb, yb)
+    case (2); yb = yp(il)
+    case default; call interp(xp, yp, np, xb, yb)
+    end select
   end subroutine interp_pt
 
   pure subroutine interp_dual(xp, yp, np, xb, yb)
@@ -144,8 +201,8 @@ contains
     n_nearest_pt = minloc(abs(xb%val - xp), 1)
     ir = min(np - n_order, max(1 + n_order, n_nearest_pt - 1))
 
-    num = dual_const(0.e0_wp)
-    den = dual_const(0.e0_wp)
+    num = dual_const(0.0_wp)
+    den = dual_const(0.0_wp)
     do ii = -n_order, n_order
       dx = xb - dual_const(xp(ir + ii))
       if (abs(dx%val) < epsilon(dx%val)) then
@@ -158,6 +215,50 @@ contains
     end do
     yb = num / den
   end subroutine interp_dual
+
+  subroutine interp_pt_dual(xp, yp, np, xb, yb)
+    use ad_mod, only: dual, dual_const, operator(+), operator(-), operator(*), operator(/)
+    implicit none
+    integer, intent(in)    :: np
+    real(wp), intent(in)   :: xp(np), yp(np)
+    type(dual), intent(in) :: xb
+    type(dual), intent(out) :: yb
+    integer :: n_nearest_pt, action, il, ir
+
+    n_nearest_pt = minloc(abs(xb%val - xp), 1)
+    if (same_abscissa(xb%val, xp(n_nearest_pt))) then
+      yb = dual_const(yp(n_nearest_pt)); return
+    end if
+
+    call pt_interp_action(xp, np, xb%val, n_nearest_pt, action, il, ir)
+    select case (action)
+    case (1); call interp_linear_segment_dual(xp, yp, il, ir, xb, yb)
+    case (2); yb = dual_const(yp(il))
+    case default; call interp_dual(xp, yp, np, xb, yb)
+    end select
+  end subroutine interp_pt_dual
+
+  pure subroutine interp_linear_segment_dual(xp, yp, i_left, i_right, xb, yb)
+    use ad_mod, only: dual, dual_const, operator(+), operator(-), operator(*), operator(/)
+    implicit none
+    integer, intent(in) :: i_left, i_right
+    real(wp), intent(in) :: xp(:), yp(:)
+    type(dual), intent(in) :: xb
+    type(dual), intent(out) :: yb
+
+    if (i_left >= i_right) then
+      yb = dual_const(yp(i_left))
+    elseif (same_abscissa(xb%val, xp(i_left))) then
+      yb = dual_const(yp(i_left))
+    elseif (same_abscissa(xb%val, xp(i_right))) then
+      yb = dual_const(yp(i_right))
+    elseif (same_abscissa(xp(i_left), xp(i_right))) then
+      yb = dual_const(yp(i_left))
+    else
+      yb = dual_const(yp(i_left)) + (xb - dual_const(xp(i_left))) &
+         * dual_const((yp(i_right) - yp(i_left)) / (xp(i_right) - xp(i_left)))
+    end if
+  end subroutine interp_linear_segment_dual
 
   ! **********************************************************************
   ! Integration helpers
@@ -199,7 +300,7 @@ contains
     end if
 
     do i = 1, n_cols
-      err_local = 0.e0_wp
+      err_local = 0.0_wp
       ifail_local = 0
       call d01gaf(x, values(:, i), n_points, results(i), err_local, ifail_local)
       if (present(err_estimates)) err_estimates(i) = err_local
@@ -223,23 +324,23 @@ contains
       elseif (s == SDIV) then
         deriv_s_1d = (f(SDIV) - f(SDIV-1)) / ds
       else
-        deriv_s_1d = (f(s+1) - f(s-1)) / (2.e0_wp * ds)
+        deriv_s_1d = (f(s+1) - f(s-1)) / (2.0_wp * ds)
       end if
       return
     end if
 
-    inv_ds = 1.e0_wp / (12.e0_wp * ds)
+    inv_ds = 1.0_wp / (12.0_wp * ds)
 
     if (s == 1) then
-      deriv_s_1d = (-25.e0_wp*f(1) + 48.e0_wp*f(2) - 36.e0_wp*f(3) + 16.e0_wp*f(4) - 3.e0_wp*f(5)) * inv_ds
+      deriv_s_1d = (-25.0_wp*f(1) + 48.0_wp*f(2) - 36.0_wp*f(3) + 16.0_wp*f(4) - 3.0_wp*f(5)) * inv_ds
     elseif (s == 2) then
-      deriv_s_1d = (-3.e0_wp*f(1) - 10.e0_wp*f(2) + 18.e0_wp*f(3) - 6.e0_wp*f(4) + f(5)) * inv_ds
+      deriv_s_1d = (-3.0_wp*f(1) - 10.0_wp*f(2) + 18.0_wp*f(3) - 6.0_wp*f(4) + f(5)) * inv_ds
     elseif (s == SDIV-1) then
-      deriv_s_1d = (3.e0_wp*f(SDIV) + 10.e0_wp*f(SDIV-1) - 18.e0_wp*f(SDIV-2) + 6.e0_wp*f(SDIV-3) - f(SDIV-4)) * inv_ds
+      deriv_s_1d = (3.0_wp*f(SDIV) + 10.0_wp*f(SDIV-1) - 18.0_wp*f(SDIV-2) + 6.0_wp*f(SDIV-3) - f(SDIV-4)) * inv_ds
     elseif (s == SDIV) then
-      deriv_s_1d = (25.e0_wp*f(SDIV) - 48.e0_wp*f(SDIV-1) + 36.e0_wp*f(SDIV-2) - 16.e0_wp*f(SDIV-3) + 3.e0_wp*f(SDIV-4)) * inv_ds
+      deriv_s_1d = (25.0_wp*f(SDIV) - 48.0_wp*f(SDIV-1) + 36.0_wp*f(SDIV-2) - 16.0_wp*f(SDIV-3) + 3.0_wp*f(SDIV-4)) * inv_ds
     else
-      deriv_s_1d = (-f(s+2) + 8.e0_wp*f(s+1) - 8.e0_wp*f(s-1) + f(s-2)) * inv_ds
+      deriv_s_1d = (-f(s+2) + 8.0_wp*f(s+1) - 8.0_wp*f(s-1) + f(s-2)) * inv_ds
     end if
   end function deriv_s_1d
 
@@ -253,50 +354,33 @@ contains
     implicit none
     integer,intent(in) :: n
     real(wp),intent(in) :: x
-    integer :: i
-    real(wp) :: p,p_1,p_2
+    real(wp) :: pnm1
 
-    p_2 = 1.e0_wp
-    p_1 = x
-
-    if (n >= 2) then
-      do i=2,n
-        p = (x*(2.e0_wp*dble(i)-1.e0_wp)*p_1 - (dble(i)-1.e0_wp)*p_2)/dble(i)
-        p_2 = p_1
-        p_1 = p
-      enddo
-      legendre = p
-    else
-      if (n == 1) then
-        legendre = p_1
-      else
-        legendre = p_2
-      endif
-    endif
+    call legendre_sequence(n, x, legendre, pnm1)
 
   end function legendre
 
+  ! associated Legendre polynomials P_l^m(x)
   real(wp) function plgndr(l,m,x)
-
     implicit none
     integer,intent(in) :: l,m
     real(wp),intent(in) :: x
     integer :: ll
     real(wp) :: fact, pmm, pmmp1, somx2, pll
 
-    if(m<0 .or. m>l .or. abs(x)>1.e0_wp) then
+    if(m<0 .or. m>l .or. abs(x)>1.0_wp) then
       write(*,*) m,l,x
       stop "Bad arguments in routine PLGNDR"
     endif
 
-    pmm = 1.e0_wp
-    pll = 0.e0_wp
+    pmm = 1.0_wp
+    pll = 0.0_wp
     if ( m > 0 ) then
-      somx2 = dsqrt((1.e0_wp-x)*(1.e0_wp+x))
-      fact = 1.e0_wp
+      somx2 = dsqrt((1.0_wp-x)*(1.0_wp+x))
+      fact = 1.0_wp
       do ll=1,m
         pmm = pmm*(-fact*somx2)
-        fact = fact + 2.e0_wp
+        fact = fact + 2.0_wp
       enddo
     endif
 
@@ -326,7 +410,7 @@ contains
     real(wp) :: xx, i_prev, i_curr, i_next, two_ell_plus_one
     real(wp) :: sinh_x, cosh_x, scale, besseli_pos
     real(wp), parameter :: eps_small = 1.e-3_wp
-    real(wp), parameter :: switch_downward = 20.e0_wp
+    real(wp), parameter :: switch_downward = 20.0_wp
     real(wp) :: i0_exact
     real(wp), allocatable :: down_vals(:)
     real(wp) :: sign_factor
@@ -336,10 +420,10 @@ contains
     end if
 
     xx = abs(x)
-    if (x < 0.e0_wp .and. mod(n,2) == 1) then
-      sign_factor = -1.e0_wp
+    if (x < 0.0_wp .and. mod(n,2) == 1) then
+      sign_factor = -1.0_wp
     else
-      sign_factor = 1.e0_wp
+      sign_factor = 1.0_wp
     end if
 
     if (xx < eps_small) then
@@ -350,10 +434,10 @@ contains
     if (xx <= switch_downward) then
       Lrec = max(n + 40, 60)
       allocate(down_vals(0:Lrec+1))
-      down_vals(Lrec+1) = 0.e0_wp
-      down_vals(Lrec)   = 1.e0_wp
+      down_vals(Lrec+1) = 0.0_wp
+      down_vals(Lrec)   = 1.0_wp
       do l_idx = Lrec, 1, -1
-        down_vals(l_idx-1) = down_vals(l_idx+1) + ((2.e0_wp*dble(l_idx)+1.e0_wp)/xx) * down_vals(l_idx)
+        down_vals(l_idx-1) = down_vals(l_idx+1) + ((2.0_wp*dble(l_idx)+1.0_wp)/xx) * down_vals(l_idx)
       end do
       sinh_x = sinh(xx)
       i0_exact = sinh_x / xx
@@ -364,11 +448,11 @@ contains
       return
     end if
 
-    if (xx > 700.e0_wp) then
-      sinh_x = 0.5e0_wp * exp(xx/2.e0_wp) * exp(xx/2.e0_wp)
+    if (xx > 700.0_wp) then
+      sinh_x = 0.5e0_wp * exp(xx/2.0_wp) * exp(xx/2.0_wp)
       cosh_x = sinh_x
-    elseif (xx < -700.e0_wp) then
-      sinh_x = -0.5e0_wp * exp(-xx/2.e0_wp) * exp(-xx/2.e0_wp)
+    elseif (xx < -700.0_wp) then
+      sinh_x = -0.5e0_wp * exp(-xx/2.0_wp) * exp(-xx/2.0_wp)
       cosh_x = -sinh_x
     else
       sinh_x = sinh(xx)
@@ -412,13 +496,13 @@ contains
 
     xx = abs(x)
     if (abs(xx) < epsilon(xx)) then
-      besselk = 0.e0_wp
+      besselk = 0.0_wp
       return
     end if
 
     if (xx < eps_small) then
       em1 = expm1_safe(-xx)
-      exp_neg = 1.e0_wp + em1
+      exp_neg = 1.0_wp + em1
     else
       exp_neg = exp(-xx)
     end if
@@ -429,7 +513,7 @@ contains
       return
     end if
 
-    k_curr = clip_besselk(exp_neg * (1.e0_wp + 1.e0_wp/xx) / xx)
+    k_curr = clip_besselk(exp_neg * (1.0_wp + 1.0_wp/xx) / xx)
     if (n == 1) then
       besselk = k_curr
       return
@@ -452,11 +536,11 @@ contains
     real(wp) :: acc
 
     if (m <= 0) then
-      odd_double_factorial = 1.e0_wp
+      odd_double_factorial = 1.0_wp
       return
     end if
 
-    acc = 1.e0_wp
+    acc = 1.0_wp
     do k = m, 1, -2
       acc = acc * dble(k)
     end do
@@ -472,23 +556,23 @@ contains
     real(wp) :: term_factor, sum_series, x2, base
 
     if (n < 0) then
-      spherical_i_series = 0.e0_wp
+      spherical_i_series = 0.0_wp
       return
     end if
 
     x2 = x*x
 
-    sum_series = 1.e0_wp
-    term_factor = 1.e0_wp
+    sum_series = 1.0_wp
+    term_factor = 1.0_wp
 
     do k = 1, 64
-      term_factor = term_factor * x2 / (2.e0_wp*dble(k)*(2.e0_wp*dble(n+k)+1.e0_wp))
+      term_factor = term_factor * x2 / (2.0_wp*dble(k)*(2.0_wp*dble(n+k)+1.0_wp))
       sum_series = sum_series + term_factor
       if (abs(term_factor) < max(1.e-18_wp, abs(sum_series)*1.e-16_wp)) exit
     end do
 
     if (n == 0) then
-      base = 1.e0_wp
+      base = 1.0_wp
     else
       base = pow_int_real(x, n) / odd_double_factorial(2*n+1)
     end if
@@ -503,7 +587,7 @@ contains
     integer :: k
     real(wp) :: result
 
-    result = 1.e0_wp
+    result = 1.0_wp
     if (n <= 0) then
       pow_int_real = result
       return
@@ -524,7 +608,7 @@ contains
 
     absx = abs(x)
     if (absx > 1.e-4_wp) then
-      expm1_safe = exp(x) - 1.e0_wp
+      expm1_safe = exp(x) - 1.0_wp
       return
     end if
 
@@ -550,7 +634,7 @@ contains
     real(wp),intent(in) :: val
     real(wp) :: tmp
     tmp = abs(clip_bessel(val))
-    if (tmp < tiny(1.e0_wp)) tmp = tiny(1.e0_wp)
+    if (tmp < tiny(1.0_wp)) tmp = tiny(1.0_wp)
     clip_besselk = tmp
   end function clip_besselk
 
@@ -586,7 +670,7 @@ contains
       open(newunit=unit_id, file=fname, status="replace", action="write")
       warned_large_x = .false.
       do s = 1, SDIV
-        denom = 1.e0_wp - s_gp(s)
+        denom = 1.0_wp - s_gp(s)
         if (abs(denom) < 1.e-12_wp) denom = sign(1.e-12_wp, denom)
         xx = s_gp(s) / denom
         if (xx > 1.e3_wp) then
@@ -594,8 +678,8 @@ contains
             !write(*,"(A,1x,I0,1x,es15.6)") "debug_mod_bessel: skipping points with x >", n, xx
             warned_large_x = .true.
           end if
-          val_k = 0.e0_wp
-          val_i = 0.e0_wp
+          val_k = 0.0_wp
+          val_i = 0.0_wp
         else
           val_k = besselk(2*n, xx)
           val_i = besseli(2*n, xx)

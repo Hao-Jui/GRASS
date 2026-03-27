@@ -36,6 +36,7 @@ SOURCES := \
   $(SRC_TOOL)/nag_compat_mod.f90 \
   $(SRC_TOOL)/brent.f90 \
   $(SRC_TOOL)/cheb_mod.f90 \
+  $(SRC_TOOL)/spectral_hub.f90 \
   $(SRC_CORE)/para_mod.f90 \
   $(SRC_CORE)/Ope_eq.f90 \
   $(SRC_CORE)/constraint_eq.f90 \
@@ -68,7 +69,7 @@ OBJECTS := $(patsubst %.f90,$(OBJDIR)/%.o,$(SOURCES))
 
 # Ensure precision module is built before any source that imports it.
 $(filter-out $(OBJDIR)/$(SRC_CORE)/precision_mod.o,$(OBJECTS)): $(OBJDIR)/$(SRC_CORE)/precision_mod.o
-$(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o: $(OBJDIR)/$(SRC_TOOL)/ad_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o
+$(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o: $(OBJDIR)/$(SRC_TOOL)/ad_mod.o $(OBJDIR)/$(SRC_TOOL)/spectral_hub.o $(OBJDIR)/$(SRC_CORE)/para_mod.o
 $(OBJDIR)/$(SRC_CORE)/Ope_eq.o: $(OBJDIR)/$(SRC_CORE)/para_mod.o
 $(OBJDIR)/$(SRC_CORE)/constraint_eq.o: $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_CORE)/Ope_eq.o
 $(OBJDIR)/$(SRC_CORE)/miscellaneous.o: $(OBJDIR)/$(SRC_TOOL)/nag_compat_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o

@@ -47,7 +47,7 @@ subroutine shoot_v2
 
   write(unit=*, fmt=*) " "
   !chi_goal = 0.e0_wp
-  iteration_cap = 100
+  iteration_cap = 200
 
   do i_idx = 1, iteration_cap
     select case (shooting)
@@ -113,7 +113,7 @@ subroutine shoot_v2
     back_bending_project: block
         real(wp) :: Oe
         Oe = Omega_e * (C/sqrt(kappa)) / 2.0_wp / pi
-        h_center = merge(h_center - 0.002_wp, h_center - 0.004_wp, Oe < 350.0_wp )
+        h_center = merge(h_center + 0.002_wp, h_center + 0.005_wp, Oe < 350.0_wp )
         if (shooting == SHOOT_FIX1_HC) then
           r_ratio = min(r_ratio, 0.95_wp)
         end if
@@ -135,8 +135,8 @@ contains
     T_over_W=merge(-1.d0, T_kin/abs(Mass_p - Mass + T_kin), chi < 1.e-30_wp)
 
     
-    write(filename, '(A, A, A)') &
-      "/Users/horay/Data4Projects/HT/Seq_", trim(eos_file), ".dat"
+    write(filename, '(A, A, A, F0.2, A)') &
+      "/Users/horay/Data4Projects/HT/Seq_", trim(eos_file), "_M", mass_0/MSUN, ".dat"
 
     open(newunit=unit, file=trim(filename), access='append', action='write', iostat=ios)
     if (ios /= 0) then

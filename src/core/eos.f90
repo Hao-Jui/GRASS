@@ -1,7 +1,7 @@
 module eos_mod
   use precision_mod, only: wp
-  use toolkit_mod, only: interp, interp_pt, interp_dual
-  use para_mod, only: log_e, log_p, log_h, log_n0, num_tab, phase_transition
+  use toolkit_mod, only: interp, interp_pt, interp_dual, interp_pt_dual
+  use para_mod, only: log_e, log_p, log_h, log_n0, num_tab, n_PT, phase_transition
   use ad_mod, only: dual
   implicit none
   private
@@ -11,8 +11,7 @@ module eos_mod
   public :: loadEos, pressure_derivative_n
 contains
 
-  ! Private non-elemental helpers for EOS interpolation
-  pure real(wp) function interp_eos_with_phase(val_in, t_in, t_out)
+  real(wp) function interp_eos_with_phase(val_in, t_in, t_out)
     real(wp), intent(in) :: val_in
     real(wp), intent(in) :: t_in(:), t_out(:)
     real(wp) :: res_log
@@ -24,33 +23,43 @@ contains
     interp_eos_with_phase = exp(res_log)
   end function interp_eos_with_phase
 
-  pure real(wp) function interp_eos_simple(val_in, t_in, t_out)
+  real(wp) function interp_eos_simple(val_in, t_in, t_out)
     real(wp), intent(in) :: val_in
     real(wp), intent(in) :: t_in(:), t_out(:)
     real(wp) :: res_log
-    call interp(t_in, t_out, num_tab, log(val_in), res_log)
+    if (phase_transition) then
+      call interp_pt(t_in, t_out, num_tab, log(val_in), res_log)
+    else
+      call interp(t_in, t_out, num_tab, log(val_in), res_log)
+    end if
     interp_eos_simple = exp(res_log)
   end function interp_eos_simple
 
-  pure type(dual) function interp_eos_dual(val_in, t_in, t_out)
+  type(dual) function interp_eos_dual(val_in, t_in, t_out)
     use ad_mod, only: log, exp
     type(dual), intent(in) :: val_in
     real(wp), intent(in) :: t_in(:), t_out(:)
     type(dual) :: res_log
-    call interp_dual(t_in, t_out, num_tab, log(val_in), res_log)
+    if (phase_transition) then
+      call interp_pt_dual(t_in, t_out, num_tab, log(val_in), res_log)
+    else
+      call interp_dual(t_in, t_out, num_tab, log(val_in), res_log)
+    end if
     interp_eos_dual = exp(res_log)
   end function interp_eos_dual
 
   subroutine loadEos
     use iso_fortran_env, only: output_unit
-    use para_mod, only: p_at_PT, eos_file, num_tab, log_e, log_p, log_h, log_n0, enthalpy_min, C, KSCALE
+    use para_mod, only: p_at_PT, n_PT, eos_file, num_tab, log_e, log_p, log_h, log_n0, enthalpy_min, C, KSCALE
     implicit none
     integer :: i, unit, ios
     real(wp) :: dle, dlp
     real(wp), parameter :: GAMMA_PT = 6.e-2_wp  ! polytropic-index ceiling for a phase transition
     real(wp), parameter :: DLE_MIN  = 1.e-2_wp  ! minimum d(ln e) to count as sizable
+    integer :: pt_buf(1024), pt_count
 
-    p_at_PT = 1
+    pt_count = 0
+    if (allocated(p_at_PT)) deallocate(p_at_PT)
     if (allocated(log_e)) deallocate(log_e, log_p, log_h, log_n0)
 
     open(newunit=unit, file="./eos/" // trim(adjustl(eos_file)) // ".dat", status="old", action="read", iostat=ios)
@@ -70,9 +79,20 @@ contains
       if (ios /= 0) error stop "loadEos: malformed EOS row"
       dle = log(log_e(i) / log_e(i-1))
       dlp = log(log_p(i) / log_p(i-1))
-      if (p_at_PT == 1 .and. dle > DLE_MIN .and. abs(dlp / dle) < GAMMA_PT) p_at_PT = i
+      if (dle > DLE_MIN .and. abs(dlp / dle) < GAMMA_PT) then
+        pt_count = pt_count + 1
+        pt_buf(pt_count) = i
+      end if
     end do
     close(unit)
+
+    n_PT = pt_count
+    if (n_PT > 0) then
+      allocate(p_at_PT(n_PT))
+      p_at_PT(:) = pt_buf(1:n_PT)
+    else
+      allocate(p_at_PT(0))
+    end if
 
     log_e = log(log_e * C * C * KSCALE)
     log_p = log(log_p * KSCALE)
@@ -81,9 +101,11 @@ contains
 
     write(output_unit, *) " "
     write(output_unit, *) "# EOS: ", eos_file
-    if (p_at_PT .ne. 1) then 
-      write(output_unit, *) " p_at_PT: ", p_at_PT
-      phase_transition=.true.
+    if (n_PT > 0) then
+      do i = 1, n_PT
+        write(output_unit, "(A,i0,A,X,i0)") " p_at_PT(", i, "):", p_at_PT(i)
+      end do
+      phase_transition = .true.
     end if
     write(output_unit, *) "EOS data is in with log(h_min) =", enthalpy_min
 
@@ -91,43 +113,43 @@ contains
   end subroutine loadEos
 
 
-  pure elemental real(wp) function e_at_p(pp)
+  real(wp) function e_at_p(pp)
     real(wp), intent(in) :: pp
     e_at_p = interp_eos_with_phase(pp, log_p, log_e)
   end function e_at_p
 
-  pure elemental real(wp) function p_at_e(ee)
+  real(wp) function p_at_e(ee)
     real(wp), intent(in) :: ee
     p_at_e = interp_eos_with_phase(ee, log_e, log_p)
   end function p_at_e
 
-  pure elemental function p_at_e_dual(ee) result(res)
+  function p_at_e_dual(ee) result(res)
     type(dual), intent(in) :: ee
     type(dual) :: res
     res = interp_eos_dual(ee, log_e, log_p)
   end function p_at_e_dual
 
-  pure elemental real(wp) function n0_at_e(ee)
+  real(wp) function n0_at_e(ee)
     real(wp), intent(in) :: ee
     n0_at_e = interp_eos_with_phase(ee, log_e, log_n0)
   end function n0_at_e
 
-  pure elemental real(wp) function n0_at_h(hh)
+  real(wp) function n0_at_h(hh)
     real(wp), intent(in) :: hh
     n0_at_h = interp_eos_simple(hh, log_h, log_n0)
   end function n0_at_h
 
-  pure elemental real(wp) function e_at_h(hh)
+  real(wp) function e_at_h(hh)
     real(wp), intent(in) :: hh
     e_at_h = interp_eos_simple(hh, log_h, log_e)
   end function e_at_h
 
-  pure elemental real(wp) function p_at_h(hh)
+  real(wp) function p_at_h(hh)
     real(wp), intent(in) :: hh
     p_at_h = interp_eos_simple(hh, log_h, log_p)
   end function p_at_h
 
-  pure elemental real(wp) function h_at_p(pp)
+  real(wp) function h_at_p(pp)
     real(wp), intent(in) :: pp
     h_at_p = interp_eos_simple(pp, log_p, log_h)
   end function h_at_p
