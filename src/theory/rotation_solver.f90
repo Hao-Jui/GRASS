@@ -51,7 +51,7 @@ subroutine rotation_solver
 
   call allocate_workspace
   if (trim(solver_type) == "uryu") call reset_uryu_peak_cache()
-
+  !write(*,*) h_center, r_ratio
   ! ---------------------------------------------------------------
   ! Main iteration loop
   ! ---------------------------------------------------------------

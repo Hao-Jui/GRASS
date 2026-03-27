@@ -26,15 +26,15 @@ module para_mod
   character(len=20) :: FIX2 = "chi_goal"
 
   ! -- Resolutions -----------------------------------------------------------
-  integer, parameter :: res  = 500
+  integer, parameter :: res  = 400
   integer, parameter :: s_pwr = 1
   integer :: SDIV = 2 * res + 1
-  integer :: MDIV = 301
+  integer :: MDIV = 101
 
   ! -- Target quantities -----------------------------------------------------
-  character(len=128) :: eos_file = "hybrid_1_T0"
+  character(len=128) :: eos_file = "PSt"
   real(wp) :: M_goal   = 1.2e0_wp
-  real(wp) :: Mb_goal  = 2.3e0_wp
+  real(wp) :: Mb_goal  = 1.8e0_wp
   real(wp) :: J_goal   = 1.6e0_wp
   real(wp) :: chi_goal = 0.1e0_wp
   real(wp) :: omc_goal = 30.e0_wp
@@ -60,7 +60,8 @@ module para_mod
   ! -- Equation of state -----------------------------------------------------
   logical :: phase_transition = .false.
   integer :: num_tab = 0
-  integer :: p_at_PT = 0
+  integer :: n_PT = 0
+  integer, allocatable :: p_at_PT(:)
   real(wp), allocatable :: log_p(:), log_e(:), log_h(:), log_n0(:)
   real(wp) :: p_center = 0.e0_wp
   real(wp) :: h_center = 0.e0_wp
