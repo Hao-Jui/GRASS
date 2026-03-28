@@ -102,10 +102,10 @@ contains
       call cpu_time(t1); dt_second_derivs = t1 - t0; call cpu_time(t0)
     end if
 
-    e_gsm_cache      = exp(0.5e0_wp * gama)
-    e_rsm_cache      = exp(-rho)
-    e2alpha_r2_cache = exp(2.0_wp * alpha) * r_e_new**2
-    Acoup4_cache     = exp(-sphi**2 * B_coup)
+    e_gsm_cache      = exp(0.5e0_wp * gama)             ! used in build_source_terms and sum_coefficients
+    e_rsm_cache      = exp(-rho)                        ! used in build_source_terms
+    e2alpha_r2_cache = exp(2.0_wp * alpha) * r_e_new**2 ! used in build_source_terms
+    Acoup4_cache     = exp(-sphi**2 * B_coup)           ! used in build_source_terms
     if (timing) then
       call cpu_time(t1); dt_cache_fill = t1 - t0
 
@@ -637,11 +637,15 @@ contains
         dt_precompute, dt_build, dt_angular, dt_radial, dt_sum, &
         dt_precompute + dt_build + dt_angular + dt_radial + dt_sum
       if (target_call_count >= timing_calls) then
-        write(*,'(A,I0,A,7(1X,ES12.5))') 'get_all_targets avg over ', timing_calls, ':', &
-          sum_dt_precompute / timing_calls, sum_dt_build / timing_calls, sum_dt_angular / timing_calls, &
-          sum_dt_radial / timing_calls, sum_dt_sum / timing_calls, &
+        write(*,'(A,I0,A)') 'get_all_targets avg over ', timing_calls, ':'
+        write(*,'(A,1X,ES12.5)') '  precompute', sum_dt_precompute / timing_calls
+        write(*,'(A,1X,ES12.5)') '  build_source_terms', sum_dt_build / timing_calls
+        write(*,'(A,1X,ES12.5)') '  angular_integration', sum_dt_angular / timing_calls
+        write(*,'(A,1X,ES12.5)') '  radial_integration', sum_dt_radial / timing_calls
+        write(*,'(A,1X,ES12.5)') '  sum_coefficients_and_get_targets', sum_dt_sum / timing_calls
+        write(*,'(A,1X,ES12.5)') '  total', &
           (sum_dt_precompute + sum_dt_build + sum_dt_angular + sum_dt_radial + sum_dt_sum) / timing_calls
-        stop "Finish profiling."
+        stop "get_all_targets: profiling window complete"
       end if
     end if
   end subroutine get_all_targets
