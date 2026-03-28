@@ -243,7 +243,7 @@ subroutine solution_properties()
     suscep_slope(s) = deriv_s_1d(susceptibility, s)
   enddo
 
-  !if (output) call radial_configuration()
+  if (output) call radial_configuration()
   !call to_alexis()
   !call to_sizeng()
   call mass_radius()
@@ -334,7 +334,7 @@ contains
   subroutine radial_configuration()
     use para_mod, only: mass_0
     write(profile_file, '(A,I0,"_",I0,"_B",ES0.2,"_mphi",ES0.2,"_M",F0.2,"_Mb",F0.4,".dat")') &
-      "/Users/horay/Data4Projects/crazy/Map/1dprofile_", &
+      "/Users/horay/Data4Projects/crazy/Dat/1dprofile_", &
       SDIV, MDIV, B_goal, mphi_goal, mass / MSUN, mass_0 / MSUN
     call write_eq_profile(profile_file,(SDIV-1)/2,&
         gama(:,1), rho(:,1), alpha(:,1),         &

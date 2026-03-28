@@ -3,7 +3,8 @@ program grass
   use grid_mod, only: make_grid, GridTrig
   use shoot_mod, only: shoot_v2
   use toolkit_mod, only: debug_mod_bessel
-  use para_mod, only: wp, initialize_theory, &
+  use para_mod, only: wp, initialize_theory, angular_collocation, &
+                      COLLOCATION_UNI, COLLOCATION_LEG, COLLOCATION_CHEB, &
                       has_scalar, mphi_goal, scalarton, B_goal, &
                       solver_type, A_diff, lambda1, lambda2, &
                       s_gp, SDIV, MDIV, s_pwr, e_surface, C, KSCALE
@@ -11,6 +12,7 @@ program grass
   use MRcurve_mod, only: MRcurve
   implicit none
   real(wp) :: hamL2
+  character(len=10) :: mu_grid_name
 
   call initialize_theory()
   
@@ -23,6 +25,10 @@ program grass
     write(*,*) "Theory: General Relativity"
   end if
   write(*,*) "Relaxation scheme: Anderson"
+  block
+    character(len=10), parameter :: mu_names(3) = ["Uniform   ", "Legendre  ", "Chebyshev "]
+  write(*,*) "          mu-grid: ", trim(mu_names(angular_collocation))
+  end block
 
   call loadEos
 

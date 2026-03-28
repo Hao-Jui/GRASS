@@ -28,7 +28,7 @@ module regrid_mod
 contains
 
   subroutine regrid_read(new_sdiv, new_mdiv, interpolation_order, ierr, errmsg)
-    use para_mod, only: s_pwr
+    use para_mod, only: s_pwr, s_gp, mu
     implicit none
     integer, intent(in) :: new_sdiv, new_mdiv
     integer, intent(in), optional :: interpolation_order
@@ -36,6 +36,7 @@ contains
     character(len=*), intent(out), optional :: errmsg
     type(restart_meta_t) :: old_meta
     real(wp), allocatable :: old_data(:,:,:), new_data(:,:,:)
+    real(wp), allocatable :: old_s(:), old_m(:)
     integer :: interp_order, status
     real(wp) :: t0, t1
     character(len=256) :: message
@@ -55,7 +56,7 @@ contains
 
       call cpu_time(t0)
 
-      call read_restart_file(restart_file_path, old_meta, old_data, status, message)
+      call read_restart_file(restart_file_path, old_meta, old_s, old_m, old_data, status, message)
       if (status == 0) then
         call normalize_restart_meta(old_meta)
 
@@ -65,11 +66,13 @@ contains
         else
           call ensure_runtime_grid(new_sdiv, new_mdiv)
 
-          if (old_meta%sdiv == new_sdiv .and. old_meta%mdiv == new_mdiv) then
+          if (old_meta%sdiv == new_sdiv .and. old_meta%mdiv == new_mdiv .and. &
+              maxval(abs(old_s - s_gp)) <= 32.0_wp * epsilon(1.0_wp) .and. &
+              maxval(abs(old_m - mu)) <= 32.0_wp * epsilon(1.0_wp)) then
             call apply_runtime_meta(old_meta)
             call apply_runtime_fields(old_data)
           else
-            call regrid_fields(old_data, old_meta%sdiv, old_meta%mdiv, new_sdiv, new_mdiv, interp_order, new_data)
+            call regrid_fields(old_data, old_s, old_m, s_gp, mu, interp_order, new_data)
             call apply_runtime_meta(old_meta)
             call apply_runtime_fields(new_data)
           end if
@@ -85,11 +88,12 @@ contains
     if (present(errmsg)) errmsg = trim(message)
   end subroutine regrid_read
 
-  subroutine read_restart_file(path, old_meta, old_data, ierr, errmsg)
+  subroutine read_restart_file(path, old_meta, old_s, old_m, old_data, ierr, errmsg)
     use para_mod, only: C, KSCALE
     implicit none
     character(len=*), intent(in) :: path
     type(restart_meta_t), intent(out) :: old_meta
+    real(wp), allocatable, intent(out) :: old_s(:), old_m(:)
     real(wp), allocatable, intent(out) :: old_data(:,:,:)
     integer, intent(out) :: ierr
     character(len=*), intent(out) :: errmsg
@@ -119,6 +123,7 @@ contains
       ierr = 3; errmsg = "regrid_read: malformed header"; close(unit); return
     end if
 
+    allocate(old_s(old_meta%sdiv), old_m(old_meta%mdiv), source=0._wp)
     allocate(old_data(NFIELDS, old_meta%sdiv, old_meta%mdiv), source=0._wp)
 
     scale = 1._wp
@@ -138,6 +143,8 @@ contains
           ierr = 1; errmsg = "restart_read: malformed data"; close(unit); return
         end if
 
+        old_s(s) = vals(1)
+        old_m(m) = vals(2)
         old_data(:, s, m) = vals(val_idx) * scale
       end do
     end do
@@ -225,33 +232,31 @@ contains
     end if
   end subroutine ensure_runtime_grid
 
-  subroutine regrid_fields(old_data, old_sdiv, old_mdiv, new_sdiv, new_mdiv, interp_order, new_data)
-    use para_mod, only: SMAX
+  subroutine regrid_fields(old_data, old_s, old_m, new_s, new_m, interp_order, new_data)
     implicit none
     real(wp), intent(in) :: old_data(:,:,:)
-    integer, intent(in) :: old_sdiv, old_mdiv, new_sdiv, new_mdiv, interp_order
+    real(wp), intent(in) :: old_s(:), old_m(:), new_s(:), new_m(:)
+    integer, intent(in) :: interp_order
     real(wp), allocatable, intent(out) :: new_data(:,:,:)
     integer :: s, m, i, j, i0, i1, j0, j1
-    real(wp) :: old_ds, old_dm, new_ds, new_dm
     real(wp) :: c00, c10, c01, c11, w_s, w_m, wij
     real(wp) :: acc(NFIELDS)
     logical :: use_quadratic
-    real(wp), allocatable :: old_s(:), old_m(:)
+    integer :: old_sdiv, old_mdiv, new_sdiv, new_mdiv
     integer, allocatable :: s_lo(:), s_hi(:), m_lo(:), m_hi(:)
     real(wp), allocatable :: s_wt(:), m_wt(:)
     integer, allocatable :: sq_idx(:,:), mq_idx(:,:)
     real(wp), allocatable :: sq_wt(:,:), mq_wt(:,:)
 
-    allocate(new_data(NFIELDS, new_sdiv, new_mdiv), source=0._wp)
+    old_sdiv = size(old_s)
+    old_mdiv = size(old_m)
+    new_sdiv = size(new_s)
+    new_mdiv = size(new_m)
 
-    old_ds = SMAX / (real(old_sdiv, wp) - 1._wp)
-    old_dm = 1._wp / (real(old_mdiv, wp) - 1._wp)
-    new_ds = SMAX / (real(new_sdiv, wp) - 1._wp)
-    new_dm = 1._wp / (real(new_mdiv, wp) - 1._wp)
+    allocate(new_data(NFIELDS, new_sdiv, new_mdiv), source=0._wp)
 
     use_quadratic = (interp_order == 2) .and. old_sdiv >= 3 .and. old_mdiv >= 3
 
-    allocate(old_s(old_sdiv), old_m(old_mdiv))
     allocate(s_lo(new_sdiv), s_hi(new_sdiv), s_wt(new_sdiv))
     allocate(m_lo(new_mdiv), m_hi(new_mdiv), m_wt(new_mdiv))
 
@@ -260,26 +265,14 @@ contains
       allocate(mq_idx(3, new_mdiv), mq_wt(3, new_mdiv))
     end if
 
-    do s = 1, old_sdiv
-      old_s(s) = (real(s, wp) - 1._wp) * old_ds
-    end do
-    old_s(old_sdiv) = SMAX
-
-    do m = 1, old_mdiv
-      old_m(m) = (real(m, wp) - 1._wp) * old_dm
-    end do
-    old_m(old_mdiv) = 1._wp
-
     do s = 1, new_sdiv
-      w_s = merge(SMAX, (real(s, wp) - 1._wp) * new_ds, s == new_sdiv)
-      call locate(old_s, old_sdiv, w_s, s_lo(s), s_hi(s), s_wt(s))
-      if (use_quadratic) call quadratic_weights(old_s, old_sdiv, w_s, sq_idx(:,s), sq_wt(:,s))
+      call locate(old_s, old_sdiv, new_s(s), s_lo(s), s_hi(s), s_wt(s))
+      if (use_quadratic) call quadratic_weights(old_s, old_sdiv, new_s(s), sq_idx(:,s), sq_wt(:,s))
     end do
 
     do m = 1, new_mdiv
-      w_m = merge(1._wp, (real(m, wp) - 1._wp) * new_dm, m == new_mdiv)
-      call locate(old_m, old_mdiv, w_m, m_lo(m), m_hi(m), m_wt(m))
-      if (use_quadratic) call quadratic_weights(old_m, old_mdiv, w_m, mq_idx(:,m), mq_wt(:,m))
+      call locate(old_m, old_mdiv, new_m(m), m_lo(m), m_hi(m), m_wt(m))
+      if (use_quadratic) call quadratic_weights(old_m, old_mdiv, new_m(m), mq_idx(:,m), mq_wt(:,m))
     end do
 
     if (use_quadratic) then
@@ -319,22 +312,30 @@ contains
     real(wp), intent(in) :: grid(n), value
     integer, intent(out) :: idx_low, idx_high
     real(wp), intent(out) :: weight
-    real(wp) :: t
+    integer :: lo, hi, mid
 
     if (n < 2) then
       idx_low = 1; idx_high = 1; weight = 0._wp; return
     end if
 
-    t = (value - grid(1)) * real(n - 1, wp) / (grid(n) - grid(1))
-
-    if (t <= 0._wp) then
+    if (value <= grid(1)) then
       idx_low = 1; idx_high = 1; weight = 0._wp
-    else if (t >= real(n - 1, wp)) then
+    else if (value >= grid(n)) then
       idx_low = n; idx_high = n; weight = 0._wp
     else
-      idx_low = 1 + int(t)
-      idx_high = idx_low + 1
-      weight = t - real(idx_low - 1, wp)
+      lo = 1
+      hi = n
+      do while (hi - lo > 1)
+        mid = (lo + hi) / 2
+        if (grid(mid) <= value) then
+          lo = mid
+        else
+          hi = mid
+        end if
+      end do
+      idx_low = lo
+      idx_high = hi
+      weight = (value - grid(lo)) / max(grid(hi) - grid(lo), tiny(1.0_wp))
     end if
   end subroutine locate
 

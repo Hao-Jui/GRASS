@@ -60,12 +60,16 @@ contains
   end subroutine deriv_s_sub
 
   pure subroutine deriv_m_sub(f, df_dm)
-    use para_mod, only : SDIV, MDIV, DM
+    use para_mod, only : SDIV, MDIV, DM, angular_collocation, COLLOCATION_UNI, D_mu
     real(wp), dimension(SDIV,MDIV), intent(in)  :: f
     real(wp), dimension(SDIV,MDIV), intent(out) :: df_dm
     real(wp) :: inv60DM
     if (abs(r_ratio - 1.e0_wp) < epsilon(r_ratio)) then
       df_dm = 0.e0_wp
+      return
+    end if
+    if (angular_collocation /= COLLOCATION_UNI) then
+      df_dm = matmul(f, transpose(D_mu))
       return
     end if
     if (MDIV < 5) then

@@ -47,7 +47,7 @@ subroutine shoot_v2
 
   write(unit=*, fmt=*) " "
   !chi_goal = 0.e0_wp
-  iteration_cap = 200
+  iteration_cap = 1
 
   do i_idx = 1, iteration_cap
     select case (shooting)

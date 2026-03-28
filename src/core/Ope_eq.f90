@@ -1,6 +1,7 @@
 module ope_eq_mod
   use precision_mod, only: wp
-  use para_mod, only: SDIV, MDIV, DS, DM, r_e, s_gp, mu
+  use para_mod, only: SDIV, MDIV, DS, DM, r_e, s_gp, mu, angular_collocation, &
+                      COLLOCATION_UNI, D_mu, D2_mu
   implicit none
   private
 
@@ -282,6 +283,12 @@ contains
     real(wp) :: inv60DM, inv180DM2
 
     n = size(f)
+
+    if (angular_collocation /= COLLOCATION_UNI) then
+      df_dmu = matmul(D_mu, f)
+      d2f_dmu2 = matmul(D2_mu, f)
+      return
+    end if
 
     if (n <= 1) then
       df_dmu = 0.0_wp;  d2f_dmu2 = 0.0_wp
