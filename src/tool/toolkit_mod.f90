@@ -552,6 +552,73 @@ contains
     besselk = k_curr
   end function besselk
 
+  subroutine bessel_even_tables(x, lmax, ivec, kvec)
+    real(wp), intent(in) :: x
+    integer, intent(in) :: lmax
+    real(wp), intent(out) :: ivec(0:lmax), kvec(0:lmax)
+    integer :: nord, ell, n, lrec
+    real(wp) :: xx, sh, ch, exp_neg, prev, curr, nxt, scale
+    real(wp), parameter :: eps_small = 1.e-3_wp, switch_downward = 20.0_wp
+    real(wp), allocatable :: work(:)
+
+    if (lmax < 0) return
+    xx = abs(x)
+    nord = 2 * lmax
+
+    ! --- i_ell (modified spherical Bessel, 1st kind) ---
+    if (xx < eps_small) then
+      do n = 0, lmax
+        ivec(n) = clip_bessel(abs(spherical_i_series(2*n, xx)))
+      end do
+    else if (xx <= switch_downward) then
+      lrec = max(nord + 40, 60)
+      allocate(work(0:lrec+1))
+      work(lrec+1) = 0.0_wp; work(lrec) = 1.0_wp
+      do ell = lrec, 1, -1
+        work(ell-1) = work(ell+1) + (2.0_wp*ell + 1.0_wp)/xx * work(ell)
+      end do
+      scale = sinh(xx) / xx / work(0)
+      do n = 0, lmax
+        ivec(n) = clip_bessel(abs(scale * work(2*n)))
+      end do
+      deallocate(work)
+    else
+      if (xx > 700.0_wp) then
+        sh = 0.5e0_wp * exp(xx/2.0_wp) * exp(xx/2.0_wp); ch = sh
+      else
+        sh = sinh(xx); ch = cosh(xx)
+      end if
+      prev = sh / xx
+      curr = (xx*ch - sh) / (xx*xx)
+      ivec(0) = clip_bessel(abs(prev))
+      if (lmax >= 1) ivec(1) = clip_bessel(abs(curr))
+      do ell = 1, nord - 1
+        nxt = prev - (2.0_wp*ell + 1.0_wp)/xx * curr
+        prev = clip_bessel(curr); curr = clip_bessel(nxt)
+        if (mod(ell+1, 2) == 0) ivec((ell+1)/2) = clip_bessel(abs(curr))
+      end do
+    end if
+
+    ! --- k_ell (modified spherical Bessel, 2nd kind) ---
+    if (xx < epsilon(xx)) then
+      kvec = 0.0_wp; return
+    end if
+    if (xx < eps_small) then
+      exp_neg = 1.0_wp + expm1_safe(-xx)
+    else
+      exp_neg = exp(-xx)
+    end if
+    prev = clip_besselk(exp_neg / xx)
+    curr = clip_besselk(exp_neg * (1.0_wp + 1.0_wp/xx) / xx)
+    kvec(0) = prev
+    if (lmax >= 1) kvec(1) = curr
+    do ell = 1, nord - 1
+      nxt = prev + (2.0_wp*ell + 1.0_wp)/xx * curr
+      prev = curr; curr = clip_besselk(nxt)
+      if (mod(ell+1, 2) == 0) kvec((ell+1)/2) = curr
+    end do
+  end subroutine bessel_even_tables
+
   pure real(wp) function odd_double_factorial(m)
     implicit none
     integer,intent(in) :: m

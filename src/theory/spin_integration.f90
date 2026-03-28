@@ -8,7 +8,7 @@ module spin_integration
                       B_coup, mphi_r, mass, mass_0, ang_mom, &
                       A_diff, lambda1, lambda2, solver_type, output, timing, eos_file
   use eos_mod, only: n0_at_e
-  use toolkit_mod, only: besseli, besselk
+  use toolkit_mod, only: bessel_even_tables
   use spin_derivatives, only: deriv_s_sub, deriv_m_sub
   use spin_workspace
   implicit none
@@ -46,18 +46,36 @@ contains
     real(wp), intent(out) :: e2alpha_r2_cache(:,:), Acoup4_cache(:,:)
     integer :: s, m, n
     logical :: use_massive_scalar
-    real(wp) :: s1(SDIV), m1(MDIV)
-    real(wp) :: one_minus_2s(SDIV)
+    real(wp) :: t0, t1, dt_bessel, dt_first_derivs, dt_second_derivs, dt_cache_fill
+    integer, parameter :: timing_calls = 5
+    integer, save :: precompute_call_count = 0
+    real(wp), save :: sum_dt_bessel = 0.0_wp, sum_dt_first_derivs = 0.0_wp
+    real(wp), save :: sum_dt_second_derivs = 0.0_wp, sum_dt_cache_fill = 0.0_wp
+
+    if (timing) then
+      if (precompute_call_count == 0) then
+        sum_dt_bessel = 0.0_wp
+        sum_dt_first_derivs = 0.0_wp
+        sum_dt_second_derivs = 0.0_wp
+        sum_dt_cache_fill = 0.0_wp
+      end if
+      precompute_call_count = precompute_call_count + 1
+      dt_bessel = 0.0_wp
+      dt_first_derivs = 0.0_wp
+      dt_second_derivs = 0.0_wp
+      dt_cache_fill = 0.0_wp
+      call cpu_time(t0)
+    end if
 
     use_massive_scalar = mphi_r > (mphi_tran / l_uni)**2 * KAPPA / 1.e10_wp
     if (use_massive_scalar) then
       mr_cache(:) = root_mphi_re * s_gp(:) / (1.0_wp - s_gp(:))
-      do n = 0, LMAX
-        do s = 1, SDIV
-          besseli_cache(n+1,s) = besseli(2*n, mr_cache(s))
-          besselk_cache(n+1,s) = besselk(2*n, mr_cache(s))
-        end do
+      do s = 1, SDIV
+        call bessel_even_tables(mr_cache(s), LMAX, besseli_cache(:,s), besselk_cache(:,s))
       end do
+    end if
+    if (timing) then
+      call cpu_time(t1); dt_bessel = t1 - t0; call cpu_time(t0)
     end if
 
     call deriv_s_sub(gama, dg_s_cache)
@@ -68,22 +86,44 @@ contains
     call deriv_m_sub(rho, dr_m_cache)
     call deriv_m_sub(ww, dww_m_cache)
     call deriv_m_sub(sphi, ds_m_cache)
+    if (timing) then
+      call cpu_time(t1); dt_first_derivs = t1 - t0; call cpu_time(t0)
+    end if
 
-    s1 = s_gp * (1.0_wp - s_gp)
-    m1 = 1.0_wp - mu**2
-    one_minus_2s = 1.0_wp - 2.0_wp * s_gp
     call deriv_s_sub(dg_s_cache, d2g_ss_cache)
     do m = 1, MDIV
-      d2g_ss_cache(:,m) = s1 * d2g_ss_cache(:,m) + one_minus_2s * dg_s_cache(:,m)
+      d2g_ss_cache(:,m) = s1_geom * d2g_ss_cache(:,m) + (1.0_wp - 2.0_wp * s_gp) * dg_s_cache(:,m)
     end do
     call deriv_m_sub(dg_m_cache, d2g_mm_cache)
     do m = 1, MDIV
-      d2g_mm_cache(:,m) = m1(m) * d2g_mm_cache(:,m) - 2.0_wp * mu(m) * dg_m_cache(:,m)
+      d2g_mm_cache(:,m) = m1_geom(m) * d2g_mm_cache(:,m) - 2.0_wp * mu(m) * dg_m_cache(:,m)
     end do
+    if (timing) then
+      call cpu_time(t1); dt_second_derivs = t1 - t0; call cpu_time(t0)
+    end if
+
     e_gsm_cache      = exp(0.5e0_wp * gama)
     e_rsm_cache      = exp(-rho)
     e2alpha_r2_cache = exp(2.0_wp * alpha) * r_e_new**2
     Acoup4_cache     = exp(-sphi**2 * B_coup)
+    if (timing) then
+      call cpu_time(t1); dt_cache_fill = t1 - t0
+
+      sum_dt_bessel = sum_dt_bessel + dt_bessel
+      sum_dt_first_derivs = sum_dt_first_derivs + dt_first_derivs
+      sum_dt_second_derivs = sum_dt_second_derivs + dt_second_derivs
+      sum_dt_cache_fill = sum_dt_cache_fill + dt_cache_fill
+
+      write(*,'(A,I0,A,5(1X,ES12.5))') 'precompute call ', precompute_call_count, ':', &
+        dt_bessel, dt_first_derivs, dt_second_derivs, dt_cache_fill, &
+        dt_bessel + dt_first_derivs + dt_second_derivs + dt_cache_fill
+      if (precompute_call_count >= timing_calls) then
+        write(*,'(A,I0,A,5(1X,ES12.5))') 'precompute avg over ', timing_calls, ':', &
+          sum_dt_bessel / timing_calls, sum_dt_first_derivs / timing_calls, &
+          sum_dt_second_derivs / timing_calls, sum_dt_cache_fill / timing_calls, &
+          (sum_dt_bessel + sum_dt_first_derivs + sum_dt_second_derivs + sum_dt_cache_fill) / timing_calls
+      end if
+    end if
   end subroutine precompute_derivatives_and_bessels
 
   subroutine build_source_terms(r_e_new, S_metric_rho, S_metric_gama, S_metric_omega, S_metric_sphi, &
@@ -467,7 +507,7 @@ contains
     integer :: m
     real(wp) :: m1, mu_m
     real(wp), dimension(SDIV,MDIV) :: da_dm, d_gama_sm_all
-    real(wp), dimension(SDIV) :: sgp_ratio_cache
+    real(wp), dimension(SDIV) :: sgp_ratio
     real(wp), dimension(SDIV) :: temp1_col, temp2_col, temp3_col, temp4_col, temp5_col, temp6_col, temp7_col, temp8_col, temp9_col
     real(wp), dimension(SDIV) :: numer_m, one_plus_s1dgs, da_col
     real(wp) :: adj_const(SDIV)
@@ -476,13 +516,13 @@ contains
     if (abs(r_ratio - 1.0_wp) < epsilon(r_ratio)) then
       return
     else
-      sgp_ratio_cache = s_gp / (1.0_wp-s_gp)
+      sgp_ratio = s_gp / (1.0_wp - s_gp)
 
       da_dm(1,:) = 0.0e0_wp
       call deriv_m_sub(dg_s_cache, d_gama_sm_all)
       do m = 1, MDIV
         mu_m = mu(m)
-        m1   = 1.0_wp - mu_m**2
+        m1   = m1_geom(m)
         associate( gs => dg_s_cache(:,m), gm => dg_m_cache(:,m), &
              rs => dr_s_cache(:,m), rm => dr_m_cache(:,m), &
              ss => ds_s_cache(:,m), sm => ds_m_cache(:,m), &
@@ -493,8 +533,8 @@ contains
         numer_m        = -mu_m + m1 * gm
         one_plus_s1dgs =  1.0_wp + s1_geom * gs
 
-        temp1_col = 2.0_wp * s_gp**2 * sgp_ratio_cache * m1 * wws * wwm * one_plus_s1dgs &
-          - ( (s_gp**2 * wws)**2 - (s_gp * wwm * sgp_ratio_cache)**2 * m1 ) * numer_m
+        temp1_col = 2.0_wp * s_gp**2 * sgp_ratio * m1 * wws * wwm * one_plus_s1dgs &
+          - ( sgp4_geom * wws**2 - (s_gp * wwm * sgp_ratio)**2 * m1 ) * numer_m
         temp2_col = 1.0_wp / ( m1 * one_plus_s1dgs**2 + numer_m**2 )
         temp3_col = s1_geom * gss + (s1_geom * gs)**2
         temp4_col = gm * numer_m
