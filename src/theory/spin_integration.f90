@@ -32,6 +32,15 @@ module spin_integration
   end interface
 
 contains
+  elemental real(wp) function pade_exp(x) result(y)
+    real(wp), intent(in) :: x
+    real(wp) :: t, t2
+    t = x * 0.00390625_wp
+    t2 = t * t
+    y = (12.0_wp + 6.0_wp * t + t2) / (12.0_wp - 6.0_wp * t + t2)
+    y = y*y; y = y*y; y = y*y; y = y*y
+    y = y*y; y = y*y; y = y*y; y = y*y
+  end function
 
   subroutine precompute_derivatives_and_bessels(r_e_new, root_mphi_re, mr_cache, besseli_cache, besselk_cache, &
                                                 dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, dww_s_cache, dww_m_cache, &
@@ -74,6 +83,7 @@ contains
         call bessel_even_tables(mr_cache(s), LMAX, besseli_cache(:,s), besselk_cache(:,s))
       end do
     end if
+
     if (timing) then
       call cpu_time(t1); dt_bessel = t1 - t0; call cpu_time(t0)
     end if
@@ -98,17 +108,31 @@ contains
     do m = 1, MDIV
       d2g_mm_cache(:,m) = m1_geom(m) * d2g_mm_cache(:,m) - 2.0_wp * mu(m) * dg_m_cache(:,m)
     end do
+
     if (timing) then
       call cpu_time(t1); dt_second_derivs = t1 - t0; call cpu_time(t0)
     end if
 
-    e_gsm_cache      = exp(0.5e0_wp * gama)             ! used in build_source_terms and sum_coefficients
-    e_rsm_cache      = exp(-rho)                        ! used in build_source_terms
-    e2alpha_r2_cache = exp(2.0_wp * alpha) * r_e_new**2 ! used in build_source_terms
-    Acoup4_cache     = exp(-sphi**2 * B_coup)           ! used in build_source_terms
+    block
+      real(wp) :: r2, inv6 = 1.0_wp / 6.0_wp
+      r2 = r_e_new * r_e_new
+      associate( x => 0.5_wp * gama, y => -rho, z => 2.0_wp * alpha, sb => -(sphi * sphi) * B_coup)
+      !if (output) then 
+      !  e_gsm_cache      = exp(x)
+      !  e_rsm_cache      = exp(y)
+      !  e2alpha_r2_cache = exp(z) * r2
+      !  Acoup4_cache     = exp(sb)
+      !else
+        e_gsm_cache      = pade_exp(x)
+        e_rsm_cache      = pade_exp(y)
+        e2alpha_r2_cache = pade_exp(z) * r2
+        Acoup4_cache     = pade_exp(sb)
+      !end if
+      end associate
+    end block
+
     if (timing) then
       call cpu_time(t1); dt_cache_fill = t1 - t0
-
       sum_dt_bessel = sum_dt_bessel + dt_bessel
       sum_dt_first_derivs = sum_dt_first_derivs + dt_first_derivs
       sum_dt_second_derivs = sum_dt_second_derivs + dt_second_derivs
@@ -118,9 +142,12 @@ contains
         dt_bessel, dt_first_derivs, dt_second_derivs, dt_cache_fill, &
         dt_bessel + dt_first_derivs + dt_second_derivs + dt_cache_fill
       if (precompute_call_count >= timing_calls) then
-        write(*,'(A,I0,A,5(1X,ES12.5))') 'precompute avg over ', timing_calls, ':', &
-          sum_dt_bessel / timing_calls, sum_dt_first_derivs / timing_calls, &
-          sum_dt_second_derivs / timing_calls, sum_dt_cache_fill / timing_calls, &
+        write(*,'(A,I0,A)') 'precompute avg over ', timing_calls, ':'
+        write(*,'(A,1X,ES12.5)') '  bessel', sum_dt_bessel / timing_calls
+        write(*,'(A,1X,ES12.5)') '  first_derivs', sum_dt_first_derivs / timing_calls
+        write(*,'(A,1X,ES12.5)') '  second_derivs', sum_dt_second_derivs / timing_calls
+        write(*,'(A,1X,ES12.5)') '  cache_fill', sum_dt_cache_fill / timing_calls
+        write(*,'(A,1X,ES12.5)') '  total', &
           (sum_dt_bessel + sum_dt_first_derivs + sum_dt_second_derivs + sum_dt_cache_fill) / timing_calls
       end if
     end if
@@ -247,183 +274,156 @@ contains
     real(wp), intent(in)  :: root_mphi_re
     real(wp), intent(in)  :: wfac_cache(:), besseli_cache(:,:), besselk_cache(:,:)
     integer :: n
-    real(wp) :: weighted_source(SDIV)
+    real(wp) :: f2n_vals(SDIV), weighted_source(SDIV)
+    real(wp) :: left_prefix(SDIV), right_suffix(SDIV)
+    logical :: use_massive_scalar
 
     D2_metric_gama (:,1) = 0.0_wp
     D2_metric_omega(:,1) = 0.0_wp
+    use_massive_scalar = mphi_r > (mphi_tran / l_uni)**2 * KAPPA / 1.e10_wp
 
-    do n = 0, LMAX
-      weighted_source = radial_quad_weights * D1_metric_rho(n+1,:)
-      call integrate_rho_like(n, weighted_source, D2_metric_rho(:,n+1))
-
-      if (mphi_r > (mphi_tran / l_uni)**2 * KAPPA / 1.e10_wp) then
-        weighted_source = radial_quad_weights * wfac_cache * D1_metric_sphi(n+1,:) * root_mphi_re
+    f2n_vals = 1.0_wp
+    if (use_massive_scalar) then
+      do n = 0, LMAX
+        weighted_source = radial_quad_weights * D1_metric_rho(n+1,:)
+        call integrate_rho_like(n, f2n_vals, weighted_source, D2_metric_rho(:,n+1))
+        weighted_source = radial_quad_weights * wfac_cache * root_mphi_re * D1_metric_sphi(n+1,:)
         call integrate_massive_sphi(n+1, weighted_source, D2_metric_sphi(:,n+1))
-      else
+        f2n_vals(2:) = f2n_vals(2:) * rad_ratio_g(2:)
+      end do
+    else
+      do n = 0, LMAX
+        weighted_source = radial_quad_weights * D1_metric_rho(n+1,:)
+        call integrate_rho_like(n, f2n_vals, weighted_source, D2_metric_rho(:,n+1))
         weighted_source = radial_quad_weights * D1_metric_sphi(n+1,:)
-        call integrate_rho_like(n, weighted_source, D2_metric_sphi(:,n+1))
-      end if
-    end do
+        call integrate_rho_like(n, f2n_vals, weighted_source, D2_metric_sphi(:,n+1))
+        f2n_vals(2:) = f2n_vals(2:) * rad_ratio_g(2:)
+      end do
+    end if
 
+    f2n_vals(1) = 1.0_wp
+    f2n_vals(2:) = rad_ratio_g(2:)
     do n = 1, LMAX
       weighted_source = radial_quad_weights * D1_metric_gama(n+1,:)
-      call integrate_gama(n, weighted_source, D2_metric_gama(:,n+1))
-
+      call integrate_gama(n, f2n_vals, weighted_source, D2_metric_gama(:,n+1))
       weighted_source = radial_quad_weights * D1_metric_omega(n+1,:)
-      call integrate_omega(n, weighted_source, D2_metric_omega(:,n+1))
+      call integrate_omega(n, f2n_vals, weighted_source, D2_metric_omega(:,n+1))
+      f2n_vals(2:) = f2n_vals(2:) * rad_ratio_g(2:)
     end do
 
   contains
-    subroutine integrate_rho_like(n_phys, source_weights, out_values)
+    subroutine integrate_rho_like(n_phys, f2n_vals, w, out_values)
       integer, intent(in) :: n_phys
-      real(wp), intent(in) :: source_weights(SDIV)
+      real(wp), intent(in) :: f2n_vals(SDIV), w(SDIV)
       real(wp), intent(out) :: out_values(SDIV)
-      integer :: j, k
-      real(wp) :: prefactor, ratio_j
-      real(wp) :: f2n_vals(SDIV), left_terms(SDIV), right_terms(SDIV)
-      real(wp) :: left_prefix(SDIV), right_suffix(SDIV)
+      integer :: k
 
-      prefactor = dble(s_pwr)
-      f2n_vals = 1.0_wp
-      left_terms = 0.0_wp
-      right_terms = 0.0_wp
-      left_prefix = 0.0_wp
-      right_suffix = 0.0_wp
-
+      left_prefix(1) = 0.0_wp
       if (n_phys == 0) then
         do k = 2, SDIV
-          left_terms(k) = prefactor * s_gp(k)**(s_pwr - 1) * source_weights(k) / (1.0_wp - s_gp(k))**(s_pwr + 1)
-          right_terms(k) = prefactor * source_weights(k) / (s_gp(k) * (1.0_wp - s_gp(k)))
+          left_prefix(k) = left_prefix(k-1) + rad_left_rho(k) * w(k)
+        end do
+        right_suffix(SDIV) = rad_inv_s1(SDIV) * w(SDIV)
+        do k = SDIV-1, 2, -1
+          right_suffix(k) = right_suffix(k+1) + rad_inv_s1(k) * w(k)
+        end do
+        right_suffix(1) = right_suffix(2)
+        out_values(1) = right_suffix(1)
+        do k = 2, SDIV
+          out_values(k) = rad_ratio_s(k) * left_prefix(k-1) + right_suffix(k)
         end do
       else
         do k = 2, SDIV
-          f2n_vals(k) = ((1.0_wp - s_gp(k)) / s_gp(k))**(2 * s_pwr * n_phys)
-          left_terms(k) = prefactor * s_gp(k)**(s_pwr - 1) * source_weights(k) &
-                        / (f2n_vals(k) * (1.0_wp - s_gp(k))**(s_pwr + 1))
-          right_terms(k) = prefactor * f2n_vals(k) * source_weights(k) / (s_gp(k) * (1.0_wp - s_gp(k)))
+          left_prefix(k) = left_prefix(k-1) + rad_left_rho(k) * w(k) / f2n_vals(k)
+        end do
+        right_suffix(SDIV) = rad_inv_s1(SDIV) * f2n_vals(SDIV) * w(SDIV)
+        do k = SDIV-1, 2, -1
+          right_suffix(k) = right_suffix(k+1) + rad_inv_s1(k) * f2n_vals(k) * w(k)
+        end do
+        right_suffix(1) = right_suffix(2)
+        out_values(1) = 0.0_wp
+        do k = 2, SDIV
+          out_values(k) = f2n_vals(k) * rad_ratio_s(k) * left_prefix(k-1) + right_suffix(k) / f2n_vals(k)
         end do
       end if
-
-      do k = 2, SDIV
-        left_prefix(k) = left_prefix(k-1) + left_terms(k)
-      end do
-      right_suffix(SDIV) = right_terms(SDIV)
-      do k = SDIV-1, 1, -1
-        right_suffix(k) = right_suffix(k+1) + right_terms(k)
-      end do
-
-      out_values(1) = merge(right_suffix(1), 0.0_wp, n_phys == 0)
-      do j = 2, SDIV
-        ratio_j = ((1.0_wp - s_gp(j)) / s_gp(j))**s_pwr
-        if (n_phys == 0) then
-          out_values(j) = ratio_j * left_prefix(j-1) + right_suffix(j)
-        else
-          out_values(j) = f2n_vals(j) * ratio_j * left_prefix(j-1) + right_suffix(j) / f2n_vals(j)
-        end if
-      end do
     end subroutine integrate_rho_like
 
-    subroutine integrate_gama(n_phys, source_weights, out_values)
+    subroutine integrate_gama(n_phys, f2n_vals, w, out_values)
       integer, intent(in) :: n_phys
-      real(wp), intent(in) :: source_weights(SDIV)
+      real(wp), intent(in) :: f2n_vals(SDIV), w(SDIV)
       real(wp), intent(out) :: out_values(SDIV)
-      integer :: j, k
-      real(wp) :: prefactor, ratio_j
-      real(wp) :: f2n_vals(SDIV), left_terms(SDIV), right_terms(SDIV)
-      real(wp) :: left_prefix(SDIV), right_suffix(SDIV), boundary_sum
+      integer :: k
+      real(wp) :: boundary_sum
 
-      prefactor = dble(s_pwr)
-      f2n_vals = 1.0_wp
-      left_terms = 0.0_wp
-      right_terms = 0.0_wp
-      left_prefix = 0.0_wp
-      right_suffix = 0.0_wp
-      boundary_sum = 0.0_wp
-
-      do k = 2, SDIV
-        f2n_vals(k) = ((1.0_wp - s_gp(k)) / s_gp(k))**(2 * s_pwr * n_phys)
-        left_terms(k) = prefactor * source_weights(k) / (f2n_vals(k) * s_gp(k) * (1.0_wp - s_gp(k)))
-        right_terms(k) = prefactor * f2n_vals(k) * s_gp(k)**(2 * s_pwr - 1) * source_weights(k) &
-                      / (1.0_wp - s_gp(k))**(2 * s_pwr + 1)
-        boundary_sum = boundary_sum + prefactor * source_weights(k) / (s_gp(k) * (1.0_wp - s_gp(k)))
+      left_prefix(1) = 0.0_wp
+      if (n_phys == 1) then
+        boundary_sum = 0.0_wp
+        do k = 2, SDIV
+          left_prefix(k) = left_prefix(k-1) + rad_inv_s1(k) * w(k) / f2n_vals(k)
+          boundary_sum = boundary_sum + rad_inv_s1(k) * w(k)
+        end do
+      else
+        do k = 2, SDIV
+          left_prefix(k) = left_prefix(k-1) + rad_inv_s1(k) * w(k) / f2n_vals(k)
+        end do
+      end if
+      right_suffix(SDIV) = rad_right_gama(SDIV) * f2n_vals(SDIV) * w(SDIV)
+      do k = SDIV-1, 2, -1
+        right_suffix(k) = right_suffix(k+1) + rad_right_gama(k) * f2n_vals(k) * w(k)
       end do
-
-      do k = 2, SDIV
-        left_prefix(k) = left_prefix(k-1) + left_terms(k)
-      end do
-      right_suffix(SDIV) = right_terms(SDIV)
-      do k = SDIV-1, 1, -1
-        right_suffix(k) = right_suffix(k+1) + right_terms(k)
-      end do
+      right_suffix(1) = right_suffix(2)
 
       out_values(1) = merge(boundary_sum, 0.0_wp, n_phys == 1)
-      do j = 2, SDIV
-        ratio_j = ((1.0_wp - s_gp(j)) / s_gp(j))**(2 * s_pwr)
-        out_values(j) = prefactor * f2n_vals(j) * left_prefix(j-1) + ratio_j * right_suffix(j) / f2n_vals(j)
+      do k = 2, SDIV
+        out_values(k) = real(s_pwr, wp) * f2n_vals(k) * left_prefix(k-1) + rad_ratio_g(k) * right_suffix(k) / f2n_vals(k)
       end do
     end subroutine integrate_gama
 
-    subroutine integrate_omega(n_phys, source_weights, out_values)
+    subroutine integrate_omega(n_phys, f2n_vals, w, out_values)
       integer, intent(in) :: n_phys
-      real(wp), intent(in) :: source_weights(SDIV)
+      real(wp), intent(in) :: f2n_vals(SDIV), w(SDIV)
       real(wp), intent(out) :: out_values(SDIV)
-      integer :: j, k
-      real(wp) :: prefactor, ratio_rho_j, ratio_gama_j
-      real(wp) :: f2n_vals(SDIV), left_terms(SDIV), right_terms(SDIV)
-      real(wp) :: left_prefix(SDIV), right_suffix(SDIV), boundary_sum
+      integer :: k
+      real(wp) :: boundary_sum
 
-      prefactor = dble(s_pwr)
-      f2n_vals = 1.0_wp
-      left_terms = 0.0_wp
-      right_terms = 0.0_wp
-      left_prefix = 0.0_wp
-      right_suffix = 0.0_wp
-      boundary_sum = 0.0_wp
-
-      do k = 2, SDIV
-        f2n_vals(k) = ((1.0_wp - s_gp(k)) / s_gp(k))**(2 * s_pwr * n_phys)
-        left_terms(k) = prefactor * s_gp(k)**(s_pwr - 1) * source_weights(k) &
-                      / (f2n_vals(k) * (1.0_wp - s_gp(k))**(s_pwr + 1))
-        right_terms(k) = prefactor * f2n_vals(k) * s_gp(k)**(2 * s_pwr - 1) * source_weights(k) &
-                      / (1.0_wp - s_gp(k))**(2 * s_pwr + 1)
-        boundary_sum = boundary_sum + prefactor * source_weights(k) / (s_gp(k) * (1.0_wp - s_gp(k)))
+      left_prefix(1) = 0.0_wp
+      if (n_phys == 1) then
+        boundary_sum = 0.0_wp
+        do k = 2, SDIV
+          left_prefix(k) = left_prefix(k-1) + rad_left_rho(k) * w(k) / f2n_vals(k)
+          boundary_sum = boundary_sum + rad_inv_s1(k) * w(k)
+        end do
+      else
+        do k = 2, SDIV
+          left_prefix(k) = left_prefix(k-1) + rad_left_rho(k) * w(k) / f2n_vals(k)
+        end do
+      end if
+      right_suffix(SDIV) = rad_right_gama(SDIV) * f2n_vals(SDIV) * w(SDIV)
+      do k = SDIV-1, 2, -1
+        right_suffix(k) = right_suffix(k+1) + rad_right_gama(k) * f2n_vals(k) * w(k)
       end do
-
-      do k = 2, SDIV
-        left_prefix(k) = left_prefix(k-1) + left_terms(k)
-      end do
-      right_suffix(SDIV) = right_terms(SDIV)
-      do k = SDIV-1, 1, -1
-        right_suffix(k) = right_suffix(k+1) + right_terms(k)
-      end do
+      right_suffix(1) = right_suffix(2)
 
       out_values(1) = merge(boundary_sum, 0.0_wp, n_phys == 1)
-      do j = 2, SDIV
-        ratio_rho_j = ((1.0_wp - s_gp(j)) / s_gp(j))**s_pwr
-        ratio_gama_j = ((1.0_wp - s_gp(j)) / s_gp(j))**(2 * s_pwr)
-        out_values(j) = f2n_vals(j) * ratio_rho_j * left_prefix(j-1) + ratio_gama_j * right_suffix(j) / f2n_vals(j)
+      do k = 2, SDIV
+        out_values(k) = f2n_vals(k) * rad_ratio_s(k) * left_prefix(k-1) + rad_ratio_g(k) * right_suffix(k) / f2n_vals(k)
       end do
     end subroutine integrate_omega
 
-    subroutine integrate_massive_sphi(n_idx, source_weights, out_values)
+    subroutine integrate_massive_sphi(n_idx, w, out_values)
       integer, intent(in) :: n_idx
-      real(wp), intent(in) :: source_weights(SDIV)
+      real(wp), intent(in) :: w(SDIV)
       real(wp), intent(out) :: out_values(SDIV)
-      real(wp) :: left_prefix(SDIV), right_suffix(SDIV)
-      real(wp) :: source_left(SDIV), source_right(SDIV)
       integer :: s
 
-      source_left = source_weights * besseli_cache(n_idx,:)
-      source_right = source_weights * besselk_cache(n_idx,:)
-
-      left_prefix(1) = source_left(1)
+      left_prefix(1) = w(1) * besseli_cache(n_idx,1)
       do s = 2, SDIV
-        left_prefix(s) = left_prefix(s-1) + source_left(s)
+        left_prefix(s) = left_prefix(s-1) + w(s) * besseli_cache(n_idx,s)
       end do
 
-      right_suffix(SDIV) = source_right(SDIV)
+      right_suffix(SDIV) = w(SDIV) * besselk_cache(n_idx,SDIV)
       do s = SDIV-1, 1, -1
-        right_suffix(s) = right_suffix(s+1) + source_right(s)
+        right_suffix(s) = right_suffix(s+1) + w(s) * besselk_cache(n_idx,s)
       end do
 
       out_values(1) = besseli_cache(n_idx,1) * right_suffix(1)
@@ -438,64 +438,31 @@ contains
                                               D2_metric_rho, D2_metric_gama, D2_metric_omega, D2_metric_sphi)
     real(wp), intent(out) :: out_target_rho(:,:), out_target_gama(:,:), out_target_ww(:,:), out_target_sphi(:,:)
     real(wp), intent(in)  :: D2_metric_rho(SDIV,LMAX+1), D2_metric_gama(SDIV,LMAX+1), D2_metric_omega(SDIV,LMAX+1), D2_metric_sphi(SDIV,LMAX+1)
-    integer :: n, m
-    real(wp), dimension(SDIV,MDIV) :: exp_mhalf_gsm, exp_rsm_mhalf_gsm
-    real(wp), dimension(SDIV,MDIV) :: sum_rho, sum_sphi, sum_gama, sum_omega
-    real(wp), dimension(MDIV) :: sin_theta_inv
+    scratch_exp_mhalf_gsm = 1.0_wp / e_gsm_cache
 
-    exp_mhalf_gsm = 1.0e0_wp / e_gsm_cache
-    exp_rsm_mhalf_gsm = exp_mhalf_gsm / e_rsm_cache
-    sin_theta_inv = 0.0_wp; where (sin_theta > 1.e-12_wp) sin_theta_inv = 1.0_wp / sin_theta
-
-    call dgemm('N','T', SDIV, MDIV, LMAX+1, 1.0_wp, D2_metric_rho, SDIV, P_2n, MDIV, 0.0_wp, sum_rho, SDIV)
-    sum_rho = -exp_mhalf_gsm * sum_rho
-
-    sum_gama = 0.0_wp
-    sum_gama(:,1:MDIV-1) = -(2.0_wp/pi) * exp_mhalf_gsm(:,1:MDIV-1) * spread(D2_metric_gama(:,2), 2, MDIV-1)
-    sum_gama(:,MDIV) = -(2.0_wp/pi) * exp_mhalf_gsm(:, MDIV) * D2_metric_gama(:, 2)
-    sum_omega = 0.0_wp
+    call dgemm('N','T', SDIV, MDIV, LMAX+1, 1.0_wp, D2_metric_rho, SDIV, P_2n, MDIV, 0.0_wp, out_target_rho, SDIV)
+    out_target_rho = -scratch_exp_mhalf_gsm * out_target_rho
 
     if ( mphi_r > (mphi_tran / l_uni)**2 * KAPPA / 1.e10_wp ) then
-      block
-        real(wp) :: D2_sphi_scaled(SDIV, LMAX+1)
-        integer :: nn
-        do nn = 0, LMAX
-          D2_sphi_scaled(:,nn+1) = real(2*nn+1, wp) * D2_metric_sphi(:,nn+1)
-        end do
-        call dgemm('N','T', SDIV, MDIV, LMAX+1, 1.0_wp, D2_sphi_scaled, SDIV, P_2n, MDIV, 0.0_wp, sum_sphi, SDIV)
-      end block
-      sum_sphi = -exp_mhalf_gsm * sum_sphi
+      call dgemm('N','T', SDIV, MDIV, LMAX+1, -1.0_wp, D2_metric_sphi, SDIV, recon_even_massive_basis, MDIV, 0.0_wp, out_target_sphi, SDIV)
+      out_target_sphi = scratch_exp_mhalf_gsm * out_target_sphi
     else
-      call dgemm('N','T', SDIV, MDIV, LMAX+1, -1.0_wp, D2_metric_sphi, SDIV, P_2n, MDIV, 0.0_wp, sum_sphi, SDIV)
+      call dgemm('N','T', SDIV, MDIV, LMAX+1, -1.0_wp, D2_metric_sphi, SDIV, P_2n, MDIV, 0.0_wp, out_target_sphi, SDIV)
     endif
 
     if (abs(r_ratio - 1.0_wp) < epsilon(r_ratio)) then
-      out_target_rho  = sum_rho
-      out_target_gama = sum_gama
-      out_target_ww   = sum_omega
-      out_target_sphi = sum_sphi
+      call dgemm('N','T', SDIV, MDIV, 1, -(2.0_wp/pi), D2_metric_gama(:,2:2), SDIV, recon_gama_basis(:,1:1), MDIV, 0.0_wp, out_target_gama, SDIV)
+      out_target_gama = scratch_exp_mhalf_gsm * out_target_gama
+      out_target_ww = 0.0_wp
       return
     endif
-    do n = 1, LMAX
-      do m = 1, MDIV-1
-        sum_omega(:,m) = sum_omega(:,m) - exp_rsm_mhalf_gsm(:,m) * D2_metric_omega(:,n+1) * &
-          (P1_2n_1(m,n+1) * sin_theta_inv(m) / (2.0_wp*n*(2.0_wp*n-1.0_wp)))
-      end do
-      sum_omega(:,MDIV) = sum_omega(:,MDIV) + exp_rsm_mhalf_gsm(:,MDIV) * D2_metric_omega(:,n+1) / 2.0_wp
-    end do
 
-    do n = 2, LMAX
-      do m = 1, MDIV-1
-        sum_gama(:,m) = sum_gama(:,m) - (2.0_wp/pi) * exp_mhalf_gsm(:,m) * D2_metric_gama(:,n+1) * &
-          (sin_2n_1_theta(m,n) * sin_theta_inv(m) / (2.0_wp*n-1.0_wp))
-      end do
-      sum_gama(:,MDIV) = sum_gama(:,MDIV) - (2.0_wp/pi) * exp_mhalf_gsm(:,MDIV) * D2_metric_gama(:,n+1)
-    end do
+    scratch_exp_rsm_mhalf_gsm = scratch_exp_mhalf_gsm / e_rsm_cache
+    call dgemm('N','T', SDIV, MDIV, LMAX, 1.0_wp, D2_metric_omega(:,2:LMAX+1), SDIV, recon_omega_basis, MDIV, 0.0_wp, out_target_ww, SDIV)
+    out_target_ww = scratch_exp_rsm_mhalf_gsm * out_target_ww
 
-    out_target_rho  = sum_rho
-    out_target_gama = sum_gama
-    out_target_ww   = sum_omega
-    out_target_sphi = sum_sphi
+    call dgemm('N','T', SDIV, MDIV, LMAX, -(2.0_wp/pi), D2_metric_gama(:,2:LMAX+1), SDIV, recon_gama_basis, MDIV, 0.0_wp, out_target_gama, SDIV)
+    out_target_gama = scratch_exp_mhalf_gsm * out_target_gama
   end subroutine sum_coefficients_and_get_targets
 
   subroutine update_alpha_potential(r_e_new, dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, dww_s_cache, dww_m_cache, &
