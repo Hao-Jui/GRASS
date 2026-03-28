@@ -1,5 +1,5 @@
 module spin_integration
-  use para_mod, only: wp, SDIV, MDIV, LMAX, s_gp, mu, sin_theta, s_pwr, DM, &
+  use para_mod, only: wp, SDIV, MDIV, LMAX, s_gp, mu, sin_theta, s_pwr, &
                       rho, gama, alpha, ww, omg, sphi, &
                       energy, pressure, enthalpy, velocity_sq, &
                       P_2n, P1_2n_1, l_uni, KAPPA, C, G, MSUN, MB, pi, KSCALE, &
@@ -64,17 +64,10 @@ contains
     call deriv_s_sub(rho, dr_s_cache)
     call deriv_s_sub(ww, dww_s_cache)
     call deriv_s_sub(sphi, ds_s_cache)
-    if (abs(r_ratio - 1.0_wp) < epsilon(r_ratio)) then
-      dg_m_cache = 0.0_wp
-      dr_m_cache = 0.0_wp
-      dww_m_cache = 0.0_wp
-      ds_m_cache = 0.0_wp
-    else
-      call deriv_m_sub(gama, dg_m_cache)
-      call deriv_m_sub(rho, dr_m_cache)
-      call deriv_m_sub(ww, dww_m_cache)
-      call deriv_m_sub(sphi, ds_m_cache)
-    end if
+    call deriv_m_sub(gama, dg_m_cache)
+    call deriv_m_sub(rho, dr_m_cache)
+    call deriv_m_sub(ww, dww_m_cache)
+    call deriv_m_sub(sphi, ds_m_cache)
 
     s1 = s_gp * (1.0_wp - s_gp)
     m1 = 1.0_wp - mu**2
@@ -83,14 +76,10 @@ contains
     do m = 1, MDIV
       d2g_ss_cache(:,m) = s1 * d2g_ss_cache(:,m) + one_minus_2s * dg_s_cache(:,m)
     end do
-    if (abs(r_ratio - 1.0_wp) < epsilon(r_ratio)) then
-      d2g_mm_cache = 0.0_wp
-    else
-      call deriv_m_sub(dg_m_cache, d2g_mm_cache)
-      do m = 1, MDIV
-        d2g_mm_cache(:,m) = m1(m) * d2g_mm_cache(:,m) - 2.0_wp * mu(m) * dg_m_cache(:,m)
-      end do
-    end if
+    call deriv_m_sub(dg_m_cache, d2g_mm_cache)
+    do m = 1, MDIV
+      d2g_mm_cache(:,m) = m1(m) * d2g_mm_cache(:,m) - 2.0_wp * mu(m) * dg_m_cache(:,m)
+    end do
     e_gsm_cache      = exp(0.5e0_wp * gama)
     e_rsm_cache      = exp(-rho)
     e2alpha_r2_cache = exp(2.0_wp * alpha) * r_e_new**2
@@ -524,7 +513,7 @@ contains
       end do
 
       do m = 1, MDIV-1
-        alpha(:,m+1) = alpha(:,m) + dm * ( da_dm(:,m+1) + da_dm(:,m) ) * 0.5e0_wp
+        alpha(:,m+1) = alpha(:,m) + (mu(m+1) - mu(m)) * ( da_dm(:,m+1) + da_dm(:,m) ) * 0.5e0_wp
       enddo
 
       alpha(SDIV,:) = 0.0_wp
@@ -649,7 +638,7 @@ contains
     close(unit)
 
     rho_0 = n0_at_e(energy(1,1)) * MB
-    write(fname,"(A,A,A,f6.2,A,f16.3,A,es15.2,A,es15.2,A,es15.3,A,f15.3)") &
+    write(fname,"(A, A, A, f0.2, A, f0.3, A, es0.2e2, A,es0.2e2, A, es0.3e2, A, f0.3)") &
       "./Cont/", trim(eos_file), &
       "_J",    ang_mom, &
       "_Mb",   mass_0/MSUN, &

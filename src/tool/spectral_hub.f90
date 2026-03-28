@@ -3,7 +3,9 @@ module spectral_hub
   use precision_mod, only: wp
   implicit none
   private
-  public :: legendre_sequence, gauss_legendre, gauss_lobatto, integrate_tabulated, integrate_at_gauss_nodes
+  public :: legendre_sequence, gauss_legendre, gauss_lobatto, &
+            chebyshev_lobatto_points, clenshaw_curtis_weights, barycentric_diff_matrices, &
+            integrate_tabulated, integrate_at_gauss_nodes
 
   integer, parameter :: max_newton_iter = 50
   real(wp), parameter :: newton_tol = 64.0_wp * epsilon(1.0_wp)
@@ -115,6 +117,93 @@ contains
     end do
     call to_unit_interval(n, x, w)
   end subroutine gauss_lobatto
+
+  pure subroutine chebyshev_lobatto_points(n, x)
+    integer, intent(in) :: n
+    real(wp), intent(out) :: x(n)
+    integer :: i
+    real(wp) :: pi
+
+    if (n < 2) error stop "chebyshev_lobatto_points: n must be at least 2"
+
+    pi = 4.0_wp * atan(1.0_wp)
+    do i = 1, n
+      x(i) = 0.5_wp * (1.0_wp - cos(pi * real(i - 1, wp) / real(n - 1, wp)))
+    end do
+  end subroutine chebyshev_lobatto_points
+
+  ! Clenshaw-Curtis weights on [0, 1] for n Chebyshev-Lobatto points.
+  ! Follows Trefethen, Spectral Methods in MATLAB (2000), clencurt.m.
+  pure subroutine clenshaw_curtis_weights(n, w)
+    integer, intent(in) :: n
+    real(wp), intent(out) :: w(n)
+    integer :: j, k, N_int, half
+    real(wp) :: theta, pi_val
+
+    if (n < 2) error stop "clenshaw_curtis_weights: n must be at least 2"
+
+    pi_val = 4.0_wp * atan(1.0_wp)
+    N_int = n - 1
+
+    if (mod(N_int, 2) == 0) then
+      w(1) = 1.0_wp / real(N_int*N_int - 1, wp)
+    else
+      w(1) = 1.0_wp / real(N_int*N_int, wp)
+    end if
+    w(n) = w(1)
+
+    half = N_int / 2
+    do j = 2, N_int
+      theta = real(j - 1, wp) * pi_val / real(N_int, wp)
+      w(j) = 1.0_wp
+      if (mod(N_int, 2) == 0) then
+        do k = 1, half - 1
+          w(j) = w(j) - 2.0_wp * cos(2*k*theta) / real(4*k*k - 1, wp)
+        end do
+        w(j) = w(j) - cos(N_int * theta) / real(N_int*N_int - 1, wp)
+      else
+        do k = 1, half
+          w(j) = w(j) - 2.0_wp * cos(2*k*theta) / real(4*k*k - 1, wp)
+        end do
+      end if
+      w(j) = 2.0_wp * w(j) / real(N_int, wp)
+    end do
+
+    w = w * 0.5_wp  ! [-1,1] -> [0,1]
+  end subroutine clenshaw_curtis_weights
+
+  subroutine barycentric_diff_matrices(x, d1, d2)
+    real(wp), intent(in) :: x(:)
+    real(wp), intent(out) :: d1(:,:), d2(:,:)
+    real(wp) :: bary_w(size(x))
+    integer :: i, j, n
+
+    n = size(x)
+    if (size(d1, 1) /= n .or. size(d1, 2) /= n) error stop "barycentric_diff_matrices: D1 size mismatch"
+    if (size(d2, 1) /= n .or. size(d2, 2) /= n) error stop "barycentric_diff_matrices: D2 size mismatch"
+
+    if (n <= 1) then
+      d1 = 0.0_wp;  d2 = 0.0_wp;  return
+    end if
+
+    ! General barycentric weights: w_j = 1 / prod_{k/=j} (x_j - x_k)
+    do i = 1, n
+      bary_w(i) = 1.0_wp
+      do j = 1, n
+        if (j /= i) bary_w(i) = bary_w(i) / (x(i) - x(j))
+      end do
+    end do
+
+    d1 = 0.0_wp
+    do i = 1, n
+      do j = 1, n
+        if (j /= i) d1(i, j) = bary_w(j) / (bary_w(i) * (x(i) - x(j)))
+      end do
+      d1(i, i) = -sum(d1(i, :))
+    end do
+
+    d2 = matmul(d1, d1)
+  end subroutine barycentric_diff_matrices
 
   function integrate_tabulated(f_values, a, b, n) result(integral)
     integer, intent(in) :: n

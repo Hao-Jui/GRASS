@@ -1,17 +1,33 @@
 module grid_mod
+  use spectral_hub, only: gauss_lobatto, chebyshev_lobatto_points, clenshaw_curtis_weights, barycentric_diff_matrices
   implicit none
 
 contains
 
   subroutine make_grid
-    use para_mod, only: SDIV, MDIV, s_gp, mu, DS, DM, pi, wp
+    use para_mod, only: SDIV, MDIV, s_gp, mu, DS, DM, pi, wp, &
+                        angular_collocation, COLLOCATION_UNI, COLLOCATION_LEG, COLLOCATION_CHEB, &
+                        D_mu, D2_mu, w_mu
     implicit none
     integer  :: i, n
     real(wp) :: x, x_prev, p_n, dp_n
 
     s_gp = [(real(i, wp), i=0, SDIV-1)] * DS
-    mu   = [(real(i, wp), i=0, MDIV-1)] * DM
-    mu(MDIV) = 1.0_wp
+
+    select case (angular_collocation)
+    case (COLLOCATION_UNI)
+      mu = [(real(i, wp), i=0, MDIV-1)] * DM
+      mu(MDIV) = 1.0_wp
+    case (COLLOCATION_LEG)
+      call gauss_lobatto(MDIV, mu, w_mu)
+      call barycentric_diff_matrices(mu, D_mu, D2_mu)
+    case (COLLOCATION_CHEB)
+      call chebyshev_lobatto_points(MDIV, mu)
+      call clenshaw_curtis_weights(MDIV, w_mu)
+      call barycentric_diff_matrices(mu, D_mu, D2_mu)
+    case default
+      error stop "make_grid: unknown collocation mode"
+    end select
 
     ! Note: Consider using a dedicated library for this
     if (.false.) then

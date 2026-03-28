@@ -1,7 +1,8 @@
 module spin_workspace
   use para_mod, only: wp, SDIV, MDIV, LMAX, &
                       s_gp, mu, sin_theta, &
-                      P_2n, P1_2n_1, sin_2n_1_theta
+                      P_2n, P1_2n_1, sin_2n_1_theta, &
+                      angular_collocation, COLLOCATION_UNI, w_mu
   use nag_compat_mod, only: d01gaf
   implicit none
 
@@ -47,7 +48,11 @@ contains
     allocate(D2_metric_rho(SDIV,LMAX+1), D2_metric_gama(SDIV,LMAX+1), D2_metric_omega(SDIV,LMAX+1), D2_metric_sphi(SDIV,LMAX+1))
 
     call compute_effective_d01gaf_weights(s_gp, radial_quad_weights)
-    call compute_effective_d01gaf_weights(mu, angular_quad_weights)
+    if (angular_collocation /= COLLOCATION_UNI) then
+      angular_quad_weights = w_mu
+    else
+      call compute_effective_d01gaf_weights(mu, angular_quad_weights)
+    end if
     wfac_cache = 1.e0_wp / (1.e0_wp - s_gp)**2
     s1_geom = s_gp * (1.e0_wp - s_gp)
     s1_sq_geom = s1_geom**2

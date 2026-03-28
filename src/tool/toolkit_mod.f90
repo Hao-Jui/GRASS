@@ -29,6 +29,21 @@ contains
     is_same = abs(xa - xb) <= 16.0_wp * epsilon(scale) * scale
   end function same_abscissa
 
+  pure logical function same_grid(x, grid) result(is_same)
+    real(wp), intent(in) :: x(:), grid(:)
+    integer :: i
+
+    is_same = size(x) == size(grid)
+    if (.not. is_same) return
+
+    do i = 1, size(x)
+      if (.not. same_abscissa(x(i), grid(i))) then
+        is_same = .false.
+        return
+      end if
+    end do
+  end function same_grid
+
   integer function nearest_transition_point(n_nearest_pt) result(pt)
     use para_mod, only: p_at_PT, n_PT
     implicit none
@@ -265,6 +280,7 @@ contains
   ! **********************************************************************
   subroutine integrate_profiles(x, values, results, err_estimates, ifails)
     use nag_compat_mod, only: d01gaf
+    use para_mod, only: mu, w_mu, angular_collocation, COLLOCATION_UNI
     implicit none
     real(wp), intent(in) :: x(:)
     real(wp), intent(in) :: values(:, :)
@@ -297,6 +313,13 @@ contains
         write(*,*) "integrate_profiles: ifails array too small"
         return
       end if
+    end if
+
+    if (angular_collocation /= COLLOCATION_UNI .and. same_grid(x, mu)) then
+      results(1:n_cols) = matmul(w_mu, values(:,1:n_cols))
+      if (present(err_estimates)) err_estimates(1:n_cols) = 0.0_wp
+      if (present(ifails)) ifails(1:n_cols) = 0
+      return
     end if
 
     do i = 1, n_cols

@@ -4,18 +4,19 @@ module para_mod
   ! -- Theory selection ------------------------------------------------------
   integer, parameter :: THEORY_GR = 0
   integer, parameter :: THEORY_ST = 1
-  integer :: active_theory = THEORY_GR
+  integer :: active_theory = THEORY_ST
 
   ! hybrid / anderson
   ! -- Running option --------------------------------------------------------
-  integer, parameter :: MODE_REGRID  = 1
-  integer, parameter :: MODE_DEFAULT = 2
+  integer, parameter :: MODE_REGRID  = 1, MODE_DEFAULT = 2
 
-  integer :: run_mode = MODE_DEFAULT
+  integer :: run_mode = MODE_REGRID
 
   ! -- Rotation configuration ------------------------------------------------
   ! uniform / const_j / uryu
   character(len=20) :: solver_type = "uniform"
+  integer, parameter :: COLLOCATION_UNI = 1, COLLOCATION_LEG = 2, COLLOCATION_CHEB = 3
+  integer :: angular_collocation = COLLOCATION_LEG
 
   ! -- Solver state ----------------------------------------------------------
   logical :: output = .false.
@@ -26,21 +27,21 @@ module para_mod
   character(len=20) :: FIX2 = "chi_goal"
 
   ! -- Resolutions -----------------------------------------------------------
-  integer, parameter :: res  = 400
+  integer, parameter :: res  = 14400
   integer, parameter :: s_pwr = 1
   integer :: SDIV = 2 * res + 1
-  integer :: MDIV = 101
+  integer :: MDIV = 21
 
   ! -- Target quantities -----------------------------------------------------
-  character(len=128) :: eos_file = "PSt"
+  character(len=128) :: eos_file = "MPA1"
   real(wp) :: M_goal   = 1.2e0_wp
   real(wp) :: Mb_goal  = 1.8e0_wp
   real(wp) :: J_goal   = 1.6e0_wp
   real(wp) :: chi_goal = 0.1e0_wp
   real(wp) :: omc_goal = 30.e0_wp
 
-  real(wp) :: B_goal   = 35.0_wp
-  real(wp) :: mphi_goal = 0.2_wp
+  real(wp) :: B_goal   = 2.2e5_wp
+  real(wp) :: mphi_goal = 30._wp
 
   ! -- Rotation-law parameters (KEH, Uryu enabled) --------------------------
   real(wp) :: A_diff  = 0.5e0_wp
@@ -78,6 +79,7 @@ module para_mod
   real(wp), parameter :: s_e = 0.5e0_wp
 
   real(wp), allocatable :: s_gp(:), mu(:), sin_theta(:)
+  real(wp), allocatable :: D_mu(:,:), D2_mu(:,:), w_mu(:)
 
   ! -- Disk helper quantities (kept for compatibility) ----------------------
   logical :: disk_present = .false.
@@ -216,6 +218,9 @@ contains
     allocate(s_gp(SDIV), source=0.e0_wp)
     allocate(mu(MDIV), source=0.e0_wp)
     allocate(sin_theta(MDIV), source=0.e0_wp)
+    allocate(D_mu(MDIV, MDIV), source=0.e0_wp)
+    allocate(D2_mu(MDIV, MDIV), source=0.e0_wp)
+    allocate(w_mu(MDIV), source=0.e0_wp)
 
     allocate(pressure(SDIV,MDIV), source=0.e0_wp)
     allocate(enthalpy(SDIV,MDIV), source=0.e0_wp)
@@ -244,6 +249,9 @@ contains
     if (allocated(s_gp))             deallocate(s_gp)
     if (allocated(mu))               deallocate(mu)
     if (allocated(sin_theta))        deallocate(sin_theta)
+    if (allocated(D_mu))             deallocate(D_mu)
+    if (allocated(D2_mu))            deallocate(D2_mu)
+    if (allocated(w_mu))             deallocate(w_mu)
     if (allocated(pressure))         deallocate(pressure)
     if (allocated(enthalpy))         deallocate(enthalpy)
     if (allocated(velocity_sq))      deallocate(velocity_sq)
