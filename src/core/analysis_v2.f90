@@ -189,7 +189,7 @@ subroutine solution_properties()
   use toolkit_mod, only: interp, interp_dual, deriv_s_1d, integrate_profiles
   use ad_mod, only: dual, dual_var
   implicit none
-  integer :: s, ifail
+  integer :: s, ifail, susceptibility_idx_hint
   real(wp), dimension(SDIV) :: d_r_e, d_g_e
   real(wp), dimension(SDIV) :: gama_mu_0, rho_mu_0, ww_mu_0, gama_mu_1, rho_mu_1, sphi_mu_0
   real(wp), dimension(SDIV) :: sound_slope, sphi_deriv, pres_deriv
@@ -222,6 +222,7 @@ subroutine solution_properties()
     effective_pressure = 0.0_wp; effective_energy = 0.0_wp; scal_potential = 0.0_wp; sphi_deriv = 0.0_wp
   end if
 
+  susceptibility_idx_hint = 1
   do s = 1, SDIV
     if (energy(s,1) > 0.0_wp) then
       energy_dual = dual_var(energy(s,1))
@@ -231,7 +232,7 @@ subroutine solution_properties()
       pressure_slope(s) = deriv_s_1d(effective_pressure, s)
       energy_slope(s)   = deriv_s_1d(energy(:,1),        s)
       effective_cs(s)   = pressure_slope(s) / energy_slope(s)
-      call pressure_derivative_n(energy(s,1), 2, susceptibility(s), ifail)
+      call pressure_derivative_n(energy(s,1), 2, susceptibility(s), ifail, susceptibility_idx_hint)
     else
       sound_speed(s) = 0.0_wp
       pressure_slope(s) = 0.0_wp
@@ -333,22 +334,29 @@ contains
 
   subroutine radial_configuration()
     use para_mod, only: mass_0
-    write(profile_file, '(A,I0,"_",I0,"_B",ES0.2,"_mphi",ES0.2,"_M",F0.2,"_Mb",F0.4,".dat")') &
-      "/Users/horay/Data4Projects/crazy/Dat/1dprofile_", &
-      SDIV, MDIV, B_goal, mphi_goal, mass / MSUN, mass_0 / MSUN
-    call write_eq_profile(profile_file,(SDIV-1)/2,&
-        gama(:,1), rho(:,1), alpha(:,1),         &
-        ww(:,1), omg(:,1),                       &
-        enthalpy(:,1),                           & ! 7
-        rho_0(:,1)/(KSCALE*C**2) / n_sat,        &
-        energy(:,1)/(C*C*KSCALE),                &
-        pressure(:,1)/KSCALE,                    &
-        sphi(:,1) * sqrt(B_coup),                & ! 11
-        sphi_deriv * sqrt(B_coup),               &
-        sound_speed,                             &
-        effective_cs,                            &
-        effective_pressure/KSCALE,               & 
-        effective_energy/(C*C*KSCALE)  )
+    integer :: i
+    do i = 2, 2
+      if (i == 1) then 
+        write(profile_file, '(A,I0,"_",I0,"_B",ES0.2,"_mphi",ES0.2,"_M",F0.2,"_Mb",F0.4,".dat")') &
+          "/Users/horay/Data4Projects/crazy/Dat/1dprofile_", &
+          SDIV, MDIV, B_goal, mphi_goal, mass / MSUN, mass_0 / MSUN
+      else
+        profile_file = "/Users/horay/ptmp/GRASS/Res/1dprofile.dat"
+      end if
+      call write_eq_profile(profile_file,(SDIV-1)/2,&
+          gama(:,1), rho(:,1), alpha(:,1),         &
+          ww(:,1), omg(:,1),                       &
+          enthalpy(:,1),                           & ! 7
+          rho_0(:,1)/(KSCALE*C**2) / n_sat,        &
+          energy(:,1)/(C*C*KSCALE),                &
+          pressure(:,1)/KSCALE,                    &
+          sphi(:,1) * sqrt(B_coup),                & ! 11
+          sphi_deriv * sqrt(B_coup),               &
+          sound_speed,                             &
+          effective_cs,                            &
+          effective_pressure/KSCALE,               & 
+          effective_energy/(C*C*KSCALE)  )
+    end do
 
     if (.false.) then ! Debug: Chebyshev fit of gama over the stellar interior [s_gp(1), s_gp(res+1)]
       block
