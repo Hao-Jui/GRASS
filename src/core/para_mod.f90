@@ -20,14 +20,14 @@ module para_mod
 
   ! -- Solver state ----------------------------------------------------------
   logical :: output = .false.
-  logical :: timing = .false.
+  logical :: timing = .true.
   integer, parameter :: SHOOT_FIX1_HC = 1, SHOOT_FIX1_RP = 2, SHOOT_2D = 3
   integer :: shooting = SHOOT_FIX1_HC
   character(len=20) :: FIX1 = "Mb_goal"
   character(len=20) :: FIX2 = "chi_goal"
 
   ! -- Resolutions -----------------------------------------------------------
-  integer, parameter :: res  = 1800
+  integer, parameter :: res  = 4000
   integer, parameter :: s_pwr = 1
   integer :: SDIV = 2 * res + 1
   integer :: MDIV = 41

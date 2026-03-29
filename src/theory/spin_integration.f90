@@ -487,7 +487,6 @@ contains
     real(wp), save :: sum_dt_deriv_m = 0.0_wp, sum_dt_column_loop = 0.0_wp
     real(wp), save :: sum_dt_integrate = 0.0_wp, sum_dt_adjust = 0.0_wp
     real(wp), dimension(SDIV,MDIV) :: da_dm, d_gama_sm_all
-    real(wp), dimension(SDIV) :: sgp_ratio
     real(wp) :: adj_const(SDIV)
     real(wp) :: gs, gm, rs, rm, ss, sm, gsm, wws, wwm, gss, gmm, e_cache
     real(wp) :: sg, s1, sg_ratio, sg4, numer_m, one_plus_s1dgs, inv_denom
@@ -512,8 +511,6 @@ contains
     if (abs(r_ratio - 1.0_wp) < epsilon(r_ratio)) then
       return
     else
-      sgp_ratio = s_gp / (1.0_wp - s_gp)
-
       da_dm(1,:) = 0.0e0_wp
       call deriv_m_sub(dg_s_cache, d_gama_sm_all)
       if (timing) then
@@ -538,7 +535,7 @@ contains
           e_cache = e_rsm_cache(s,m)
           sg = s_gp(s)
           s1 = s1_geom(s)
-          sg_ratio = sgp_ratio(s)
+          sg_ratio = sgp_term_2d_cache(s,1)
           sg4 = sgp4_geom(s)
 
           numer_m = -mu_m + m1 * gm
@@ -574,7 +571,9 @@ contains
 
       alpha(SDIV,:) = 0.0_wp
       adj_const = alpha(:,MDIV) - ( gama(:,MDIV) - rho(:,MDIV) )/2.0_wp
-      alpha = alpha - spread(adj_const, DIM=2, NCOPIES=MDIV)
+      do m = 1, MDIV
+        alpha(:,m) = alpha(:,m) - adj_const
+      end do
       if (timing) then
         call cpu_time(t1); dt_adjust = t1 - t0
       end if

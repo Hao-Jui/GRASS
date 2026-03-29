@@ -234,13 +234,33 @@ contains
     use para_mod, only : wp, SDIV, MDIV, r_ratio, h_center, &
                          rho, gama, alpha, sphi, velocity_sq, enthalpy, pressure, energy, &
                          Omg, ww, Omega_c, omg, F_j, &
-                         s_gp, has_scalar, B_coup, A_diff, solver_type, enthalpy_min, s_e
+                         s_gp, has_scalar, B_coup, A_diff, solver_type, enthalpy_min, s_e, timing
     use rotation_law_mod, only: intF
-    use toolkit_mod, only : interp_log_h_to_p, interp_log_p_to_e
+    use eos_mod, only : pe_at_h
     real(wp), intent(in) :: r_e_new, gama_pole_h, rho_pole_h, sphi_pole_h
     real(wp), intent(in) :: sgp_term_2d_cache_arg(:,:), sin_theta_2d_cache_arg(:,:), sgp_2d_cache_arg(:,:)
-    integer :: s, m
-    real(wp) :: re2, log_p_val, log_e_val, pp, ee
+    integer :: s, m, eos_idx_hint, s_active_max
+    real(wp) :: re2
+    real(wp) :: t0, t1, dt_hydro, dt_rotlaw, dt_eos, dt_rescale
+    integer, parameter :: timing_calls = 5
+    integer, save :: eos_update_call_count = 0
+    real(wp), save :: sum_dt_hydro = 0.0_wp, sum_dt_rotlaw = 0.0_wp
+    real(wp), save :: sum_dt_eos = 0.0_wp, sum_dt_rescale = 0.0_wp
+
+    if (timing) then
+      if (eos_update_call_count == 0) then
+        sum_dt_hydro = 0.0_wp
+        sum_dt_rotlaw = 0.0_wp
+        sum_dt_eos = 0.0_wp
+        sum_dt_rescale = 0.0_wp
+      end if
+      eos_update_call_count = eos_update_call_count + 1
+      dt_hydro = 0.0_wp
+      dt_rotlaw = 0.0_wp
+      dt_eos = 0.0_wp
+      dt_rescale = 0.0_wp
+      call cpu_time(t0)
+    end if
 
     re2 = r_e_new**2
 
@@ -256,6 +276,10 @@ contains
             - log( max(1.e-300_wp, 1.0_wp-velocity_sq) )  )
     end if
 
+    if (timing) then
+      call cpu_time(t1); dt_hydro = t1 - t0; call cpu_time(t0)
+    end if
+
     if ( trim(solver_type) == "const_j" ) then
       enthalpy = enthalpy + 0.5e0_wp * A_diff**2 * (Omg - Omega_c)**2
     elseif ( trim(solver_type) == "uryu" ) then
@@ -266,27 +290,57 @@ contains
       end do
     endif
 
+    if (timing) then
+      call cpu_time(t1); dt_rotlaw = t1 - t0; call cpu_time(t0)
+    end if
+
+    s_active_max = count(s_gp <= s_e)
+    pressure = 0.0_wp
+    energy = 0.0_wp
+    if (s_active_max < SDIV) enthalpy(s_active_max+1:SDIV,:) = enthalpy_min
+
     do m = 1, MDIV
-      do s = 1, SDIV
-        associate( h => enthalpy(s,m), p => pressure(s,m), &
-                   e => energy(s,m),   g => sgp_2d_cache_arg(s,m) )
-        if (h > enthalpy_min .and. g <= s_e) then
-          ! Direct scalar calls are usually the fastest path for the CPU
-          p = exp(interp_log_h_to_p(log(h)))
-          e = exp(interp_log_p_to_e(log(p)))
+      eos_idx_hint = 1
+      do s = 1, s_active_max
+        associate( h => enthalpy(s,m), p => pressure(s,m), e => energy(s,m) )
+        if (h > enthalpy_min) then
+          call pe_at_h(h, p, e, eos_idx_hint)  ! Hint carries forward within meridian m
         else
           h = enthalpy_min
-          p = 0.0_wp
-          e = 0.0_wp
+          eos_idx_hint = 1  ! Reset on invalid point to keep hint accurate
         end if
         end associate
       end do
     end do
 
+    if (timing) then
+      call cpu_time(t1); dt_eos = t1 - t0; call cpu_time(t0)
+    end if
+
     rho   = rho   * re2
     gama  = gama  * re2
     alpha = alpha * re2
     sphi  = sphi  * r_e_new
+
+    if (timing) then
+      call cpu_time(t1); dt_rescale = t1 - t0
+      sum_dt_hydro = sum_dt_hydro + dt_hydro
+      sum_dt_rotlaw = sum_dt_rotlaw + dt_rotlaw
+      sum_dt_eos = sum_dt_eos + dt_eos
+      sum_dt_rescale = sum_dt_rescale + dt_rescale
+
+      write(*,'(A,I0,A,4(1X,ES12.5))') 'update_eos_and_velocity call ', eos_update_call_count, ':', &
+        dt_hydro, dt_rotlaw, dt_eos, dt_rescale
+      if (eos_update_call_count >= timing_calls) then
+        write(*,'(A,I0,A)') 'update_eos_and_velocity avg over ', timing_calls, ':'
+        write(*,'(A,1X,ES12.5)') '  hydro', sum_dt_hydro / timing_calls
+        write(*,'(A,1X,ES12.5)') '  rotation_law', sum_dt_rotlaw / timing_calls
+        write(*,'(A,1X,ES12.5)') '  eos_loop', sum_dt_eos / timing_calls
+        write(*,'(A,1X,ES12.5)') '  rescale', sum_dt_rescale / timing_calls
+        write(*,'(A,1X,ES12.5)') '  total', &
+          (sum_dt_hydro + sum_dt_rotlaw + sum_dt_eos + sum_dt_rescale) / timing_calls
+      end if
+    end if
   end subroutine update_eos_and_velocity
 
 end module spin_updates
