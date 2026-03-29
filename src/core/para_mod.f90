@@ -4,7 +4,7 @@ module para_mod
   ! -- Theory selection ------------------------------------------------------
   integer, parameter :: THEORY_GR = 0
   integer, parameter :: THEORY_ST = 1
-  integer :: active_theory = THEORY_ST
+  integer :: active_theory = THEORY_GR
 
   ! hybrid / anderson
   ! -- Running option --------------------------------------------------------
@@ -14,9 +14,9 @@ module para_mod
 
   ! -- Rotation configuration ------------------------------------------------
   ! uniform / const_j / uryu
-  character(len=20) :: solver_type = "uniform"
+  character(len=20) :: solver_type = "uryu"
   integer, parameter :: COLLOCATION_UNI = 1, COLLOCATION_LEG = 2, COLLOCATION_CHEB = 3
-  integer :: angular_collocation = COLLOCATION_LEG
+  integer :: angular_collocation = COLLOCATION_UNI
 
   ! -- Solver state ----------------------------------------------------------
   logical :: output = .false.
@@ -27,10 +27,10 @@ module para_mod
   character(len=20) :: FIX2 = "chi_goal"
 
   ! -- Resolutions -----------------------------------------------------------
-  integer, parameter :: res  = 400
+  integer, parameter :: res  = 1500
   integer, parameter :: s_pwr = 1
   integer :: SDIV = 2 * res + 1
-  integer :: MDIV = 41
+  integer :: MDIV = 3001
 
   ! -- Target quantities -----------------------------------------------------
   character(len=128) :: eos_file = "MPA1"

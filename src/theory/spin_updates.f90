@@ -81,9 +81,10 @@ contains
                                     sphi_pole_h, sphi_equator_h, ww_equator_h)
     use para_mod, only : wp, SDIV, MDIV, s_gp, mu, rho, ww, omg, r_ratio, &
                          Omega_c, Omega_e, Omg, F_j, has_scalar, B_coup, A_diff, solver_type, &
-                         lambda1, lambda2, Fmax_h, F_equator_h
+                         lambda1, lambda2, Fmax_h, F_equator_h, timing
     use rotation_law_mod, only: diff_rotation_const_j, rotation_law_const_j, &
-                                diff_rotation_uryu, rotation_law_uryu
+                                diff_rotation_uryu, rotation_law_uryu, &
+                                cache_uryu_ab, ctx_exp2re2rho
     use brent_mod, only : find_omege_e, zbrent_rot
     real(wp), intent(in) :: r_e_new, gama_pole_h, rho_pole_h, gama_equator_h, rho_equator_h
     real(wp), intent(in) :: sphi_pole_h, sphi_equator_h, ww_equator_h
@@ -129,6 +130,7 @@ contains
     subroutine const_j_rotation(re2_val)
       real(wp), intent(in) :: re2_val
       real(wp) :: guess, term_omega_diff
+
       guess = Omega_e * GUESS_FACTOR
       call find_omege_e(guess, r_e_new, rho_equator_h, gama_equator_h, &
                       ww_equator_h, rho_pole_h, gama_pole_h, TOLERANCE_ROOT, Omega_e, diff_rotation_const_j)
@@ -143,16 +145,17 @@ contains
         do m = 1, MDIV-1
           associate(sg => s_gp(s), mum_loc => mu(m), &
                     rsm_loc => rho(s,m), wwsm_loc => ww(s,m), o => omg(s,m))
+            ctx_exp2re2rho = exp(2.0_wp * re2_val * rsm_loc)
             call zbrent_rot(Omg(s-1,m) * GUESS_FACTOR, r_e_new, rsm_loc, wwsm_loc, sg, mum_loc, TOLERANCE_ROOT, o, rotation_law_const_j)
             F_j(s,m) = (o - wwsm_loc) * sg**2 * (1.0_wp - mum_loc**2) &
-                  / ((1.0_wp - sg)**2 * exp(2.0_wp * re2_val * rsm_loc) - (o - wwsm_loc)**2 * sg**2 * (1.0_wp - mum_loc**2))
+                  / (ctx_exp2re2rho * (1.0_wp - sg)**2 - (o - wwsm_loc)**2 * sg**2 * (1.0_wp - mum_loc**2))
           end associate
         end do
       end do
     end subroutine const_j_rotation
     subroutine uryu_rotation(re2_val)
       real(wp), intent(in) :: re2_val
-      real(wp) :: diff_Fmax, guess, Fa, omg_max_h, exp_term_eq, mum
+      real(wp) :: diff_Fmax, guess, Fa, omg_max_h, exp_term_eq, mum, e2rr
       integer :: s_lo, s_hi, s_peak
       integer, parameter :: DELTA_PEAK = 3
 
@@ -170,9 +173,9 @@ contains
         if ( F_equator_h < 0.0_wp ) stop "negative F_equator_h; L120 in uryu"
 
         Omega_c = Omega_e / lambda2
+        call cache_uryu_ab()
         mum = 0.0_wp
         if (s_peak_prev == 0) then
-          ! First call: full scan with chained guess
           omg_mu_0_saved(1) = Omega_c
           omg_max_h = Omega_c
           s_peak = 1
@@ -180,6 +183,7 @@ contains
             associate(o => omg_mu_0_saved(s), o_prev => omg_mu_0_saved(s-1), sg => s_gp(s), &
                       rsm_loc => rho(s,1), wwsm_loc => ww(s,1))
               guess = o_prev
+              ctx_exp2re2rho = exp(2.0_wp * re2_val * rsm_loc)
               call zbrent_rot(guess, r_e_new, rsm_loc, wwsm_loc, sg, mum, TOLERANCE_ROOT, o, rotation_law_uryu)
               if (o > omg_max_h) then
                 omg_max_h = o
@@ -191,7 +195,6 @@ contains
           end do
           s_peak_prev = s_peak
         else
-          ! Subsequent calls: narrow window using previous-iteration values as guesses
           s_lo = max(2, s_peak_prev - DELTA_PEAK)
           s_hi = min((SDIV-1)/2, s_peak_prev + DELTA_PEAK)
           omg_max_h = Omega_c
@@ -199,7 +202,8 @@ contains
           do s = s_lo, s_hi
             associate(o => omg_mu_0_saved(s), sg => s_gp(s), &
                       rsm_loc => rho(s,1), wwsm_loc => ww(s,1))
-              guess = o  ! previous iteration's value at this grid point
+              guess = o
+              ctx_exp2re2rho = exp(2.0_wp * re2_val * rsm_loc)
               call zbrent_rot(guess, r_e_new, rsm_loc, wwsm_loc, sg, mum, TOLERANCE_ROOT, o, rotation_law_uryu)
               if (o > omg_max_h) then
                 omg_max_h = o
@@ -216,13 +220,15 @@ contains
       Omg(1,:) = Omega_c
       Omg(1:3*SDIV/4,MDIV) = Omega_c
       do s = 2, SDIV*3/4
+        e2rr = exp(2.0_wp * re2_val * rho(s,1))
         do m = 1, MDIV-1
           associate(sg => s_gp(s), mum_loc => mu(m), &
                     rsm_loc => rho(s,m), wwsm_loc => ww(s,m), o => omg(s,m))
             guess = Omg(s-1,m)
+            ctx_exp2re2rho = exp(2.0_wp * re2_val * rsm_loc)
             call zbrent_rot(guess, r_e_new, rsm_loc, wwsm_loc, sg, mum_loc, TOLERANCE_ROOT, o, rotation_law_uryu)
             F_j(s,m) = (o - wwsm_loc) * sg**2 * (1.0_wp - mum_loc**2) &
-                  / ((1.0_wp - sg)**2 * exp(2.0_wp * re2_val * rsm_loc) - (o - wwsm_loc)**2 * sg**2 * (1.0_wp - mum_loc**2))
+                  / (ctx_exp2re2rho * (1.0_wp - sg)**2 - (o - wwsm_loc)**2 * sg**2 * (1.0_wp - mum_loc**2))
           end associate
         end do
       end do
@@ -280,11 +286,14 @@ contains
       call cpu_time(t1); dt_hydro = t1 - t0; call cpu_time(t0)
     end if
 
+    s_active_max = count(s_gp <= s_e)
+
     if ( trim(solver_type) == "const_j" ) then
       enthalpy = enthalpy + 0.5e0_wp * A_diff**2 * (Omg - Omega_c)**2
     elseif ( trim(solver_type) == "uryu" ) then
+      if (s_active_max < SDIV) F_j(s_active_max+1:SDIV,:) = 0.0_wp
       do m = 1, MDIV
-        do s = 1, SDIV
+        do s = 1, s_active_max
           enthalpy(s,m) = enthalpy(s,m) - intF(omg(s,m), F_j(s,m))
         end do
       end do
@@ -294,7 +303,6 @@ contains
       call cpu_time(t1); dt_rotlaw = t1 - t0; call cpu_time(t0)
     end if
 
-    s_active_max = count(s_gp <= s_e)
     pressure = 0.0_wp
     energy = 0.0_wp
     if (s_active_max < SDIV) enthalpy(s_active_max+1:SDIV,:) = enthalpy_min
