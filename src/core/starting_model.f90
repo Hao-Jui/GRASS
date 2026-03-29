@@ -57,7 +57,7 @@ contains
     subroutine single_model()
       use constrain_mod, only: hamiltonian
       real(wp) :: ee, rho0, hamL2, t0, t1
-      !r_ratio = 1.0_wp
+      r_ratio = 0.60_wp
 
       output = .true.; call cpu_time(t0)
           call rotation_solver
@@ -70,7 +70,7 @@ contains
       write(*,*) " "; write(*,"(A, f10.4)") "Elapsed time [s]: ", t1-t0
       call hamiltonian(hamL2)
       write(*,"(A18,es27.16)") "Ham L2:", hamL2; write(*,*) " "
-      !stop "One model solved!"
+      stop "One model solved!"
     end subroutine single_model
   end subroutine initialize_starting_model
 end module starting_model_mod

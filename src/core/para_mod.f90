@@ -4,7 +4,7 @@ module para_mod
   ! -- Theory selection ------------------------------------------------------
   integer, parameter :: THEORY_GR = 0
   integer, parameter :: THEORY_ST = 1
-  integer :: active_theory = THEORY_ST
+  integer :: active_theory = THEORY_GR
 
   ! hybrid / anderson
   ! -- Running option --------------------------------------------------------
@@ -27,10 +27,10 @@ module para_mod
   character(len=20) :: FIX2 = "chi_goal"
 
   ! -- Resolutions -----------------------------------------------------------
-  integer, parameter :: res  = 14400
+  integer, parameter :: res  = 1800
   integer, parameter :: s_pwr = 1
   integer :: SDIV = 2 * res + 1
-  integer :: MDIV = 21
+  integer :: MDIV = 41
 
   ! -- Target quantities -----------------------------------------------------
   character(len=128) :: eos_file = "MPA1"
@@ -79,7 +79,7 @@ module para_mod
   real(wp), parameter :: s_e = 0.5e0_wp
 
   real(wp), allocatable :: s_gp(:), mu(:), sin_theta(:)
-  real(wp), allocatable :: D_mu(:,:), D2_mu(:,:), w_mu(:)
+  real(wp), allocatable :: D_mu(:,:), D_mu_t(:,:), D2_mu(:,:), w_mu(:)
 
   ! -- Disk helper quantities (kept for compatibility) ----------------------
   logical :: disk_present = .false.
@@ -219,6 +219,7 @@ contains
     allocate(mu(MDIV), source=0.e0_wp)
     allocate(sin_theta(MDIV), source=0.e0_wp)
     allocate(D_mu(MDIV, MDIV), source=0.e0_wp)
+    allocate(D_mu_t(MDIV, MDIV), source=0.e0_wp)
     allocate(D2_mu(MDIV, MDIV), source=0.e0_wp)
     allocate(w_mu(MDIV), source=0.e0_wp)
 
@@ -250,6 +251,7 @@ contains
     if (allocated(mu))               deallocate(mu)
     if (allocated(sin_theta))        deallocate(sin_theta)
     if (allocated(D_mu))             deallocate(D_mu)
+    if (allocated(D_mu_t))           deallocate(D_mu_t)
     if (allocated(D2_mu))            deallocate(D2_mu)
     if (allocated(w_mu))             deallocate(w_mu)
     if (allocated(pressure))         deallocate(pressure)
