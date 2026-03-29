@@ -113,36 +113,6 @@ contains
     end if
   end subroutine interp_linear_segment
 
-  pure elemental function interp_log_h_to_p(x) result(y)
-    use para_mod, only: log_h, log_p, num_tab
-    implicit none
-    real(wp), intent(in) :: x
-    real(wp) :: y
-
-    if (x <= log_h(1)) then
-      y = log_p(1)
-    elseif (x >= log_h(num_tab)) then
-      y = log_p(num_tab)
-    else
-      call interp(log_h, log_p, num_tab, x, y)
-    end if
-  end function interp_log_h_to_p
-
-  pure elemental function interp_log_p_to_e(x) result(y)
-    use para_mod, only: log_p, log_e, num_tab
-    implicit none
-    real(wp), intent(in) :: x
-    real(wp) :: y
-
-    if (x <= log_p(1)) then
-      y = log_e(1)
-    elseif (x >= log_p(num_tab)) then
-      y = log_e(num_tab)
-    else
-      call interp(log_p, log_e, num_tab, x, y)
-    end if
-  end function interp_log_p_to_e
-
   pure subroutine interp(xp, yp, np, xb, yb)
     implicit none
     integer, intent(in)  :: np

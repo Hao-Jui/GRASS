@@ -77,7 +77,7 @@ $(OBJDIR)/$(SRC_CORE)/set_disk.o: $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/
 $(OBJDIR)/$(SRC_THEORY)/relaxation_mod.o: $(OBJDIR)/$(SRC_CORE)/para_mod.o
 $(OBJDIR)/$(SRC_THEORY)/rotational_law_mod.o: $(OBJDIR)/$(SRC_TOOL)/brent.o $(OBJDIR)/$(SRC_CORE)/para_mod.o
 $(OBJDIR)/$(SRC_THEORY)/spin_derivatives.o: $(OBJDIR)/$(SRC_CORE)/para_mod.o
-$(OBJDIR)/$(SRC_THEORY)/spin_updates.o: $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_THEORY)/rotational_law_mod.o $(OBJDIR)/$(SRC_TOOL)/brent.o
+$(OBJDIR)/$(SRC_THEORY)/spin_updates.o: $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_THEORY)/rotational_law_mod.o $(OBJDIR)/$(SRC_TOOL)/brent.o $(OBJDIR)/$(SRC_CORE)/eos.o
 $(OBJDIR)/$(SRC_THEORY)/spin_workspace.o: $(OBJDIR)/$(SRC_TOOL)/nag_compat_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o
 $(OBJDIR)/$(SRC_THEORY)/spin_integration.o: $(OBJDIR)/$(SRC_THEORY)/spin_workspace.o $(OBJDIR)/$(SRC_THEORY)/spin_derivatives.o $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_CORE)/eos.o
 $(OBJDIR)/$(SRC_THEORY)/spin_relaxation.o: $(OBJDIR)/$(SRC_THEORY)/spin_workspace.o $(OBJDIR)/$(SRC_CORE)/para_mod.o $(OBJDIR)/$(SRC_THEORY)/relaxation_mod.o

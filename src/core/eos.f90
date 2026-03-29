@@ -1,6 +1,7 @@
 module eos_mod
   use precision_mod, only: wp
-  use toolkit_mod, only: interp, interp_pt, interp_dual, interp_pt_dual
+  use toolkit_mod, only: interp, interp_pt, interp_dual, interp_pt_dual, &
+                         same_abscissa, pt_interp_action, n_order, bary_w
   use para_mod, only: log_e, log_p, log_h, log_n0, num_tab, n_PT, phase_transition
   use ad_mod, only: dual
   implicit none
@@ -8,10 +9,11 @@ module eos_mod
   ! Public elemental functions
   public :: e_at_p, p_at_e, p_at_e_dual, n0_at_e, n0_at_h, e_at_h, p_at_h, h_at_p
   ! Public subroutines
-  public :: loadEos, pressure_derivative_n
+  public :: loadEos, pressure_derivative_n, pe_at_h
 contains
 
-  real(wp) function interp_eos_with_phase(val_in, t_in, t_out)
+  ! Unified log-space interpolation: dispatches to phase-aware or regular stencil
+  real(wp) function interp_eos(val_in, t_in, t_out)
     real(wp), intent(in) :: val_in
     real(wp), intent(in) :: t_in(:), t_out(:)
     real(wp) :: res_log
@@ -20,21 +22,38 @@ contains
     else
       call interp(t_in, t_out, num_tab, log(val_in), res_log)
     end if
-    interp_eos_with_phase = exp(res_log)
-  end function interp_eos_with_phase
+    interp_eos = exp(res_log)
+  end function interp_eos
 
-  real(wp) function interp_eos_simple(val_in, t_in, t_out)
+  ! Efficient simultaneous interpolation of two outputs from same input
+  subroutine interp_eos_pair(val_in, t_in, t_out1, t_out2, val_out1, val_out2, idx_hint)
     real(wp), intent(in) :: val_in
-    real(wp), intent(in) :: t_in(:), t_out(:)
-    real(wp) :: res_log
-    if (phase_transition) then
-      call interp_pt(t_in, t_out, num_tab, log(val_in), res_log)
-    else
-      call interp(t_in, t_out, num_tab, log(val_in), res_log)
-    end if
-    interp_eos_simple = exp(res_log)
-  end function interp_eos_simple
+    real(wp), intent(in) :: t_in(:), t_out1(:), t_out2(:)
+    real(wp), intent(out) :: val_out1, val_out2
+    real(wp) :: res_log1, res_log2
+    integer, intent(inout), optional :: idx_hint
+    integer :: idx_used
 
+    if (present(idx_hint)) then
+      if (phase_transition) then
+        call interp_pair_pt(t_in, t_out1, t_out2, num_tab, log(val_in), res_log1, res_log2, idx_hint, idx_used)
+      else
+        call interp_pair(t_in, t_out1, t_out2, num_tab, log(val_in), res_log1, res_log2, idx_hint, idx_used)
+      end if
+      idx_hint = idx_used
+    else
+      if (phase_transition) then
+        call interp_pair_pt(t_in, t_out1, t_out2, num_tab, log(val_in), res_log1, res_log2)
+      else
+        call interp_pair(t_in, t_out1, t_out2, num_tab, log(val_in), res_log1, res_log2)
+      end if
+    end if
+
+    val_out1 = exp(res_log1)
+    val_out2 = exp(res_log2)
+  end subroutine interp_eos_pair
+
+  ! Dual-number version for automatic differentiation
   type(dual) function interp_eos_dual(val_in, t_in, t_out)
     use ad_mod, only: log, exp
     type(dual), intent(in) :: val_in
@@ -113,14 +132,15 @@ contains
   end subroutine loadEos
 
 
+  ! ========== High-level API: all wrap interp_eos or interp_eos_dual
   real(wp) function e_at_p(pp)
     real(wp), intent(in) :: pp
-    e_at_p = interp_eos_with_phase(pp, log_p, log_e)
+    e_at_p = interp_eos(pp, log_p, log_e)
   end function e_at_p
 
   real(wp) function p_at_e(ee)
     real(wp), intent(in) :: ee
-    p_at_e = interp_eos_with_phase(ee, log_e, log_p)
+    p_at_e = interp_eos(ee, log_e, log_p)
   end function p_at_e
 
   function p_at_e_dual(ee) result(res)
@@ -131,36 +151,205 @@ contains
 
   real(wp) function n0_at_e(ee)
     real(wp), intent(in) :: ee
-    n0_at_e = interp_eos_with_phase(ee, log_e, log_n0)
+    n0_at_e = interp_eos(ee, log_e, log_n0)
   end function n0_at_e
 
   real(wp) function n0_at_h(hh)
     real(wp), intent(in) :: hh
-    n0_at_h = interp_eos_simple(hh, log_h, log_n0)
+    n0_at_h = interp_eos(hh, log_h, log_n0)
   end function n0_at_h
 
   real(wp) function e_at_h(hh)
     real(wp), intent(in) :: hh
-    e_at_h = interp_eos_simple(hh, log_h, log_e)
+    e_at_h = interp_eos(hh, log_h, log_e)
   end function e_at_h
 
   real(wp) function p_at_h(hh)
     real(wp), intent(in) :: hh
-    p_at_h = interp_eos_simple(hh, log_h, log_p)
+    p_at_h = interp_eos(hh, log_h, log_p)
   end function p_at_h
 
   real(wp) function h_at_p(pp)
     real(wp), intent(in) :: pp
-    h_at_p = interp_eos_simple(pp, log_p, log_h)
+    h_at_p = interp_eos(pp, log_p, log_h)
   end function h_at_p
 
-  ! **********************************************************************
-  ! Selects a stencil around the requested energy clamps out-of-range 
-  !  queries, and evaluates d^n p / d e^n
-  !    ifail  (output) - Error flag (1=invalid order, 2=EOS unavailable, 
-  !                     3=nonpositive energy, 4=insufficient stencil, 
-  !                     5=input clamped to table range)
-  ! **********************************************************************
+  subroutine pe_at_h(hh, pp, ee, idx_hint)
+    real(wp), intent(in) :: hh
+    real(wp), intent(out) :: pp, ee
+    integer, intent(inout), optional :: idx_hint
+
+    call interp_eos_pair(hh, log_h, log_p, log_e, pp, ee, idx_hint)
+  end subroutine pe_at_h
+
+  pure integer function nearest_monotone_index(xp, xb, idx_hint) result(idx)
+    real(wp), intent(in) :: xp(:), xb
+    integer, intent(in), optional :: idx_hint
+    integer :: lo, hi, mid, n, i, steps
+    integer, parameter :: max_hint_steps = 8
+
+    n = size(xp)
+    if (n <= 1) then
+      idx = 1
+      return
+    end if
+
+    if (xb <= xp(1)) then
+      idx = 1
+      return
+    end if
+    if (xb >= xp(n)) then
+      idx = n
+      return
+    end if
+
+    if (present(idx_hint)) then
+      i = min(n, max(1, idx_hint))
+      if (same_abscissa(xb, xp(i))) then
+        idx = i
+        return
+      end if
+
+      steps = 0
+      if (xb > xp(i)) then
+        do while (i < n .and. xp(i+1) <= xb .and. steps < max_hint_steps)
+          i = i + 1
+          steps = steps + 1
+        end do
+        if (i < n .and. xp(i) <= xb .and. xb <= xp(i+1)) then
+          if (abs(xb - xp(i)) <= abs(xp(i+1) - xb)) then
+            idx = i
+          else
+            idx = i + 1
+          end if
+          return
+        end if
+      else
+        do while (i > 1 .and. xp(i-1) >= xb .and. steps < max_hint_steps)
+          i = i - 1
+          steps = steps + 1
+        end do
+        if (i > 1 .and. xp(i-1) <= xb .and. xb <= xp(i)) then
+          if (abs(xb - xp(i-1)) <= abs(xp(i) - xb)) then
+            idx = i - 1
+          else
+            idx = i
+          end if
+          return
+        end if
+      end if
+    end if
+
+    lo = 1
+    hi = n
+    do while (hi - lo > 1)
+      mid = (lo + hi) / 2
+      if (xp(mid) <= xb) then
+        lo = mid
+      else
+        hi = mid
+      end if
+    end do
+
+    if (abs(xb - xp(lo)) <= abs(xp(hi) - xb)) then
+      idx = lo
+    else
+      idx = hi
+    end if
+  end function nearest_monotone_index
+
+  subroutine interp_pair(xp, yp1, yp2, np, xb, y1, y2, idx_hint, idx_used)
+    integer, intent(in) :: np
+    real(wp), intent(in) :: xp(np), yp1(np), yp2(np), xb
+    real(wp), intent(out) :: y1, y2
+    integer, intent(in), optional :: idx_hint
+    integer, intent(out), optional :: idx_used
+    integer :: n_nearest_pt, ir, ii
+    real(wp) :: dx, wi, den, num1, num2
+
+    n_nearest_pt = nearest_monotone_index(xp, xb, idx_hint)
+    if (present(idx_used)) idx_used = n_nearest_pt
+
+    ir = min(np - n_order, max(1 + n_order, n_nearest_pt - 1))
+
+    num1 = 0.0_wp
+    num2 = 0.0_wp
+    den = 0.0_wp
+    do ii = -n_order, n_order
+      dx = xb - xp(ir + ii)
+      if (abs(dx) < epsilon(dx)) then
+        y1 = yp1(ir + ii)
+        y2 = yp2(ir + ii)
+        return
+      end if
+      wi = bary_w(ii) / dx
+      num1 = num1 + wi * yp1(ir + ii)
+      num2 = num2 + wi * yp2(ir + ii)
+      den = den + wi
+    end do
+
+    y1 = num1 / den
+    y2 = num2 / den
+  end subroutine interp_pair
+
+  subroutine interp_pair_pt(xp, yp1, yp2, np, xb, y1, y2, idx_hint, idx_used)
+    integer, intent(in) :: np
+    real(wp), intent(in) :: xp(np), yp1(np), yp2(np), xb
+    real(wp), intent(out) :: y1, y2
+    integer, intent(in), optional :: idx_hint
+    integer, intent(out), optional :: idx_used
+    integer :: n_nearest_pt, action, il, ir
+
+    n_nearest_pt = nearest_monotone_index(xp, xb, idx_hint)
+    if (present(idx_used)) idx_used = n_nearest_pt
+    if (same_abscissa(xb, xp(n_nearest_pt))) then
+      y1 = yp1(n_nearest_pt)
+      y2 = yp2(n_nearest_pt)
+      return
+    end if
+
+    call pt_interp_action(xp, np, xb, n_nearest_pt, action, il, ir)
+    select case (action)
+    case (1)
+      call interp_pair_linear_segment(xp, yp1, yp2, il, ir, xb, y1, y2)
+    case (2)
+      y1 = yp1(il)
+      y2 = yp2(il)
+    case default
+      call interp_pair(xp, yp1, yp2, np, xb, y1, y2)
+    end select
+  end subroutine interp_pair_pt
+
+  subroutine interp_pair_linear_segment(xp, yp1, yp2, i_left, i_right, xb, y1, y2)
+    integer, intent(in) :: i_left, i_right
+    real(wp), intent(in) :: xp(:), yp1(:), yp2(:), xb
+    real(wp), intent(out) :: y1, y2
+    real(wp) :: slope1, slope2
+
+    if (i_left >= i_right) then
+      y1 = yp1(i_left)
+      y2 = yp2(i_left)
+    elseif (same_abscissa(xb, xp(i_left))) then
+      y1 = yp1(i_left)
+      y2 = yp2(i_left)
+    elseif (same_abscissa(xb, xp(i_right))) then
+      y1 = yp1(i_right)
+      y2 = yp2(i_right)
+    elseif (same_abscissa(xp(i_left), xp(i_right))) then
+      y1 = yp1(i_left)
+      y2 = yp2(i_left)
+    else
+      slope1 = (yp1(i_right) - yp1(i_left)) / (xp(i_right) - xp(i_left))
+      slope2 = (yp2(i_right) - yp2(i_left)) / (xp(i_right) - xp(i_left))
+      y1 = yp1(i_left) + (xb - xp(i_left)) * slope1
+      y2 = yp2(i_left) + (xb - xp(i_left)) * slope2
+    end if
+  end subroutine interp_pair_linear_segment
+
+  ! ========== Derivative computation (separate subsystem) ==========
+  ! Evaluates d^n p / d e^n using Fornberg finite-difference weights
+  ! on a clipped energy range. Error flags: 1=bad order, 2=no EOS, 3=bad energy,
+  ! 4=small stencil, 5=out-of-bounds (clamped)
   subroutine pressure_derivative_n(ee, n, derivative, status)
     use para_mod, only: log_e, log_p, num_tab
     implicit none
