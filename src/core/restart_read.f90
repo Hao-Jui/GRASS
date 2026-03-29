@@ -98,7 +98,6 @@ contains
     integer, intent(out) :: ierr
     character(len=*), intent(out) :: errmsg
     integer :: unit, ios, s, m
-    character(len=512) :: line
     real(wp) :: vals(restart_value_count)
     integer, parameter :: val_idx(NFIELDS) = [3, 4, 5, 6, 7, 8, 9, 11, 12, 13]
     real(wp) :: scale(NFIELDS)
@@ -111,16 +110,19 @@ contains
       ierr = 1; errmsg = "regrid_read: failed to open restart file"; return
     end if
 
-    read(unit, '(A)', iostat=ios) line
-    if (ios /= 0) then
-      ierr = 2; errmsg = "regrid_read: failed to read header"; close(unit); return
-    end if
-
-    read(line, *, iostat=ios) old_meta%sdiv, old_meta%mdiv, old_meta%spwr, &
+    read(unit, *, iostat=ios) old_meta%sdiv, old_meta%mdiv, old_meta%spwr, &
                               old_meta%r_e, old_meta%e_center, old_meta%r_ratio, &
                               old_meta%omega_e, old_meta%omega_c
     if (ios /= 0) then
-      ierr = 3; errmsg = "regrid_read: malformed header"; close(unit); return
+      if (is_iostat_end(ios)) then
+        ierr = 2
+        errmsg = "regrid_read: failed to read header"
+      else
+        ierr = 3
+        errmsg = "regrid_read: malformed header"
+      end if
+      close(unit)
+      return
     end if
 
     allocate(old_s(old_meta%sdiv), old_m(old_meta%mdiv), source=0._wp)
@@ -132,15 +134,17 @@ contains
 
     do s = 1, old_meta%sdiv
       do m = 1, old_meta%mdiv
-        read(unit, '(A)', iostat=ios) line
+        read(unit, *, iostat=ios) vals
         if (ios /= 0) then
-          ierr = 4; errmsg = "regrid_read: unexpected end of file"; close(unit); return
-        end if
-
-        vals = 0._wp
-        read(line, *, iostat=ios) vals
-        if (ios /= 0) then
-          ierr = 1; errmsg = "restart_read: malformed data"; close(unit); return
+          if (is_iostat_end(ios)) then
+            ierr = 4
+            errmsg = "regrid_read: unexpected end of file"
+          else
+            ierr = 1
+            errmsg = "restart_read: malformed data"
+          end if
+          close(unit)
+          return
         end if
 
         old_s(s) = vals(1)
@@ -267,12 +271,12 @@ contains
 
     do s = 1, new_sdiv
       call locate(old_s, old_sdiv, new_s(s), s_lo(s), s_hi(s), s_wt(s))
-      if (use_quadratic) call quadratic_weights(old_s, old_sdiv, new_s(s), sq_idx(:,s), sq_wt(:,s))
+      if (use_quadratic) call quadratic_weights_bracketed(old_s, old_sdiv, new_s(s), s_lo(s), sq_idx(:,s), sq_wt(:,s))
     end do
 
     do m = 1, new_mdiv
       call locate(old_m, old_mdiv, new_m(m), m_lo(m), m_hi(m), m_wt(m))
-      if (use_quadratic) call quadratic_weights(old_m, old_mdiv, new_m(m), mq_idx(:,m), mq_wt(:,m))
+      if (use_quadratic) call quadratic_weights_bracketed(old_m, old_mdiv, new_m(m), m_lo(m), mq_idx(:,m), mq_wt(:,m))
     end do
 
     if (use_quadratic) then
@@ -339,13 +343,14 @@ contains
     end if
   end subroutine locate
 
-  subroutine quadratic_weights(grid, n, value, idx, weights)
+  subroutine quadratic_weights_bracketed(grid, n, value, idx_low, idx, weights)
     implicit none
     integer, intent(in) :: n
     real(wp), intent(in) :: grid(n), value
+    integer, intent(in) :: idx_low
     integer, intent(out) :: idx(3)
     real(wp), intent(out) :: weights(3)
-    integer :: k, i, j
+    integer :: lo, i, j
     real(wp) :: x(3), denom, sum_w
 
     if (n < 3) then
@@ -363,13 +368,8 @@ contains
     else if (value >= grid(n - 1)) then
       idx = [n - 2, n - 1, n]
     else
-      idx = 0
-      do k = 2, n - 2
-        if (value <= grid(k + 1)) then
-          idx = [k - 1, k, k + 1]; exit
-        end if
-      end do
-      if (idx(1) == 0) idx = [n - 2, n - 1, n]
+      lo = min(max(idx_low, 2), n - 2)
+      idx = [lo - 1, lo, lo + 1]
     end if
 
     x = grid(idx)
@@ -388,6 +388,6 @@ contains
 
     sum_w = sum(weights)
     if (abs(sum_w) > 0._wp) weights = weights / sum_w
-  end subroutine quadratic_weights
+  end subroutine quadratic_weights_bracketed
 
 end module regrid_mod

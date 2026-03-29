@@ -31,7 +31,6 @@ subroutine rotation_solver
   real(wp) :: rho_pole_h, rho_center_h, rho_equator_h, ww_equator_h
   real(wp) :: sphi_pole_h, sphi_center_h, sphi_equator_h
   real(wp) :: root_mphi_re, sqrt_B_coup
-  real(wp) :: t0, t1, dt_alpha, dt_relaxation
   logical :: zero_scalar_mode
 
   ! ---------------------------------------------------------------
@@ -94,24 +93,15 @@ subroutine rotation_solver
         target_rho, target_gama, target_ww, target_sphi)
 
       ! --- Relaxation iteration ---
-      if (timing) call cpu_time(t0)
       call relaxation(target_rho, target_gama, target_ww, target_sphi, root_mphi_re, n_of_it, dif)
-      if (timing) then
-        call cpu_time(t1); dt_relaxation = t1 - t0; call cpu_time(t0)
-      end if
 
       ! --- Update metric potential (alpha) ---
       if (abs(r_ratio - 1.e0_wp) < epsilon(r_ratio)) then
         call impose_rigid_rotation()
       else
-        call update_alpha_potential(r_e_new, dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, &
-            dww_s_cache, dww_m_cache, ds_s_cache, ds_m_cache, d2g_ss_cache, d2g_mm_cache, e_rsm_cache)
+        call update_alpha_potential(r_e_new)
       endif
-      if (timing) then
-        call cpu_time(t1); dt_alpha = t1 - t0; call cpu_time(t0)
-      end if
-      if (timing) write(*,'(A,7(1X,ES12.5))') "Relaxation + Alpha: ", dt_relaxation, dt_alpha
-
+      if (timing .and. n_of_it==5-1) stop "profiling window complete"
       ! Rescale back omega / ww
       omg= omg / r_e_new; ww = ww / r_e_new
       

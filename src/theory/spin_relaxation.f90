@@ -2,7 +2,7 @@ module spin_relaxation
   use, intrinsic :: ieee_arithmetic, only: ieee_is_nan
   use para_mod, only: wp, SDIV, MDIV, s_gp, &
                       rho, gama, ww, sphi, &
-                      has_scalar, mphi_r
+                      has_scalar, mphi_r, timing
   use spin_workspace, only: metric_method, scalar_method
   use anderson_optimized, only: anderson_accel_optimized
   use aitken_mod, only: aitken_delta2
@@ -38,15 +38,43 @@ contains
     real(wp), allocatable, save :: hist_rho(:,:,:), hist_gama(:,:,:), hist_ww(:,:,:), hist_sphi(:,:,:)
 
     real(wp) :: x_k_rho(SDIV,MDIV), x_k_gama(SDIV,MDIV), x_k_ww(SDIV,MDIV), x_k_sphi(SDIV,MDIV)
+    real(wp) :: t0, t1, dt_prep, dt_aitken, dt_metric, dt_scalar, dt_floor
+    integer, parameter :: timing_calls = 5
+    integer, save :: relaxation_call_count = 0
+    real(wp), save :: sum_dt_prep = 0.0_wp, sum_dt_aitken = 0.0_wp, sum_dt_metric = 0.0_wp
+    real(wp), save :: sum_dt_scalar = 0.0_wp, sum_dt_floor = 0.0_wp
     logical  :: aitken_fired, use_picard, use_chebys
+
+    if (timing) then
+      relaxation_call_count = relaxation_call_count + 1
+      dt_prep = 0.0_wp
+      dt_aitken = 0.0_wp
+      dt_metric = 0.0_wp
+      dt_scalar = 0.0_wp
+      dt_floor = 0.0_wp
+      call cpu_time(t0)
+    end if
 
     call ensure_allocated
     call update_diagnostics
+
+    if (timing) then
+      call cpu_time(t1); dt_prep = t1 - t0; call cpu_time(t0)
+    end if
+
     call try_aitken
+
+    if (timing) then
+      call cpu_time(t1); dt_aitken = t1 - t0; call cpu_time(t0)
+    end if
 
     if (.not. aitken_fired) then
       call select_tier
       call apply_metric_update
+    end if
+
+    if (timing) then
+      call cpu_time(t1); dt_metric = t1 - t0; call cpu_time(t0)
     end if
 
     last_was_cheb   = (metric_method == 'Chebys')
@@ -56,10 +84,54 @@ contains
 
     call check_divergence
 
-    if (.not. has_scalar) return
+    if (.not. has_scalar) then
+      if (timing) then
+        sum_dt_prep = sum_dt_prep + dt_prep
+        sum_dt_aitken = sum_dt_aitken + dt_aitken
+        sum_dt_metric = sum_dt_metric + dt_metric
+        sum_dt_scalar = sum_dt_scalar + dt_scalar
+        sum_dt_floor = sum_dt_floor + dt_floor
+        if (mod(relaxation_call_count, timing_calls) == 0) then
+          write(*,'(A,I0,A)') 'relaxation running avg over ', relaxation_call_count, ':'
+          write(*,'(A,1X,ES12.5)') '  prep',   sum_dt_prep   / relaxation_call_count
+          write(*,'(A,1X,ES12.5)') '  aitken', sum_dt_aitken / relaxation_call_count
+          write(*,'(A,1X,ES12.5)') '  metric', sum_dt_metric / relaxation_call_count
+          write(*,'(A,1X,ES12.5)') '  scalar', sum_dt_scalar / relaxation_call_count
+          write(*,'(A,1X,ES12.5)') '  floor',  sum_dt_floor  / relaxation_call_count
+          write(*,'(A,1X,ES12.5)') '  total', &
+            (sum_dt_prep + sum_dt_aitken + sum_dt_metric + sum_dt_scalar + sum_dt_floor) / relaxation_call_count
+        end if
+      end if
+      return
+    end if
+
     if (.not. aitken_fired) call apply_scalar_update
     where(ieee_is_nan(sphi)) sphi = 0.e0_wp
+
+    if (timing) then
+      call cpu_time(t1); dt_scalar = t1 - t0; call cpu_time(t0)
+    end if
+
     call enforce_sphi_floor
+
+    if (timing) then
+      call cpu_time(t1); dt_floor = t1 - t0
+      sum_dt_prep = sum_dt_prep + dt_prep
+      sum_dt_aitken = sum_dt_aitken + dt_aitken
+      sum_dt_metric = sum_dt_metric + dt_metric
+      sum_dt_scalar = sum_dt_scalar + dt_scalar
+      sum_dt_floor = sum_dt_floor + dt_floor
+      if (mod(relaxation_call_count, timing_calls) == 0) then
+        write(*,'(A,I0,A)') 'relaxation running avg over ', relaxation_call_count, ':'
+        write(*,'(A,1X,ES12.5)') '  prep',   sum_dt_prep   / relaxation_call_count
+        write(*,'(A,1X,ES12.5)') '  aitken', sum_dt_aitken / relaxation_call_count
+        write(*,'(A,1X,ES12.5)') '  metric', sum_dt_metric / relaxation_call_count
+        write(*,'(A,1X,ES12.5)') '  scalar', sum_dt_scalar / relaxation_call_count
+        write(*,'(A,1X,ES12.5)') '  floor',  sum_dt_floor  / relaxation_call_count
+        write(*,'(A,1X,ES12.5)') '  total', &
+          (sum_dt_prep + sum_dt_aitken + sum_dt_metric + sum_dt_scalar + sum_dt_floor) / relaxation_call_count
+      end if
+    end if
 
   contains
 

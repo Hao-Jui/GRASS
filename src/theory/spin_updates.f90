@@ -328,9 +328,6 @@ contains
       sum_dt_rotlaw = sum_dt_rotlaw + dt_rotlaw
       sum_dt_eos = sum_dt_eos + dt_eos
       sum_dt_rescale = sum_dt_rescale + dt_rescale
-
-      write(*,'(A,I0,A,4(1X,ES12.5))') 'update_eos_and_velocity call ', eos_update_call_count, ':', &
-        dt_hydro, dt_rotlaw, dt_eos, dt_rescale
       if (eos_update_call_count >= timing_calls) then
         write(*,'(A,I0,A)') 'update_eos_and_velocity avg over ', timing_calls, ':'
         write(*,'(A,1X,ES12.5)') '  hydro', sum_dt_hydro / timing_calls

@@ -23,7 +23,6 @@ module spin_workspace
   real(wp), allocatable :: weighted_even_basis(:,:), weighted_gama_basis(:,:), weighted_omega_basis(:,:)
   real(wp), allocatable :: recon_even_massive_basis(:,:), recon_gama_basis(:,:), recon_omega_basis(:,:)
   real(wp), allocatable, target :: S_metric_rho(:,:), S_metric_gama(:,:), S_metric_omega(:,:), S_metric_sphi(:,:)
-  real(wp), allocatable, target :: D1_metric_rho(:,:), D1_metric_gama(:,:), D1_metric_omega(:,:), D1_metric_sphi(:,:)
   real(wp), allocatable, target :: D2_metric_rho(:,:), D2_metric_gama(:,:), D2_metric_omega(:,:), D2_metric_sphi(:,:)
   real(wp), allocatable, target :: target_rho(:,:), target_gama(:,:), target_ww(:,:), target_sphi(:,:)
   character(len=10) :: metric_method = 'Picard'
@@ -53,7 +52,6 @@ contains
     allocate(recon_omega_basis(MDIV,LMAX))
     allocate(target_rho(SDIV,MDIV), target_gama(SDIV,MDIV), target_ww(SDIV,MDIV), target_sphi(SDIV,MDIV))
     allocate(S_metric_rho(SDIV,MDIV), S_metric_gama(SDIV,MDIV), S_metric_omega(SDIV,MDIV), S_metric_sphi(SDIV,MDIV))
-    allocate(D1_metric_rho(SDIV,LMAX+1), D1_metric_gama(SDIV,LMAX+1), D1_metric_omega(SDIV,LMAX+1), D1_metric_sphi(SDIV,LMAX+1))
     allocate(D2_metric_rho(SDIV,LMAX+1), D2_metric_gama(SDIV,LMAX+1), D2_metric_omega(SDIV,LMAX+1), D2_metric_sphi(SDIV,LMAX+1))
 
     call compute_effective_d01gaf_weights(s_gp, radial_quad_weights)
@@ -117,7 +115,6 @@ contains
     deallocate(recon_even_massive_basis, recon_gama_basis, recon_omega_basis)
     deallocate(target_rho, target_gama, target_ww, target_sphi)
     deallocate(S_metric_rho, S_metric_gama, S_metric_omega, S_metric_sphi)
-    deallocate(D1_metric_rho, D1_metric_gama, D1_metric_omega, D1_metric_sphi)
     deallocate(D2_metric_rho, D2_metric_gama, D2_metric_omega, D2_metric_sphi)
     if (allocated(radial_quad_weights)) deallocate(radial_quad_weights)
     if (allocated(angular_quad_weights)) deallocate(angular_quad_weights)
