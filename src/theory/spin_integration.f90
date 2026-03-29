@@ -114,21 +114,17 @@ contains
     end if
 
     block
-      real(wp) :: r2, inv6 = 1.0_wp / 6.0_wp
+      integer :: si, mi
+      real(wp) :: r2
       r2 = r_e_new * r_e_new
-      associate( x => 0.5_wp * gama, y => -rho, z => 2.0_wp * alpha, sb => -(sphi * sphi) * B_coup)
-      !if (output) then 
-      !  e_gsm_cache      = exp(x)
-      !  e_rsm_cache      = exp(y)
-      !  e2alpha_r2_cache = exp(z) * r2
-      !  Acoup4_cache     = exp(sb)
-      !else
-        e_gsm_cache      = pade_exp(x)
-        e_rsm_cache      = pade_exp(y)
-        e2alpha_r2_cache = pade_exp(z) * r2
-        Acoup4_cache     = pade_exp(sb)
-      !end if
-      end associate
+      do mi = 1, MDIV
+        do si = 1, SDIV
+          e_gsm_cache(si,mi)      = pade_exp(0.5_wp * gama(si,mi))
+          e_rsm_cache(si,mi)      = pade_exp(-rho(si,mi))
+          e2alpha_r2_cache(si,mi) = pade_exp(2.0_wp * alpha(si,mi)) * r2
+          Acoup4_cache(si,mi)     = pade_exp(-sphi(si,mi)**2 * B_coup)
+        end do
+      end do
     end block
 
     if (timing) then
@@ -207,7 +203,7 @@ contains
 
       S_metric_rho(:,m) = egsm * ( &
           8.0_wp * pi * e2alpha_s2_col * matter_sum_col * one_plus_vsq_col * vel_fac_col &
-        + s2_geom * m1 * e_rsm2_col * ((s1_geom * wws)**2 + m1 * wwm**2) &
+        + s2_geom * m1 * e_rsm2_col * (s1_sq_geom * wws**2 + m1 * wwm**2) &
         + dg_s_scaled_col - mum * gm &
         + rho_col * 0.5e0_wp * rho_bracket_col )
 
@@ -251,18 +247,13 @@ contains
                                 D1_metric_rho, D1_metric_gama, D1_metric_omega, D1_metric_sphi)
     real(wp), intent(in)  :: S_metric_rho(:,:), S_metric_gama(:,:), S_metric_omega(:,:), S_metric_sphi(:,:)
     real(wp), intent(out) :: D1_metric_rho(:,:), D1_metric_gama(:,:), D1_metric_omega(:,:), D1_metric_sphi(:,:)
-    call dgemm('T', 'T', LMAX+1, SDIV, MDIV, 1.0_wp, weighted_even_basis, MDIV, S_metric_rho, SDIV, 0.0_wp, D1_metric_rho, LMAX+1)
-    call dgemm('T', 'T', LMAX+1, SDIV, MDIV, 1.0_wp, weighted_even_basis, MDIV, S_metric_sphi, SDIV, 0.0_wp, D1_metric_sphi, LMAX+1)
+    call dgemm('N', 'N', SDIV, LMAX+1, MDIV, 1.0_wp, S_metric_rho, SDIV, weighted_even_basis, MDIV, 0.0_wp, D1_metric_rho, SDIV)
+    call dgemm('N', 'N', SDIV, LMAX+1, MDIV, 1.0_wp, S_metric_sphi, SDIV, weighted_even_basis, MDIV, 0.0_wp, D1_metric_sphi, SDIV)
     D1_metric_gama = 0.0_wp
     D1_metric_omega = 0.0_wp
     if (LMAX > 0) then
-      block
-        real(wp) :: tmp_gama(LMAX, SDIV), tmp_omega(LMAX, SDIV)
-        call dgemm('T', 'T', LMAX, SDIV, MDIV, 1.0_wp, weighted_gama_basis, MDIV, S_metric_gama, SDIV, 0.0_wp, tmp_gama, LMAX)
-        call dgemm('T', 'T', LMAX, SDIV, MDIV, 1.0_wp, weighted_omega_basis, MDIV, S_metric_omega, SDIV, 0.0_wp, tmp_omega, LMAX)
-        D1_metric_gama(2:LMAX+1,:) = tmp_gama
-        D1_metric_omega(2:LMAX+1,:) = tmp_omega
-      end block
+      call dgemm('N', 'N', SDIV, LMAX, MDIV, 1.0_wp, S_metric_gama, SDIV, weighted_gama_basis, MDIV, 0.0_wp, D1_metric_gama(:,2:LMAX+1), SDIV)
+      call dgemm('N', 'N', SDIV, LMAX, MDIV, 1.0_wp, S_metric_omega, SDIV, weighted_omega_basis, MDIV, 0.0_wp, D1_metric_omega(:,2:LMAX+1), SDIV)
     end if
   end subroutine angular_integration
 
@@ -274,29 +265,26 @@ contains
     real(wp), intent(in)  :: root_mphi_re
     real(wp), intent(in)  :: wfac_cache(:), besseli_cache(:,:), besselk_cache(:,:)
     integer :: n
-    real(wp) :: f2n_vals(SDIV), weighted_source(SDIV)
-    real(wp) :: left_prefix(SDIV), right_suffix(SDIV)
+    real(wp) :: f2n_vals(SDIV)
+    real(wp) :: left_prefix(SDIV), right_suffix(SDIV), massive_sphi_scale(SDIV)
     logical :: use_massive_scalar
 
     D2_metric_gama (:,1) = 0.0_wp
     D2_metric_omega(:,1) = 0.0_wp
     use_massive_scalar = mphi_r > (mphi_tran / l_uni)**2 * KAPPA / 1.e10_wp
+    if (use_massive_scalar) massive_sphi_scale = radial_quad_weights * wfac_cache * root_mphi_re
 
     f2n_vals = 1.0_wp
     if (use_massive_scalar) then
       do n = 0, LMAX
-        weighted_source = radial_quad_weights * D1_metric_rho(n+1,:)
-        call integrate_rho_like(n, f2n_vals, weighted_source, D2_metric_rho(:,n+1))
-        weighted_source = radial_quad_weights * wfac_cache * root_mphi_re * D1_metric_sphi(n+1,:)
-        call integrate_massive_sphi(n+1, weighted_source, D2_metric_sphi(:,n+1))
+        call integrate_rho_like(n, f2n_vals, D1_metric_rho(:,n+1), radial_quad_weights, D2_metric_rho(:,n+1))
+        call integrate_massive_sphi(n+1, D1_metric_sphi(:,n+1), massive_sphi_scale, D2_metric_sphi(:,n+1))
         f2n_vals(2:) = f2n_vals(2:) * rad_ratio_g(2:)
       end do
     else
       do n = 0, LMAX
-        weighted_source = radial_quad_weights * D1_metric_rho(n+1,:)
-        call integrate_rho_like(n, f2n_vals, weighted_source, D2_metric_rho(:,n+1))
-        weighted_source = radial_quad_weights * D1_metric_sphi(n+1,:)
-        call integrate_rho_like(n, f2n_vals, weighted_source, D2_metric_sphi(:,n+1))
+        call integrate_rho_like(n, f2n_vals, D1_metric_rho(:,n+1), radial_quad_weights, D2_metric_rho(:,n+1))
+        call integrate_rho_like(n, f2n_vals, D1_metric_sphi(:,n+1), radial_quad_weights, D2_metric_sphi(:,n+1))
         f2n_vals(2:) = f2n_vals(2:) * rad_ratio_g(2:)
       end do
     end if
@@ -304,28 +292,30 @@ contains
     f2n_vals(1) = 1.0_wp
     f2n_vals(2:) = rad_ratio_g(2:)
     do n = 1, LMAX
-      weighted_source = radial_quad_weights * D1_metric_gama(n+1,:)
-      call integrate_gama(n, f2n_vals, weighted_source, D2_metric_gama(:,n+1))
-      weighted_source = radial_quad_weights * D1_metric_omega(n+1,:)
-      call integrate_omega(n, f2n_vals, weighted_source, D2_metric_omega(:,n+1))
+      call integrate_multipole_like(n, f2n_vals, D1_metric_gama(:,n+1), radial_quad_weights, rad_inv_s1, .false., D2_metric_gama(:,n+1))
+      call integrate_multipole_like(n, f2n_vals, D1_metric_omega(:,n+1), radial_quad_weights, rad_left_rho, .true., D2_metric_omega(:,n+1))
       f2n_vals(2:) = f2n_vals(2:) * rad_ratio_g(2:)
     end do
 
   contains
-    subroutine integrate_rho_like(n_phys, f2n_vals, w, out_values)
+    subroutine integrate_rho_like(n_phys, f2n_vals, source_values, source_scale, out_values)
       integer, intent(in) :: n_phys
-      real(wp), intent(in) :: f2n_vals(SDIV), w(SDIV)
+      real(wp), intent(in) :: f2n_vals(SDIV)
+      real(wp), intent(in) :: source_values(:), source_scale(SDIV)
       real(wp), intent(out) :: out_values(SDIV)
       integer :: k
+      real(wp) :: weighted_value
 
       left_prefix(1) = 0.0_wp
       if (n_phys == 0) then
         do k = 2, SDIV
-          left_prefix(k) = left_prefix(k-1) + rad_left_rho(k) * w(k)
+          weighted_value = source_scale(k) * source_values(k)
+          left_prefix(k) = left_prefix(k-1) + rad_left_rho(k) * weighted_value
         end do
-        right_suffix(SDIV) = rad_inv_s1(SDIV) * w(SDIV)
+        right_suffix(SDIV) = rad_inv_s1(SDIV) * source_scale(SDIV) * source_values(SDIV)
         do k = SDIV-1, 2, -1
-          right_suffix(k) = right_suffix(k+1) + rad_inv_s1(k) * w(k)
+          weighted_value = source_scale(k) * source_values(k)
+          right_suffix(k) = right_suffix(k+1) + rad_inv_s1(k) * weighted_value
         end do
         right_suffix(1) = right_suffix(2)
         out_values(1) = right_suffix(1)
@@ -334,11 +324,13 @@ contains
         end do
       else
         do k = 2, SDIV
-          left_prefix(k) = left_prefix(k-1) + rad_left_rho(k) * w(k) / f2n_vals(k)
+          weighted_value = source_scale(k) * source_values(k)
+          left_prefix(k) = left_prefix(k-1) + rad_left_rho(k) * weighted_value / f2n_vals(k)
         end do
-        right_suffix(SDIV) = rad_inv_s1(SDIV) * f2n_vals(SDIV) * w(SDIV)
+        right_suffix(SDIV) = rad_inv_s1(SDIV) * f2n_vals(SDIV) * source_scale(SDIV) * source_values(SDIV)
         do k = SDIV-1, 2, -1
-          right_suffix(k) = right_suffix(k+1) + rad_inv_s1(k) * f2n_vals(k) * w(k)
+          weighted_value = source_scale(k) * source_values(k)
+          right_suffix(k) = right_suffix(k+1) + rad_inv_s1(k) * f2n_vals(k) * weighted_value
         end do
         right_suffix(1) = right_suffix(2)
         out_values(1) = 0.0_wp
@@ -348,82 +340,63 @@ contains
       end if
     end subroutine integrate_rho_like
 
-    subroutine integrate_gama(n_phys, f2n_vals, w, out_values)
+    subroutine integrate_multipole_like(n_phys, f2n_vals, source_values, source_scale, left_prefix_coeff, use_rad_ratio_s_output, out_values)
       integer, intent(in) :: n_phys
-      real(wp), intent(in) :: f2n_vals(SDIV), w(SDIV)
+      real(wp), intent(in) :: f2n_vals(SDIV)
+      real(wp), intent(in) :: source_values(:), source_scale(SDIV), left_prefix_coeff(SDIV)
+      logical, intent(in) :: use_rad_ratio_s_output
       real(wp), intent(out) :: out_values(SDIV)
       integer :: k
-      real(wp) :: boundary_sum
+      real(wp) :: boundary_sum, weighted_value
 
       left_prefix(1) = 0.0_wp
       if (n_phys == 1) then
         boundary_sum = 0.0_wp
         do k = 2, SDIV
-          left_prefix(k) = left_prefix(k-1) + rad_inv_s1(k) * w(k) / f2n_vals(k)
-          boundary_sum = boundary_sum + rad_inv_s1(k) * w(k)
+          weighted_value = source_scale(k) * source_values(k)
+          left_prefix(k) = left_prefix(k-1) + left_prefix_coeff(k) * weighted_value / f2n_vals(k)
+          boundary_sum = boundary_sum + rad_inv_s1(k) * weighted_value
         end do
       else
         do k = 2, SDIV
-          left_prefix(k) = left_prefix(k-1) + rad_inv_s1(k) * w(k) / f2n_vals(k)
+          weighted_value = source_scale(k) * source_values(k)
+          left_prefix(k) = left_prefix(k-1) + left_prefix_coeff(k) * weighted_value / f2n_vals(k)
         end do
       end if
-      right_suffix(SDIV) = rad_right_gama(SDIV) * f2n_vals(SDIV) * w(SDIV)
+      right_suffix(SDIV) = rad_right_gama(SDIV) * f2n_vals(SDIV) * source_scale(SDIV) * source_values(SDIV)
       do k = SDIV-1, 2, -1
-        right_suffix(k) = right_suffix(k+1) + rad_right_gama(k) * f2n_vals(k) * w(k)
+        weighted_value = source_scale(k) * source_values(k)
+        right_suffix(k) = right_suffix(k+1) + rad_right_gama(k) * f2n_vals(k) * weighted_value
       end do
       right_suffix(1) = right_suffix(2)
 
       out_values(1) = merge(boundary_sum, 0.0_wp, n_phys == 1)
       do k = 2, SDIV
-        out_values(k) = real(s_pwr, wp) * f2n_vals(k) * left_prefix(k-1) + rad_ratio_g(k) * right_suffix(k) / f2n_vals(k)
+        if (use_rad_ratio_s_output) then
+          out_values(k) = f2n_vals(k) * rad_ratio_s(k) * left_prefix(k-1) + rad_ratio_g(k) * right_suffix(k) / f2n_vals(k)
+        else
+          out_values(k) = real(s_pwr, wp) * f2n_vals(k) * left_prefix(k-1) + rad_ratio_g(k) * right_suffix(k) / f2n_vals(k)
+        end if
       end do
-    end subroutine integrate_gama
+    end subroutine integrate_multipole_like
 
-    subroutine integrate_omega(n_phys, f2n_vals, w, out_values)
-      integer, intent(in) :: n_phys
-      real(wp), intent(in) :: f2n_vals(SDIV), w(SDIV)
-      real(wp), intent(out) :: out_values(SDIV)
-      integer :: k
-      real(wp) :: boundary_sum
-
-      left_prefix(1) = 0.0_wp
-      if (n_phys == 1) then
-        boundary_sum = 0.0_wp
-        do k = 2, SDIV
-          left_prefix(k) = left_prefix(k-1) + rad_left_rho(k) * w(k) / f2n_vals(k)
-          boundary_sum = boundary_sum + rad_inv_s1(k) * w(k)
-        end do
-      else
-        do k = 2, SDIV
-          left_prefix(k) = left_prefix(k-1) + rad_left_rho(k) * w(k) / f2n_vals(k)
-        end do
-      end if
-      right_suffix(SDIV) = rad_right_gama(SDIV) * f2n_vals(SDIV) * w(SDIV)
-      do k = SDIV-1, 2, -1
-        right_suffix(k) = right_suffix(k+1) + rad_right_gama(k) * f2n_vals(k) * w(k)
-      end do
-      right_suffix(1) = right_suffix(2)
-
-      out_values(1) = merge(boundary_sum, 0.0_wp, n_phys == 1)
-      do k = 2, SDIV
-        out_values(k) = f2n_vals(k) * rad_ratio_s(k) * left_prefix(k-1) + rad_ratio_g(k) * right_suffix(k) / f2n_vals(k)
-      end do
-    end subroutine integrate_omega
-
-    subroutine integrate_massive_sphi(n_idx, w, out_values)
+    subroutine integrate_massive_sphi(n_idx, source_values, source_scale, out_values)
       integer, intent(in) :: n_idx
-      real(wp), intent(in) :: w(SDIV)
+      real(wp), intent(in) :: source_values(:), source_scale(SDIV)
       real(wp), intent(out) :: out_values(SDIV)
       integer :: s
+      real(wp) :: weighted_value
 
-      left_prefix(1) = w(1) * besseli_cache(n_idx,1)
+      left_prefix(1) = source_scale(1) * source_values(1) * besseli_cache(n_idx,1)
       do s = 2, SDIV
-        left_prefix(s) = left_prefix(s-1) + w(s) * besseli_cache(n_idx,s)
+        weighted_value = source_scale(s) * source_values(s)
+        left_prefix(s) = left_prefix(s-1) + weighted_value * besseli_cache(n_idx,s)
       end do
 
-      right_suffix(SDIV) = w(SDIV) * besselk_cache(n_idx,SDIV)
+      right_suffix(SDIV) = source_scale(SDIV) * source_values(SDIV) * besselk_cache(n_idx,SDIV)
       do s = SDIV-1, 1, -1
-        right_suffix(s) = right_suffix(s+1) + w(s) * besselk_cache(n_idx,s)
+        weighted_value = source_scale(s) * source_values(s)
+        right_suffix(s) = right_suffix(s+1) + weighted_value * besselk_cache(n_idx,s)
       end do
 
       out_values(1) = besseli_cache(n_idx,1) * right_suffix(1)
@@ -438,31 +411,67 @@ contains
                                               D2_metric_rho, D2_metric_gama, D2_metric_omega, D2_metric_sphi)
     real(wp), intent(out) :: out_target_rho(:,:), out_target_gama(:,:), out_target_ww(:,:), out_target_sphi(:,:)
     real(wp), intent(in)  :: D2_metric_rho(SDIV,LMAX+1), D2_metric_gama(SDIV,LMAX+1), D2_metric_omega(SDIV,LMAX+1), D2_metric_sphi(SDIV,LMAX+1)
-    scratch_exp_mhalf_gsm = 1.0_wp / e_gsm_cache
+    integer :: si, mi
+    real(wp) :: emhalf
+    logical :: massive_sphi, spherical
+
+    massive_sphi = mphi_r > (mphi_tran / l_uni)**2 * KAPPA / 1.e10_wp
+    spherical = abs(r_ratio - 1.0_wp) < epsilon(r_ratio)
 
     call dgemm('N','T', SDIV, MDIV, LMAX+1, 1.0_wp, D2_metric_rho, SDIV, P_2n, MDIV, 0.0_wp, out_target_rho, SDIV)
-    out_target_rho = -scratch_exp_mhalf_gsm * out_target_rho
 
-    if ( mphi_r > (mphi_tran / l_uni)**2 * KAPPA / 1.e10_wp ) then
+    if (massive_sphi) then
       call dgemm('N','T', SDIV, MDIV, LMAX+1, -1.0_wp, D2_metric_sphi, SDIV, recon_even_massive_basis, MDIV, 0.0_wp, out_target_sphi, SDIV)
-      out_target_sphi = scratch_exp_mhalf_gsm * out_target_sphi
     else
       call dgemm('N','T', SDIV, MDIV, LMAX+1, -1.0_wp, D2_metric_sphi, SDIV, P_2n, MDIV, 0.0_wp, out_target_sphi, SDIV)
     endif
 
-    if (abs(r_ratio - 1.0_wp) < epsilon(r_ratio)) then
+    if (spherical) then
       call dgemm('N','T', SDIV, MDIV, 1, -(2.0_wp/pi), D2_metric_gama(:,2:2), SDIV, recon_gama_basis(:,1:1), MDIV, 0.0_wp, out_target_gama, SDIV)
-      out_target_gama = scratch_exp_mhalf_gsm * out_target_gama
+      if (massive_sphi) then
+        do mi = 1, MDIV
+          do si = 1, SDIV
+            emhalf = 1.0_wp / e_gsm_cache(si,mi)
+            out_target_rho(si,mi)  = -emhalf * out_target_rho(si,mi)
+            out_target_gama(si,mi) = emhalf * out_target_gama(si,mi)
+            out_target_sphi(si,mi) = emhalf * out_target_sphi(si,mi)
+          end do
+        end do
+      else
+        do mi = 1, MDIV
+          do si = 1, SDIV
+            out_target_rho(si,mi) = -out_target_rho(si,mi) / e_gsm_cache(si,mi)
+            out_target_gama(si,mi) = out_target_gama(si,mi) / e_gsm_cache(si,mi)
+          end do
+        end do
+      end if
       out_target_ww = 0.0_wp
       return
     endif
 
-    scratch_exp_rsm_mhalf_gsm = scratch_exp_mhalf_gsm / e_rsm_cache
     call dgemm('N','T', SDIV, MDIV, LMAX, 1.0_wp, D2_metric_omega(:,2:LMAX+1), SDIV, recon_omega_basis, MDIV, 0.0_wp, out_target_ww, SDIV)
-    out_target_ww = scratch_exp_rsm_mhalf_gsm * out_target_ww
-
     call dgemm('N','T', SDIV, MDIV, LMAX, -(2.0_wp/pi), D2_metric_gama(:,2:LMAX+1), SDIV, recon_gama_basis, MDIV, 0.0_wp, out_target_gama, SDIV)
-    out_target_gama = scratch_exp_mhalf_gsm * out_target_gama
+
+    if (massive_sphi) then
+      do mi = 1, MDIV
+        do si = 1, SDIV
+          emhalf = 1.0_wp / e_gsm_cache(si,mi)
+          out_target_rho(si,mi)  = -emhalf * out_target_rho(si,mi)
+          out_target_gama(si,mi) = emhalf * out_target_gama(si,mi)
+          out_target_ww(si,mi)   = emhalf / e_rsm_cache(si,mi) * out_target_ww(si,mi)
+          out_target_sphi(si,mi) = emhalf * out_target_sphi(si,mi)
+        end do
+      end do
+    else
+      do mi = 1, MDIV
+        do si = 1, SDIV
+          emhalf = 1.0_wp / e_gsm_cache(si,mi)
+          out_target_rho(si,mi)  = -emhalf * out_target_rho(si,mi)
+          out_target_gama(si,mi) = emhalf * out_target_gama(si,mi)
+          out_target_ww(si,mi)   = emhalf / e_rsm_cache(si,mi) * out_target_ww(si,mi)
+        end do
+      end do
+    end if
   end subroutine sum_coefficients_and_get_targets
 
   subroutine update_alpha_potential(r_e_new, dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, dww_s_cache, dww_m_cache, &
@@ -471,13 +480,33 @@ contains
     real(wp), intent(in) :: dg_s_cache(:,:), dg_m_cache(:,:), dr_s_cache(:,:), dr_m_cache(:,:), dww_s_cache(:,:), dww_m_cache(:,:)
     real(wp), intent(in) :: ds_s_cache(:,:), ds_m_cache(:,:)
     real(wp), intent(in) :: d2g_ss_cache(:,:), d2g_mm_cache(:,:), e_rsm_cache(:,:)
-    integer :: m
+    integer :: m, s
     real(wp) :: m1, mu_m
+    real(wp) :: t0, t1, dt_deriv_m, dt_column_loop, dt_integrate, dt_adjust
+    integer, save :: alpha_call_count = 0
+    real(wp), save :: sum_dt_deriv_m = 0.0_wp, sum_dt_column_loop = 0.0_wp
+    real(wp), save :: sum_dt_integrate = 0.0_wp, sum_dt_adjust = 0.0_wp
     real(wp), dimension(SDIV,MDIV) :: da_dm, d_gama_sm_all
     real(wp), dimension(SDIV) :: sgp_ratio
-    real(wp), dimension(SDIV) :: temp1_col, temp2_col, temp3_col, temp4_col, temp5_col, temp6_col, temp7_col, temp8_col, temp9_col
-    real(wp), dimension(SDIV) :: numer_m, one_plus_s1dgs, da_col
     real(wp) :: adj_const(SDIV)
+    real(wp) :: gs, gm, rs, rm, ss, sm, gsm, wws, wwm, gss, gmm, e_cache
+    real(wp) :: sg, s1, sg_ratio, sg4, numer_m, one_plus_s1dgs, inv_denom
+    real(wp) :: temp1, temp3, temp4, temp5, temp6, temp7, temp8, temp9
+
+    if (timing) then
+      if (alpha_call_count == 0) then
+        sum_dt_deriv_m = 0.0_wp
+        sum_dt_column_loop = 0.0_wp
+        sum_dt_integrate = 0.0_wp
+        sum_dt_adjust = 0.0_wp
+      end if
+      alpha_call_count = alpha_call_count + 1
+      dt_deriv_m = 0.0_wp
+      dt_column_loop = 0.0_wp
+      dt_integrate = 0.0_wp
+      dt_adjust = 0.0_wp
+      call cpu_time(t0)
+    end if
 
     alpha(:,:) = 0.0_wp
     if (abs(r_ratio - 1.0_wp) < epsilon(r_ratio)) then
@@ -487,45 +516,85 @@ contains
 
       da_dm(1,:) = 0.0e0_wp
       call deriv_m_sub(dg_s_cache, d_gama_sm_all)
+      if (timing) then
+        call cpu_time(t1); dt_deriv_m = t1 - t0; call cpu_time(t0)
+      end if
       do m = 1, MDIV
         mu_m = mu(m)
         m1   = m1_geom(m)
-        associate( gs => dg_s_cache(:,m), gm => dg_m_cache(:,m), &
-             rs => dr_s_cache(:,m), rm => dr_m_cache(:,m), &
-             ss => ds_s_cache(:,m), sm => ds_m_cache(:,m), &
-             gsm => d_gama_sm_all(:,m), wws => dww_s_cache(:,m), &
-             wwm => dww_m_cache(:,m), gss => d2g_ss_cache(:,m), &
-             gmm => d2g_mm_cache(:,m), e_cache => e_rsm_cache(:,m) )
+        da_dm(1,m) = 0.0_wp
+        do s = 2, SDIV
+          gs = dg_s_cache(s,m)
+          gm = dg_m_cache(s,m)
+          rs = dr_s_cache(s,m)
+          rm = dr_m_cache(s,m)
+          ss = ds_s_cache(s,m)
+          sm = ds_m_cache(s,m)
+          gsm = d_gama_sm_all(s,m)
+          wws = dww_s_cache(s,m)
+          wwm = dww_m_cache(s,m)
+          gss = d2g_ss_cache(s,m)
+          gmm = d2g_mm_cache(s,m)
+          e_cache = e_rsm_cache(s,m)
+          sg = s_gp(s)
+          s1 = s1_geom(s)
+          sg_ratio = sgp_ratio(s)
+          sg4 = sgp4_geom(s)
 
-        numer_m        = -mu_m + m1 * gm
-        one_plus_s1dgs =  1.0_wp + s1_geom * gs
+          numer_m = -mu_m + m1 * gm
+          one_plus_s1dgs = 1.0_wp + s1 * gs
+          inv_denom = 1.0_wp / (m1 * one_plus_s1dgs**2 + numer_m**2)
 
-        temp1_col = 2.0_wp * s_gp**2 * sgp_ratio * m1 * wws * wwm * one_plus_s1dgs &
-          - ( sgp4_geom * wws**2 - (s_gp * wwm * sgp_ratio)**2 * m1 ) * numer_m
-        temp2_col = 1.0_wp / ( m1 * one_plus_s1dgs**2 + numer_m**2 )
-        temp3_col = s1_geom * gss + (s1_geom * gs)**2
-        temp4_col = gm * numer_m
-        temp5_col = ( (s1_geom * (rs + gs))**2 - m1 * (rm + gm)**2 ) * numer_m
-        temp6_col = s1_geom * m1 * (  (rs + gs) * (rm + gm) / 2.0_wp + gsm + gs * gm  ) * one_plus_s1dgs
-        temp7_col = s1_geom * mu_m * gs * one_plus_s1dgs
-        temp8_col = m1 * e_cache * e_cache
-        temp9_col = -temp2_col * numer_m * ( (s1_geom * ss)**2 - m1 * sm**2 ) &
-              - m1 * s1_geom * one_plus_s1dgs * 2.0_wp * sm * ss
+          temp1 = 2.0_wp * sg**2 * sg_ratio * m1 * wws * wwm * one_plus_s1dgs &
+            - (sg4 * wws**2 - (sg * wwm * sg_ratio)**2 * m1) * numer_m
+          temp3 = s1 * gss + (s1 * gs)**2
+          temp4 = gm * numer_m
+          temp5 = ((s1 * (rs + gs))**2 - m1 * (rm + gm)**2) * numer_m
+          temp6 = s1 * m1 * ((rs + gs) * (rm + gm) / 2.0_wp + gsm + gs * gm) * one_plus_s1dgs
+          temp7 = s1 * mu_m * gs * one_plus_s1dgs
+          temp8 = m1 * e_cache * e_cache
+          temp9 = -inv_denom * numer_m * ((s1 * ss)**2 - m1 * sm**2) &
+            - 2.0_wp * m1 * s1 * one_plus_s1dgs * sm * ss
 
-        da_col = - (rm + gm) / 2.0_wp &
-          - temp2_col * ( (temp3_col - gmm - temp4_col) * numer_m / 2.0_wp &
-          + temp5_col / 4.0_wp - temp6_col  + temp7_col + temp8_col * temp1_col / 4.0_wp ) + temp9_col
-        da_dm(2:SDIV,m) = da_col(2:SDIV)
-        end associate
+          da_dm(s,m) = -(rm + gm) / 2.0_wp &
+            - inv_denom * ((temp3 - gmm - temp4) * numer_m / 2.0_wp &
+            + temp5 / 4.0_wp - temp6 + temp7 + temp8 * temp1 / 4.0_wp) + temp9
+        end do
       end do
+      if (timing) then
+        call cpu_time(t1); dt_column_loop = t1 - t0; call cpu_time(t0)
+      end if
 
       do m = 1, MDIV-1
         alpha(:,m+1) = alpha(:,m) + (mu(m+1) - mu(m)) * ( da_dm(:,m+1) + da_dm(:,m) ) * 0.5e0_wp
       enddo
+      if (timing) then
+        call cpu_time(t1); dt_integrate = t1 - t0; call cpu_time(t0)
+      end if
 
       alpha(SDIV,:) = 0.0_wp
       adj_const = alpha(:,MDIV) - ( gama(:,MDIV) - rho(:,MDIV) )/2.0_wp
       alpha = alpha - spread(adj_const, DIM=2, NCOPIES=MDIV)
+      if (timing) then
+        call cpu_time(t1); dt_adjust = t1 - t0
+      end if
+    end if
+    if (timing) then
+      sum_dt_deriv_m = sum_dt_deriv_m + dt_deriv_m
+      sum_dt_column_loop = sum_dt_column_loop + dt_column_loop
+      sum_dt_integrate = sum_dt_integrate + dt_integrate
+      sum_dt_adjust = sum_dt_adjust + dt_adjust
+      if (alpha_call_count<4) return
+      write(*,'(A,I0,A,5(1X,ES12.5))') 'update_alpha_potential call ', alpha_call_count, ':', &
+        dt_deriv_m, dt_column_loop, dt_integrate, dt_adjust, &
+        dt_deriv_m + dt_column_loop + dt_integrate + dt_adjust
+      write(*,'(A,I0,A)') 'update_alpha_potential running avg over ', alpha_call_count, ':'
+      write(*,'(A,1X,ES12.5)') '  deriv_m_sub', sum_dt_deriv_m / alpha_call_count
+      write(*,'(A,1X,ES12.5)') '  column_loop', sum_dt_column_loop / alpha_call_count
+      write(*,'(A,1X,ES12.5)') '  integrate_mu', sum_dt_integrate / alpha_call_count
+      write(*,'(A,1X,ES12.5)') '  adjust_boundary', sum_dt_adjust / alpha_call_count
+      write(*,'(A,1X,ES12.5)') '  total', &
+        (sum_dt_deriv_m + sum_dt_column_loop + sum_dt_integrate + sum_dt_adjust) / alpha_call_count
     end if
     if (any(alpha .ge. 300.0)) then
       write(*,*) "Error: Alpha fails in at least one row."

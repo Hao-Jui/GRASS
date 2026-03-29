@@ -5,6 +5,16 @@ module spin_derivatives
   private
   public :: deriv_s_vec, deriv_m_vec, deriv_sm_vec, deriv_s_sub, deriv_m_sub
 
+  interface
+    subroutine dgemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc)
+      character(len=1), intent(in) :: transa, transb
+      integer, intent(in) :: m, n, k, lda, ldb, ldc
+      double precision, intent(in) :: alpha, beta
+      double precision, intent(in) :: a(lda,*), b(ldb,*)
+      double precision, intent(inout) :: c(ldc,*)
+    end subroutine dgemm
+  end interface
+
 contains
 
   pure function deriv_s_vec(f) result(df_ds)
@@ -14,7 +24,7 @@ contains
     call deriv_s_sub(f, df_ds)
   end function deriv_s_vec
 
-  pure function deriv_m_vec(f) result(df_dm)
+  function deriv_m_vec(f) result(df_dm)
     use para_mod, only : SDIV, MDIV
     real(wp), dimension(SDIV,MDIV), intent(in) :: f
     real(wp), dimension(SDIV,MDIV) :: df_dm
@@ -49,8 +59,8 @@ contains
     end do
   end subroutine deriv_s_sub
 
-  pure subroutine deriv_m_sub(f, df_dm)
-    use para_mod, only : SDIV, MDIV, DM, angular_collocation, COLLOCATION_UNI, D_mu
+  subroutine deriv_m_sub(f, df_dm)
+    use para_mod, only : SDIV, MDIV, DM, angular_collocation, COLLOCATION_UNI, D_mu_t
     real(wp), dimension(SDIV,MDIV), intent(in)  :: f
     real(wp), dimension(SDIV,MDIV), intent(out) :: df_dm
     if (abs(r_ratio - 1.e0_wp) < epsilon(r_ratio)) then
@@ -58,7 +68,7 @@ contains
       return
     end if
     if (angular_collocation /= COLLOCATION_UNI) then
-      df_dm = matmul(f, transpose(D_mu))
+      call dgemm('N', 'N', SDIV, MDIV, MDIV, 1.0_wp, f, SDIV, D_mu_t, MDIV, 0.0_wp, df_dm, SDIV)
       return
     end if
     if (MDIV < 5) then

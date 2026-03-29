@@ -7,7 +7,7 @@ contains
   subroutine make_grid
     use para_mod, only: SDIV, MDIV, s_gp, mu, DS, DM, pi, wp, &
                         angular_collocation, COLLOCATION_UNI, COLLOCATION_LEG, COLLOCATION_CHEB, &
-                        D_mu, D2_mu, w_mu
+                        D_mu, D_mu_t, D2_mu, w_mu
     implicit none
     integer  :: i, n
     real(wp) :: x, x_prev, p_n, dp_n
@@ -18,13 +18,16 @@ contains
     case (COLLOCATION_UNI)
       mu = [(real(i, wp), i=0, MDIV-1)] * DM
       mu(MDIV) = 1.0_wp
+      D_mu_t = transpose(D_mu)
     case (COLLOCATION_LEG)
       call gauss_lobatto(MDIV, mu, w_mu)
       call barycentric_diff_matrices(mu, D_mu, D2_mu)
+      D_mu_t = transpose(D_mu)
     case (COLLOCATION_CHEB)
       call chebyshev_lobatto_points(MDIV, mu)
       call clenshaw_curtis_weights(MDIV, w_mu)
       call barycentric_diff_matrices(mu, D_mu, D2_mu)
+      D_mu_t = transpose(D_mu)
     case default
       error stop "make_grid: unknown collocation mode"
     end select
