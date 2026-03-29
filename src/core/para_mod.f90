@@ -4,7 +4,7 @@ module para_mod
   ! -- Theory selection ------------------------------------------------------
   integer, parameter :: THEORY_GR = 0
   integer, parameter :: THEORY_ST = 1
-  integer :: active_theory = THEORY_GR
+  integer :: active_theory = THEORY_ST
 
   ! hybrid / anderson
   ! -- Running option --------------------------------------------------------
@@ -20,14 +20,14 @@ module para_mod
 
   ! -- Solver state ----------------------------------------------------------
   logical :: output = .false.
-  logical :: timing = .true.
+  logical :: timing = .false.
   integer, parameter :: SHOOT_FIX1_HC = 1, SHOOT_FIX1_RP = 2, SHOOT_2D = 3
   integer :: shooting = SHOOT_FIX1_HC
   character(len=20) :: FIX1 = "Mb_goal"
   character(len=20) :: FIX2 = "chi_goal"
 
   ! -- Resolutions -----------------------------------------------------------
-  integer, parameter :: res  = 4000
+  integer, parameter :: res  = 40000
   integer, parameter :: s_pwr = 1
   integer :: SDIV = 2 * res + 1
   integer :: MDIV = 41
@@ -40,7 +40,7 @@ module para_mod
   real(wp) :: chi_goal = 0.1e0_wp
   real(wp) :: omc_goal = 30.e0_wp
 
-  real(wp) :: B_goal   = 2.2e5_wp
+  real(wp) :: B_goal   = 2.5e5_wp
   real(wp) :: mphi_goal = 30._wp
 
   ! -- Rotation-law parameters (KEH, Uryu enabled) --------------------------

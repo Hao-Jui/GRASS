@@ -57,7 +57,7 @@ contains
     subroutine single_model()
       use constrain_mod, only: hamiltonian
       real(wp) :: ee, rho0, hamL2, t0, t1
-      r_ratio = 0.60_wp
+      !r_ratio = 0.60_wp
 
       output = .true.; call cpu_time(t0)
           call rotation_solver

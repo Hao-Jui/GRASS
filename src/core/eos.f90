@@ -1,9 +1,8 @@
 module eos_mod
   use precision_mod, only: wp
-  use toolkit_mod, only: interp_dual, interp_pt_dual, &
-                         same_abscissa, pt_interp_action, n_order, bary_w
+  use toolkit_mod, only: same_abscissa, pt_interp_action, n_order, bary_w
   use para_mod, only: log_e, log_p, log_h, log_n0, num_tab, n_PT, phase_transition
-  use ad_mod, only: dual
+  use ad_mod, only: dual, dual_const, operator(+), operator(-), operator(*), operator(/)
   implicit none
   private
   real(wp), allocatable, save :: e_tab(:), p_tab(:)
@@ -62,9 +61,9 @@ contains
     real(wp), intent(in) :: t_in(:), t_out(:)
     type(dual) :: res_log
     if (phase_transition) then
-      call interp_pt_dual(t_in, t_out, num_tab, log(val_in), res_log)
+      call interp_dual_pt(t_in, t_out, num_tab, log(val_in), res_log)
     else
-      call interp_dual(t_in, t_out, num_tab, log(val_in), res_log)
+      call interp_dual_fast(t_in, t_out, num_tab, log(val_in), res_log)
     end if
     interp_eos_dual = exp(res_log)
   end function interp_eos_dual
@@ -424,6 +423,84 @@ contains
       y = yp(i_left) + (xb - xp(i_left)) * (yp(i_right) - yp(i_left)) / (xp(i_right) - xp(i_left))
     end if
   end subroutine linear_segment_scalar
+
+  ! ========== Dual interpolation (one output)
+  subroutine interp_dual_fast(xp, yp, np, xb, yb)
+    integer, intent(in) :: np
+    real(wp), intent(in) :: xp(np), yp(np)
+    type(dual), intent(in) :: xb
+    type(dual), intent(out) :: yb
+    integer :: n_nearest_pt, ir
+
+    n_nearest_pt = nearest_monotone_index(xp, xb%val)
+    ir = min(np - n_order, max(1 + n_order, n_nearest_pt - 1))
+    call barycentric_dual_stencil(xp, yp, ir, xb, yb)
+  end subroutine interp_dual_fast
+
+  subroutine interp_dual_pt(xp, yp, np, xb, yb)
+    integer, intent(in) :: np
+    real(wp), intent(in) :: xp(np), yp(np)
+    type(dual), intent(in) :: xb
+    type(dual), intent(out) :: yb
+    integer :: n_nearest_pt, action, il, ir
+
+    n_nearest_pt = nearest_monotone_index(xp, xb%val)
+    if (same_abscissa(xb%val, xp(n_nearest_pt))) then
+      yb = dual_const(yp(n_nearest_pt))
+      return
+    end if
+
+    call pt_interp_action(xp, np, xb%val, n_nearest_pt, action, il, ir)
+    select case (action)
+    case (1)
+      call linear_segment_dual(xp, yp, il, ir, xb, yb)
+    case (2)
+      yb = dual_const(yp(il))
+    case default
+      call barycentric_dual_stencil(xp, yp, il, xb, yb)
+    end select
+  end subroutine interp_dual_pt
+
+  pure subroutine barycentric_dual_stencil(xp, yp, i_center, xb, yb)
+    real(wp), intent(in) :: xp(:), yp(:)
+    integer, intent(in) :: i_center
+    type(dual), intent(in) :: xb
+    type(dual), intent(out) :: yb
+    integer :: ii
+    type(dual) :: dx, wi, den, num
+
+    num = dual_const(0.0_wp)
+    den = dual_const(0.0_wp)
+    do ii = -n_order, n_order
+      dx = xb - dual_const(xp(i_center + ii))
+      if (abs(dx%val) < epsilon(dx%val)) then
+        yb = dual_const(yp(i_center + ii))
+        return
+      end if
+      wi = dual_const(bary_w(ii)) / dx
+      num = num + wi * dual_const(yp(i_center + ii))
+      den = den + wi
+    end do
+    yb = num / den
+  end subroutine barycentric_dual_stencil
+
+  pure subroutine linear_segment_dual(xp, yp, i_left, i_right, xb, yb)
+    real(wp), intent(in) :: xp(:), yp(:)
+    integer, intent(in) :: i_left, i_right
+    type(dual), intent(in) :: xb
+    type(dual), intent(out) :: yb
+
+    if (i_left >= i_right .or. same_abscissa(xb%val, xp(i_left))) then
+      yb = dual_const(yp(i_left))
+    elseif (same_abscissa(xb%val, xp(i_right))) then
+      yb = dual_const(yp(i_right))
+    elseif (same_abscissa(xp(i_left), xp(i_right))) then
+      yb = dual_const(yp(i_left))
+    else
+      yb = dual_const(yp(i_left)) + (xb - dual_const(xp(i_left))) &
+         * dual_const((yp(i_right) - yp(i_left)) / (xp(i_right) - xp(i_left)))
+    end if
+  end subroutine linear_segment_dual
 
   ! ========== Derivative computation (separate subsystem) ==========
   ! Evaluates d^n p / d e^n using Fornberg finite-difference weights
