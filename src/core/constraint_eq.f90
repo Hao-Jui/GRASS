@@ -2,7 +2,7 @@ module constrain_mod
   use precision_mod, only: wp
   use para_mod, only: SDIV, MDIV, DS, DM, r_e, s_gp, mu, rho, gama, alpha, ww, &
                       energy, pressure, sphi, mphi_r, B_coup, pi, has_scalar, velocity_sq, &
-                      angular_collocation, COLLOCATION_UNI, w_mu
+                      angular_collocation, COLLOCATION_UNI, w_mu, output
   use ope_eq_mod, only: laplacian_operator, gradient_vector
   implicit none
   private
@@ -63,6 +63,10 @@ contains
       mu_weights = w_mu
     else
       mu_weights = DM
+      if (MDIV > 1) then
+        mu_weights(1) = 0.5_wp * DM
+        mu_weights(MDIV) = 0.5_wp * DM
+      end if
     end if
 
     hamL2 = 4.e0_wp * pi * r_e**3 * DS * &
@@ -74,10 +78,10 @@ contains
     !write(*,*) " "
     !write(*,'(16es8.1)') Vphi(:,1)
 
-    if (.true.) then
+    if (output) then
       open(newunit=unit, file="./Cont/hamiltonian.dat", status="replace", action="write", iostat=ios)
-      write(unit,"(2(i0,2X))") SDIV, MDIV
       if (ios == 0) then
+        write(unit,"(2(i0,2X))") SDIV, MDIV
         do s = 1, SDIV
           do m = 1, MDIV
             write(unit, "(3es24.15)") s_gp(s), mu(m), ham(s,m)
@@ -85,7 +89,7 @@ contains
         end do
         close(unit)
       else
-        write(*,*) "hamiltonian: failed to open ./Cont/hamiltonain.dat"
+        write(*,*) "hamiltonian: failed to open ./Cont/hamiltonian.dat"
       end if
     end if
   end subroutine hamiltonian
