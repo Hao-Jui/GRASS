@@ -1,11 +1,13 @@
 module eos_mod
   use precision_mod, only: wp
-  use toolkit_mod, only: interp, interp_pt, interp_dual, interp_pt_dual, &
+  use toolkit_mod, only: interp_dual, interp_pt_dual, &
                          same_abscissa, pt_interp_action, n_order, bary_w
   use para_mod, only: log_e, log_p, log_h, log_n0, num_tab, n_PT, phase_transition
   use ad_mod, only: dual
   implicit none
   private
+  real(wp), allocatable, save :: e_tab(:), p_tab(:)
+  real(wp), allocatable, save :: deriv_coeffs_work(:,:)
   ! Public elemental functions
   public :: e_at_p, p_at_e, p_at_e_dual, n0_at_e, n0_at_h, e_at_h, p_at_h, h_at_p
   ! Public subroutines
@@ -18,9 +20,9 @@ contains
     real(wp), intent(in) :: t_in(:), t_out(:)
     real(wp) :: res_log
     if (phase_transition) then
-      call interp_pt(t_in, t_out, num_tab, log(val_in), res_log)
+      call interp_scalar_pt(t_in, t_out, num_tab, log(val_in), res_log)
     else
-      call interp(t_in, t_out, num_tab, log(val_in), res_log)
+      call interp_scalar(t_in, t_out, num_tab, log(val_in), res_log)
     end if
     interp_eos = exp(res_log)
   end function interp_eos
@@ -80,6 +82,7 @@ contains
     pt_count = 0
     if (allocated(p_at_PT)) deallocate(p_at_PT)
     if (allocated(log_e)) deallocate(log_e, log_p, log_h, log_n0)
+    if (allocated(e_tab)) deallocate(e_tab, p_tab)
 
     open(newunit=unit, file="./eos/" // trim(adjustl(eos_file)) // ".dat", status="old", action="read", iostat=ios)
     if (ios /= 0) error stop "loadEos: failed to open EOS table"
@@ -117,6 +120,9 @@ contains
     log_p = log(log_p * KSCALE)
     log_h = log(log(log_h))
     log_n0 = log(log_n0)
+    allocate(e_tab(num_tab), p_tab(num_tab))
+    e_tab = exp(log_e)
+    p_tab = exp(log_p)
 
     write(output_unit, *) " "
     write(output_unit, *) "# EOS: ", eos_file
@@ -258,6 +264,7 @@ contains
     end if
   end function nearest_monotone_index
 
+  ! ========== Pair interpolation (two outputs, one input)
   subroutine interp_pair(xp, yp1, yp2, np, xb, y1, y2, idx_hint, idx_used)
     integer, intent(in) :: np
     real(wp), intent(in) :: xp(np), yp1(np), yp2(np), xb
@@ -269,27 +276,9 @@ contains
 
     n_nearest_pt = nearest_monotone_index(xp, xb, idx_hint)
     if (present(idx_used)) idx_used = n_nearest_pt
-
     ir = min(np - n_order, max(1 + n_order, n_nearest_pt - 1))
 
-    num1 = 0.0_wp
-    num2 = 0.0_wp
-    den = 0.0_wp
-    do ii = -n_order, n_order
-      dx = xb - xp(ir + ii)
-      if (abs(dx) < epsilon(dx)) then
-        y1 = yp1(ir + ii)
-        y2 = yp2(ir + ii)
-        return
-      end if
-      wi = bary_w(ii) / dx
-      num1 = num1 + wi * yp1(ir + ii)
-      num2 = num2 + wi * yp2(ir + ii)
-      den = den + wi
-    end do
-
-    y1 = num1 / den
-    y2 = num2 / den
+    call barycentric_pair_stencil(xp, yp1, yp2, ir, xb, y1, y2)
   end subroutine interp_pair
 
   subroutine interp_pair_pt(xp, yp1, yp2, np, xb, y1, y2, idx_hint, idx_used)
@@ -303,64 +292,153 @@ contains
     n_nearest_pt = nearest_monotone_index(xp, xb, idx_hint)
     if (present(idx_used)) idx_used = n_nearest_pt
     if (same_abscissa(xb, xp(n_nearest_pt))) then
-      y1 = yp1(n_nearest_pt)
-      y2 = yp2(n_nearest_pt)
-      return
+      y1 = yp1(n_nearest_pt); y2 = yp2(n_nearest_pt); return
     end if
 
     call pt_interp_action(xp, np, xb, n_nearest_pt, action, il, ir)
     select case (action)
     case (1)
-      call interp_pair_linear_segment(xp, yp1, yp2, il, ir, xb, y1, y2)
+      call linear_segment_pair(xp, yp1, yp2, il, ir, xb, y1, y2)
     case (2)
-      y1 = yp1(il)
-      y2 = yp2(il)
+      y1 = yp1(il); y2 = yp2(il)
     case default
-      call interp_pair(xp, yp1, yp2, np, xb, y1, y2)
+      call barycentric_pair_stencil(xp, yp1, yp2, il, xb, y1, y2)
     end select
   end subroutine interp_pair_pt
 
-  subroutine interp_pair_linear_segment(xp, yp1, yp2, i_left, i_right, xb, y1, y2)
-    integer, intent(in) :: i_left, i_right
+  pure subroutine barycentric_pair_stencil(xp, yp1, yp2, i_center, xb, y1, y2)
     real(wp), intent(in) :: xp(:), yp1(:), yp2(:), xb
+    integer, intent(in) :: i_center
+    real(wp), intent(out) :: y1, y2
+    integer :: ii
+    real(wp) :: dx, wi, den, num1, num2
+
+    num1 = 0.0_wp; num2 = 0.0_wp; den = 0.0_wp
+    do ii = -n_order, n_order
+      dx = xb - xp(i_center + ii)
+      if (abs(dx) < epsilon(dx)) then
+        y1 = yp1(i_center + ii); y2 = yp2(i_center + ii); return
+      end if
+      wi = bary_w(ii) / dx
+      num1 = num1 + wi * yp1(i_center + ii)
+      num2 = num2 + wi * yp2(i_center + ii)
+      den = den + wi
+    end do
+    y1 = num1 / den; y2 = num2 / den
+  end subroutine barycentric_pair_stencil
+
+  pure subroutine linear_segment_pair(xp, yp1, yp2, i_left, i_right, xb, y1, y2)
+    real(wp), intent(in) :: xp(:), yp1(:), yp2(:), xb
+    integer, intent(in) :: i_left, i_right
     real(wp), intent(out) :: y1, y2
     real(wp) :: slope1, slope2
 
     if (i_left >= i_right) then
-      y1 = yp1(i_left)
-      y2 = yp2(i_left)
+      y1 = yp1(i_left); y2 = yp2(i_left)
     elseif (same_abscissa(xb, xp(i_left))) then
-      y1 = yp1(i_left)
-      y2 = yp2(i_left)
+      y1 = yp1(i_left); y2 = yp2(i_left)
     elseif (same_abscissa(xb, xp(i_right))) then
-      y1 = yp1(i_right)
-      y2 = yp2(i_right)
+      y1 = yp1(i_right); y2 = yp2(i_right)
     elseif (same_abscissa(xp(i_left), xp(i_right))) then
-      y1 = yp1(i_left)
-      y2 = yp2(i_left)
+      y1 = yp1(i_left); y2 = yp2(i_left)
     else
       slope1 = (yp1(i_right) - yp1(i_left)) / (xp(i_right) - xp(i_left))
       slope2 = (yp2(i_right) - yp2(i_left)) / (xp(i_right) - xp(i_left))
       y1 = yp1(i_left) + (xb - xp(i_left)) * slope1
       y2 = yp2(i_left) + (xb - xp(i_left)) * slope2
     end if
-  end subroutine interp_pair_linear_segment
+  end subroutine linear_segment_pair
+
+  ! ========== Scalar interpolation (one output)
+  subroutine interp_scalar(xp, yp, np, xb, y, idx_hint, idx_used)
+    integer, intent(in) :: np
+    real(wp), intent(in) :: xp(np), yp(np), xb
+    real(wp), intent(out) :: y
+    integer, intent(in), optional :: idx_hint
+    integer, intent(out), optional :: idx_used
+    integer :: n_nearest_pt, ir
+
+    n_nearest_pt = nearest_monotone_index(xp, xb, idx_hint)
+    if (present(idx_used)) idx_used = n_nearest_pt
+    ir = min(np - n_order, max(1 + n_order, n_nearest_pt - 1))
+    call barycentric_scalar_stencil(xp, yp, ir, xb, y)
+  end subroutine interp_scalar
+
+  subroutine interp_scalar_pt(xp, yp, np, xb, y, idx_hint, idx_used)
+    integer, intent(in) :: np
+    real(wp), intent(in) :: xp(np), yp(np), xb
+    real(wp), intent(out) :: y
+    integer, intent(in), optional :: idx_hint
+    integer, intent(out), optional :: idx_used
+    integer :: n_nearest_pt, action, il, ir
+
+    n_nearest_pt = nearest_monotone_index(xp, xb, idx_hint)
+    if (present(idx_used)) idx_used = n_nearest_pt
+    if (same_abscissa(xb, xp(n_nearest_pt))) then
+      y = yp(n_nearest_pt); return
+    end if
+
+    call pt_interp_action(xp, np, xb, n_nearest_pt, action, il, ir)
+    select case (action)
+    case (1)
+      call linear_segment_scalar(xp, yp, il, ir, xb, y)
+    case (2)
+      y = yp(il)
+    case default
+      call barycentric_scalar_stencil(xp, yp, il, xb, y)
+    end select
+  end subroutine interp_scalar_pt
+
+  pure subroutine barycentric_scalar_stencil(xp, yp, i_center, xb, y)
+    real(wp), intent(in) :: xp(:), yp(:), xb
+    integer, intent(in) :: i_center
+    real(wp), intent(out) :: y
+    integer :: ii
+    real(wp) :: dx, wi, den, num
+
+    num = 0.0_wp; den = 0.0_wp
+    do ii = -n_order, n_order
+      dx = xb - xp(i_center + ii)
+      if (abs(dx) < epsilon(dx)) then
+        y = yp(i_center + ii); return
+      end if
+      wi = bary_w(ii) / dx
+      num = num + wi * yp(i_center + ii)
+      den = den + wi
+    end do
+    y = num / den
+  end subroutine barycentric_scalar_stencil
+
+  pure subroutine linear_segment_scalar(xp, yp, i_left, i_right, xb, y)
+    real(wp), intent(in) :: xp(:), yp(:), xb
+    integer, intent(in) :: i_left, i_right
+    real(wp), intent(out) :: y
+
+    if (i_left >= i_right .or. same_abscissa(xb, xp(i_left))) then
+      y = yp(i_left)
+    elseif (same_abscissa(xb, xp(i_right))) then
+      y = yp(i_right)
+    elseif (same_abscissa(xp(i_left), xp(i_right))) then
+      y = yp(i_left)
+    else
+      y = yp(i_left) + (xb - xp(i_left)) * (yp(i_right) - yp(i_left)) / (xp(i_right) - xp(i_left))
+    end if
+  end subroutine linear_segment_scalar
 
   ! ========== Derivative computation (separate subsystem) ==========
   ! Evaluates d^n p / d e^n using Fornberg finite-difference weights
   ! on a clipped energy range. Error flags: 1=bad order, 2=no EOS, 3=bad energy,
   ! 4=small stencil, 5=out-of-bounds (clamped)
-  subroutine pressure_derivative_n(ee, n, derivative, status)
-    use para_mod, only: log_e, log_p, num_tab
+  subroutine pressure_derivative_n(ee, n, derivative, status, idx_hint)
     implicit none
     real(wp), intent(in) :: ee
     integer, intent(in) :: n
     real(wp), intent(out) :: derivative
     integer, intent(out), optional :: status
+    integer, intent(inout), optional :: idx_hint
 
-    integer :: info, idx, half_width, left, right, n_points, i
-    real(wp) :: x0, min_e, max_e
-    real(wp), allocatable :: nodes(:), values(:), coeffs(:, :)
+    integer :: info, idx, half_width, left, right, n_points
+    real(wp) :: x0, x0_log, min_e, max_e
     real(wp) :: ee_clamped
     logical :: fatal_error
     real(wp), parameter :: clamp_tol = 1.d-12
@@ -372,7 +450,8 @@ contains
     if (n < 0) then
       info = 1
       fatal_error = .true.
-    else if (.not. allocated(log_e) .or. .not. allocated(log_p) .or. num_tab <= 0) then
+    else if (.not. allocated(log_e) .or. .not. allocated(log_p) .or. &
+             .not. allocated(e_tab) .or. .not. allocated(p_tab) .or. num_tab <= 0) then
       info = 2
       fatal_error = .true.
     else if (n >= num_tab) then
@@ -389,15 +468,16 @@ contains
       return
     end if
 
-    min_e = exp(log_e(1))
-    max_e = exp(log_e(num_tab))
+    min_e = e_tab(1)
+    max_e = e_tab(num_tab)
 
     ee_clamped = max(min_e, min(max_e, ee))
     if (abs(ee_clamped - ee) > clamp_tol * max(1.d0, abs(ee_clamped))) info = 5
 
     x0 = ee_clamped
-
-    idx = minloc(abs(log(x0) - log_e), 1)
+    x0_log = log(x0)
+    idx = nearest_monotone_index(log_e, x0_log, idx_hint)
+    if (present(idx_hint)) idx_hint = idx
 
     half_width = max(n, 4)
     half_width = min(half_width, num_tab - 1)
@@ -424,23 +504,18 @@ contains
       return
     end if
     
-    allocate(nodes(n_points), values(n_points), coeffs(n_points, n+1))
+    if (.not. allocated(deriv_coeffs_work)) then
+      allocate(deriv_coeffs_work(n_points, n+1))
+    else if (size(deriv_coeffs_work, 1) < n_points .or. size(deriv_coeffs_work, 2) < n+1) then
+      deallocate(deriv_coeffs_work)
+      allocate(deriv_coeffs_work(n_points, n+1))
+    end if
 
-    do i = 1, n_points
-      nodes(i) = exp(log_e(left + i - 1))
-      values(i) = exp(log_p(left + i - 1))
-    end do
-
-    call fornberg_weights(x0, nodes, n_points, n, coeffs)
-
-    do i = 1, n_points
-      derivative = derivative + coeffs(i, n+1) * values(i)
-    end do
+    call fornberg_weights(x0, e_tab(left:right), n_points, n, deriv_coeffs_work(1:n_points, 1:n+1))
+    derivative = dot_product(deriv_coeffs_work(1:n_points, n+1), p_tab(left:right))
 
     if (abs(ee_clamped - ee) > clamp_tol * max(1.d0, abs(ee_clamped))) &
       info = max(info, 5)
-
-    deallocate(nodes, values, coeffs)
 
     if (present(status)) status = info
     if (fatal_error) derivative = 0.d0
