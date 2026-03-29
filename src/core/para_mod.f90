@@ -20,7 +20,7 @@ module para_mod
 
   ! -- Solver state ----------------------------------------------------------
   logical :: output = .false.
-  logical :: timing = .false.
+  logical :: timing = .true.
   integer, parameter :: SHOOT_FIX1_HC = 1, SHOOT_FIX1_RP = 2, SHOOT_2D = 3
   integer :: shooting = SHOOT_FIX1_HC
   character(len=20) :: FIX1 = "Mb_goal"

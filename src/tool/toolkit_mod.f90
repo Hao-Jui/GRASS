@@ -417,12 +417,7 @@ contains
     implicit none
     integer,intent(in) :: n
     real(wp),intent(in) :: x
-    integer :: ell_idx, Lrec, l_idx
-    real(wp) :: xx, i_prev, i_curr, i_next, two_ell_plus_one
-    real(wp) :: sinh_x, cosh_x, scale, besseli_pos
-    real(wp), parameter :: eps_small = 1.e-3_wp
-    real(wp), parameter :: switch_downward = 20.0_wp
-    real(wp) :: i0_exact
+    real(wp) :: xx, besseli_pos
     real(wp) :: sign_factor
 
     if (n < 0) then
@@ -431,118 +426,33 @@ contains
 
     xx = abs(x)
     sign_factor = merge(-1.0_wp, 1.0_wp, x < 0.0_wp .and. mod(n,2) == 1)
-
-    if (xx < eps_small) then
-      besseli = clip_bessel(sign_factor * abs(spherical_i_series(n, xx)))
-      return
-    end if
-
-    if (xx <= switch_downward) then
-      Lrec = max(n + 40, 60)
-      call ensure_bessel_workspace(Lrec + 2)
-      bessel_down_workspace(Lrec+1) = 0.0_wp
-      bessel_down_workspace(Lrec)   = 1.0_wp
-      do l_idx = Lrec, 1, -1
-        bessel_down_workspace(l_idx-1) = bessel_down_workspace(l_idx+1) + &
-          ((2.0_wp*dble(l_idx)+1.0_wp)/xx) * bessel_down_workspace(l_idx)
-      end do
-      sinh_x = sinh(xx)
-      i0_exact = sinh_x / xx
-      scale = i0_exact / bessel_down_workspace(0)
-      besseli_pos = abs(scale * bessel_down_workspace(n))
-      besseli = clip_bessel(sign_factor * besseli_pos)
-      return
-    end if
-
-    if (xx > 700.0_wp) then
-      sinh_x = 0.5e0_wp * exp(xx)
-      cosh_x = sinh_x
-    elseif (xx < -700.0_wp) then
-      sinh_x = -0.5e0_wp * exp(-xx)
-      cosh_x = -sinh_x
-    else
-      sinh_x = sinh(xx)
-      cosh_x = cosh(xx)
-    end if
-
-    i_prev = sinh_x / xx
-    if (n == 0) then
-      besseli = clip_bessel(sign_factor * abs(i_prev))
-      return
-    end if
-
-    i_curr = (xx*cosh_x - sinh_x) / (xx*xx)
-    if (n == 1) then
-      besseli = clip_bessel(sign_factor * abs(i_curr))
-      return
-    end if
-
-    do ell_idx = 1, n-1
-      two_ell_plus_one = dble(2*ell_idx + 1)
-      i_next = i_prev - (two_ell_plus_one/xx) * i_curr
-      i_prev = i_curr
-      i_curr = i_next
-    end do
-
-    besseli = clip_bessel(sign_factor * abs(i_curr))
+    besseli_pos = spherical_i_value(n, xx)
+    besseli = clip_bessel(sign_factor * besseli_pos)
   end function besseli
 
   real(wp) function besselk(n,x)
     implicit none
     integer,intent(in) :: n
     real(wp),intent(in) :: x
-    integer :: ell
-    real(wp) :: xx, k_prev, k_curr, k_next, two_ell_plus_one
-    real(wp), parameter :: eps_small = 1.e-3_wp
-    real(wp) :: exp_neg, em1
+    real(wp) :: xx
 
     if (n < 0) then
       stop "besselk expects n >= 0"
     end if
 
     xx = abs(x)
-    if (abs(xx) < epsilon(xx)) then
-      besselk = 0.0_wp
-      return
-    end if
-
-    if (xx < eps_small) then
-      em1 = expm1_safe(-xx)
-      exp_neg = 1.0_wp + em1
-    else
-      exp_neg = exp(-xx)
-    end if
-
-    k_prev = clip_besselk(exp_neg / xx)
-    if (n == 0) then
-      besselk = k_prev
-      return
-    end if
-
-    k_curr = clip_besselk(exp_neg * (1.0_wp + 1.0_wp/xx) / xx)
-    if (n == 1) then
-      besselk = k_curr
-      return
-    end if
-
-    do ell = 1, n-1
-      two_ell_plus_one = dble(2*ell + 1)
-      k_next = k_prev + (two_ell_plus_one/xx) * k_curr
-      k_prev = k_curr
-      k_curr = clip_besselk(k_next)
-    end do
-
-    besselk = k_curr
+    besselk = spherical_k_value(n, xx)
   end function besselk
 
   subroutine bessel_even_tables(x, lmax, ivec, kvec)
     real(wp), intent(in) :: x
     integer, intent(in) :: lmax
     real(wp), intent(out) :: ivec(0:lmax), kvec(0:lmax)
-    integer :: nord, ell, n, lrec
-    real(wp) :: xx, sh, ch, exp_neg, prev, curr, nxt, scale
-    real(wp), parameter :: eps_small = 1.e-3_wp, switch_downward = 20.0_wp
-    real(wp), allocatable :: work(:)
+    integer :: nord, ell, n, lrec, l_idx
+    real(wp) :: xx, prev, curr, nxt, scale
+    real(wp) :: sinh_x, cosh_x, exp_neg
+    real(wp), parameter :: eps_small = 1.e-3_wp
+    real(wp), parameter :: switch_downward = 20.0_wp
 
     if (lmax < 0) return
     xx = abs(x)
@@ -551,40 +461,45 @@ contains
     ! --- i_ell (modified spherical Bessel, 1st kind) ---
     if (xx < eps_small) then
       do n = 0, lmax
-        ivec(n) = clip_bessel(abs(spherical_i_series(2*n, xx)))
+        ivec(n) = clip_bessel(spherical_i_series(2*n, xx))
       end do
     else if (xx <= switch_downward) then
       lrec = max(nord + 40, 60)
-      allocate(work(0:lrec+1))
-      work(lrec+1) = 0.0_wp; work(lrec) = 1.0_wp
-      do ell = lrec, 1, -1
-        work(ell-1) = work(ell+1) + (2.0_wp*ell + 1.0_wp)/xx * work(ell)
+      call ensure_bessel_workspace(lrec + 2)
+      bessel_down_workspace(lrec+1) = 0.0_wp
+      bessel_down_workspace(lrec) = 1.0_wp
+      do l_idx = lrec, 1, -1
+        bessel_down_workspace(l_idx-1) = bessel_down_workspace(l_idx+1) + &
+          ((2.0_wp * dble(l_idx) + 1.0_wp) / xx) * bessel_down_workspace(l_idx)
       end do
-      scale = sinh(xx) / xx / work(0)
+      scale = (sinh(xx) / xx) / bessel_down_workspace(0)
       do n = 0, lmax
-        ivec(n) = clip_bessel(abs(scale * work(2*n)))
+        ivec(n) = clip_bessel(scale * bessel_down_workspace(2*n))
       end do
-      deallocate(work)
     else
       if (xx > 700.0_wp) then
-        sh = 0.5e0_wp * exp(xx/2.0_wp) * exp(xx/2.0_wp); ch = sh
+        sinh_x = 0.5e0_wp * exp(xx)
+        cosh_x = sinh_x
       else
-        sh = sinh(xx); ch = cosh(xx)
+        sinh_x = sinh(xx)
+        cosh_x = cosh(xx)
       end if
-      prev = sh / xx
-      curr = (xx*ch - sh) / (xx*xx)
-      ivec(0) = clip_bessel(abs(prev))
-      if (lmax >= 1) ivec(1) = clip_bessel(abs(curr))
+      prev = sinh_x / xx
+      ivec(0) = clip_bessel(prev)
+      if (nord >= 1) curr = (xx * cosh_x - sinh_x) / (xx * xx)
+      if (lmax >= 1) ivec(1) = clip_bessel(curr)
       do ell = 1, nord - 1
-        nxt = prev - (2.0_wp*ell + 1.0_wp)/xx * curr
-        prev = clip_bessel(curr); curr = clip_bessel(nxt)
-        if (mod(ell+1, 2) == 0) ivec((ell+1)/2) = clip_bessel(abs(curr))
+        nxt = prev - (2.0_wp * ell + 1.0_wp) / xx * curr
+        prev = curr
+        curr = nxt
+        if (mod(ell + 1, 2) == 0) ivec((ell + 1) / 2) = clip_bessel(curr)
       end do
     end if
 
     ! --- k_ell (modified spherical Bessel, 2nd kind) ---
     if (xx < epsilon(xx)) then
-      kvec = 0.0_wp; return
+      kvec = 0.0_wp
+      return
     end if
     if (xx < eps_small) then
       exp_neg = 1.0_wp + expm1_safe(-xx)
@@ -592,15 +507,117 @@ contains
       exp_neg = exp(-xx)
     end if
     prev = clip_besselk(exp_neg / xx)
-    curr = clip_besselk(exp_neg * (1.0_wp + 1.0_wp/xx) / xx)
     kvec(0) = prev
+    if (nord >= 1) curr = clip_besselk(exp_neg * (1.0_wp + 1.0_wp / xx) / xx)
     if (lmax >= 1) kvec(1) = curr
     do ell = 1, nord - 1
-      nxt = prev + (2.0_wp*ell + 1.0_wp)/xx * curr
-      prev = curr; curr = clip_besselk(nxt)
-      if (mod(ell+1, 2) == 0) kvec((ell+1)/2) = curr
+      nxt = prev + (2.0_wp * ell + 1.0_wp) / xx * curr
+      prev = curr
+      curr = clip_besselk(nxt)
+      if (mod(ell + 1, 2) == 0) kvec((ell + 1) / 2) = curr
     end do
   end subroutine bessel_even_tables
+
+  real(wp) function spherical_i_value(n, x)
+    implicit none
+    integer, intent(in) :: n
+    real(wp), intent(in) :: x
+    integer :: ell_idx, Lrec, l_idx
+    real(wp) :: i_prev, i_curr, i_next, two_ell_plus_one
+    real(wp) :: sinh_x, cosh_x, scale
+    real(wp), parameter :: eps_small = 1.e-3_wp
+    real(wp), parameter :: switch_downward = 20.0_wp
+
+    if (x < eps_small) then
+      spherical_i_value = spherical_i_series(n, x)
+      return
+    end if
+
+    if (x <= switch_downward) then
+      Lrec = max(n + 40, 60)
+      call ensure_bessel_workspace(Lrec + 2)
+      bessel_down_workspace(Lrec+1) = 0.0_wp
+      bessel_down_workspace(Lrec)   = 1.0_wp
+      do l_idx = Lrec, 1, -1
+        bessel_down_workspace(l_idx-1) = bessel_down_workspace(l_idx+1) + &
+          ((2.0_wp*dble(l_idx)+1.0_wp)/x) * bessel_down_workspace(l_idx)
+      end do
+      scale = (sinh(x) / x) / bessel_down_workspace(0)
+      spherical_i_value = scale * bessel_down_workspace(n)
+      return
+    end if
+
+    if (x > 700.0_wp) then
+      sinh_x = 0.5e0_wp * exp(x)
+      cosh_x = sinh_x
+    else
+      sinh_x = sinh(x)
+      cosh_x = cosh(x)
+    end if
+
+    i_prev = sinh_x / x
+    if (n == 0) then
+      spherical_i_value = i_prev
+      return
+    end if
+
+    i_curr = (x*cosh_x - sinh_x) / (x*x)
+    if (n == 1) then
+      spherical_i_value = i_curr
+      return
+    end if
+
+    do ell_idx = 1, n-1
+      two_ell_plus_one = dble(2*ell_idx + 1)
+      i_next = i_prev - (two_ell_plus_one/x) * i_curr
+      i_prev = i_curr
+      i_curr = i_next
+    end do
+
+    spherical_i_value = i_curr
+  end function spherical_i_value
+
+  real(wp) function spherical_k_value(n, x)
+    implicit none
+    integer, intent(in) :: n
+    real(wp), intent(in) :: x
+    integer :: ell
+    real(wp) :: k_prev, k_curr, k_next, two_ell_plus_one
+    real(wp), parameter :: eps_small = 1.e-3_wp
+    real(wp) :: exp_neg
+
+    if (x < epsilon(x)) then
+      spherical_k_value = 0.0_wp
+      return
+    end if
+
+    if (x < eps_small) then
+      exp_neg = 1.0_wp + expm1_safe(-x)
+    else
+      exp_neg = exp(-x)
+    end if
+
+    k_prev = clip_besselk(exp_neg / x)
+    if (n == 0) then
+      spherical_k_value = k_prev
+      return
+    end if
+
+    k_curr = clip_besselk(exp_neg * (1.0_wp + 1.0_wp/x) / x)
+    if (n == 1) then
+      spherical_k_value = k_curr
+      return
+    end if
+
+    do ell = 1, n-1
+      two_ell_plus_one = dble(2*ell + 1)
+      k_next = k_prev + (two_ell_plus_one/x) * k_curr
+      k_prev = k_curr
+      k_curr = clip_besselk(k_next)
+    end do
+
+    spherical_k_value = k_curr
+  end function spherical_k_value
 
   pure real(wp) function odd_double_factorial(m)
     implicit none
