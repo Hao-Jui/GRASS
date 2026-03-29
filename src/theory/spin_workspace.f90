@@ -22,7 +22,6 @@ module spin_workspace
   real(wp), allocatable :: angular_quad_weights(:)
   real(wp), allocatable :: weighted_even_basis(:,:), weighted_gama_basis(:,:), weighted_omega_basis(:,:)
   real(wp), allocatable :: recon_even_massive_basis(:,:), recon_gama_basis(:,:), recon_omega_basis(:,:)
-  real(wp), allocatable, target :: scratch_exp_mhalf_gsm(:,:), scratch_exp_rsm_mhalf_gsm(:,:)
   real(wp), allocatable, target :: S_metric_rho(:,:), S_metric_gama(:,:), S_metric_omega(:,:), S_metric_sphi(:,:)
   real(wp), allocatable, target :: D1_metric_rho(:,:), D1_metric_gama(:,:), D1_metric_omega(:,:), D1_metric_sphi(:,:)
   real(wp), allocatable, target :: D2_metric_rho(:,:), D2_metric_gama(:,:), D2_metric_omega(:,:), D2_metric_sphi(:,:)
@@ -52,10 +51,9 @@ contains
     allocate(recon_even_massive_basis(MDIV,LMAX+1))
     allocate(recon_gama_basis(MDIV,LMAX))
     allocate(recon_omega_basis(MDIV,LMAX))
-    allocate(scratch_exp_mhalf_gsm(SDIV,MDIV), scratch_exp_rsm_mhalf_gsm(SDIV,MDIV))
     allocate(target_rho(SDIV,MDIV), target_gama(SDIV,MDIV), target_ww(SDIV,MDIV), target_sphi(SDIV,MDIV))
     allocate(S_metric_rho(SDIV,MDIV), S_metric_gama(SDIV,MDIV), S_metric_omega(SDIV,MDIV), S_metric_sphi(SDIV,MDIV))
-    allocate(D1_metric_rho(LMAX+1,SDIV), D1_metric_gama(LMAX+1,SDIV), D1_metric_omega(LMAX+1,SDIV), D1_metric_sphi(LMAX+1,SDIV))
+    allocate(D1_metric_rho(SDIV,LMAX+1), D1_metric_gama(SDIV,LMAX+1), D1_metric_omega(SDIV,LMAX+1), D1_metric_sphi(SDIV,LMAX+1))
     allocate(D2_metric_rho(SDIV,LMAX+1), D2_metric_gama(SDIV,LMAX+1), D2_metric_omega(SDIV,LMAX+1), D2_metric_sphi(SDIV,LMAX+1))
 
     call compute_effective_d01gaf_weights(s_gp, radial_quad_weights)
@@ -77,7 +75,7 @@ contains
     rad_ratio_s(2:) = ((1.e0_wp - s_gp(2:)) / s_gp(2:))**s_pwr
     rad_ratio_g(2:) = ((1.e0_wp - s_gp(2:)) / s_gp(2:))**(2 * s_pwr)
     sin_theta_inv = 0.e0_wp
-    sin_theta_inv(2:) = 1.e0_wp / sin_theta(2:)
+    where (sin_theta > 1.e-12_wp) sin_theta_inv = 1.e0_wp / sin_theta
     allocate(sgp_term_1d(SDIV))
     sgp_term_1d = s_gp / (1.e0_wp - s_gp)
     sgp_term_2d_cache = spread(sgp_term_1d, 2, MDIV)
@@ -117,7 +115,6 @@ contains
     deallocate(sgp_term_2d_cache, sin_theta_2d_cache, sgp_2d_cache)
     deallocate(weighted_even_basis, weighted_gama_basis, weighted_omega_basis)
     deallocate(recon_even_massive_basis, recon_gama_basis, recon_omega_basis)
-    deallocate(scratch_exp_mhalf_gsm, scratch_exp_rsm_mhalf_gsm)
     deallocate(target_rho, target_gama, target_ww, target_sphi)
     deallocate(S_metric_rho, S_metric_gama, S_metric_omega, S_metric_sphi)
     deallocate(D1_metric_rho, D1_metric_gama, D1_metric_omega, D1_metric_sphi)
