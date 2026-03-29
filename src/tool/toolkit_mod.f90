@@ -19,6 +19,10 @@ module toolkit_mod
   real(wp), parameter :: bary_w(-n_order:n_order) = &
       [1.0_wp, -8.0_wp, 28.0_wp, -56.0_wp, 70.0_wp, -56.0_wp, 28.0_wp, -8.0_wp, 1.0_wp] / 40320.0_wp
 
+  ! Persistent workspace for besseli downward recurrence (avoids repeated allocate/deallocate)
+  real(wp), allocatable, save :: bessel_down_workspace(:)
+  integer, save :: bessel_down_size = 0
+
 contains
   pure elemental logical function same_abscissa(xa, xb) result(is_same)
     implicit none
@@ -28,6 +32,20 @@ contains
     scale = max(1.0_wp, abs(xa), abs(xb))
     is_same = abs(xa - xb) <= 16.0_wp * epsilon(scale) * scale
   end function same_abscissa
+
+  subroutine ensure_bessel_workspace(needed_size)
+    integer, intent(in) :: needed_size
+    real(wp), allocatable :: tmp(:)
+    if (.not. allocated(bessel_down_workspace)) then
+      allocate(bessel_down_workspace(needed_size))
+      bessel_down_size = needed_size
+    else if (bessel_down_size < needed_size) then
+      allocate(tmp(needed_size))
+      deallocate(bessel_down_workspace)
+      call move_alloc(tmp, bessel_down_workspace)
+      bessel_down_size = needed_size
+    end if
+  end subroutine ensure_bessel_workspace
 
   pure logical function same_grid(x, grid) result(is_same)
     real(wp), intent(in) :: x(:), grid(:)
@@ -395,7 +413,7 @@ contains
 
   end function plgndr
 
-  real(wp) function besseli(n,x) 
+  real(wp) function besseli(n,x)
     implicit none
     integer,intent(in) :: n
     real(wp),intent(in) :: x
@@ -405,7 +423,6 @@ contains
     real(wp), parameter :: eps_small = 1.e-3_wp
     real(wp), parameter :: switch_downward = 20.0_wp
     real(wp) :: i0_exact
-    real(wp), allocatable :: down_vals(:)
     real(wp) :: sign_factor
 
     if (n < 0) then
@@ -413,11 +430,7 @@ contains
     end if
 
     xx = abs(x)
-    if (x < 0.0_wp .and. mod(n,2) == 1) then
-      sign_factor = -1.0_wp
-    else
-      sign_factor = 1.0_wp
-    end if
+    sign_factor = merge(-1.0_wp, 1.0_wp, x < 0.0_wp .and. mod(n,2) == 1)
 
     if (xx < eps_small) then
       besseli = clip_bessel(sign_factor * abs(spherical_i_series(n, xx)))
@@ -426,26 +439,26 @@ contains
 
     if (xx <= switch_downward) then
       Lrec = max(n + 40, 60)
-      allocate(down_vals(0:Lrec+1))
-      down_vals(Lrec+1) = 0.0_wp
-      down_vals(Lrec)   = 1.0_wp
+      call ensure_bessel_workspace(Lrec + 2)
+      bessel_down_workspace(Lrec+1) = 0.0_wp
+      bessel_down_workspace(Lrec)   = 1.0_wp
       do l_idx = Lrec, 1, -1
-        down_vals(l_idx-1) = down_vals(l_idx+1) + ((2.0_wp*dble(l_idx)+1.0_wp)/xx) * down_vals(l_idx)
+        bessel_down_workspace(l_idx-1) = bessel_down_workspace(l_idx+1) + &
+          ((2.0_wp*dble(l_idx)+1.0_wp)/xx) * bessel_down_workspace(l_idx)
       end do
       sinh_x = sinh(xx)
       i0_exact = sinh_x / xx
-      scale = i0_exact / down_vals(0)
-      besseli_pos = abs(scale * down_vals(n))
-      deallocate(down_vals)
-      besseli = clip_bessel( sign_factor * besseli_pos )
+      scale = i0_exact / bessel_down_workspace(0)
+      besseli_pos = abs(scale * bessel_down_workspace(n))
+      besseli = clip_bessel(sign_factor * besseli_pos)
       return
     end if
 
     if (xx > 700.0_wp) then
-      sinh_x = 0.5e0_wp * exp(xx/2.0_wp) * exp(xx/2.0_wp)
+      sinh_x = 0.5e0_wp * exp(xx)
       cosh_x = sinh_x
     elseif (xx < -700.0_wp) then
-      sinh_x = -0.5e0_wp * exp(-xx/2.0_wp) * exp(-xx/2.0_wp)
+      sinh_x = -0.5e0_wp * exp(-xx)
       cosh_x = -sinh_x
     else
       sinh_x = sinh(xx)
@@ -467,8 +480,8 @@ contains
     do ell_idx = 1, n-1
       two_ell_plus_one = dble(2*ell_idx + 1)
       i_next = i_prev - (two_ell_plus_one/xx) * i_curr
-      i_prev = clip_bessel(i_curr)
-      i_curr = clip_bessel(i_next)
+      i_prev = i_curr
+      i_curr = i_next
     end do
 
     besseli = clip_bessel(sign_factor * abs(i_curr))
