@@ -122,8 +122,9 @@ contains
     real(wp), parameter :: HMIN = 1.0e-12_wp
     real(wp), parameter :: FAC_MAX = 5.0_wp, FAC_MIN = 0.1_wp, SAFETY = 0.9_wp
     real(wp), parameter :: PI_BETA = 0.4_wp / 5, PI_ALPHA = 0.7_wp / 5  ! PI-controller exponents
-    real(wp) :: dir, h, hmax, err, err_prev, fac, fac_ceil, scale, dist
-    real(wp) :: y4(neqn), y5(neqn), k(neqn,6), w(neqn)
+    real(wp) :: dir, h, hmax, err, err_prev, fac, fac_ceil, scale, dist, err_i
+    real(wp) :: inv_sqrt_neqn
+    real(wp) :: y5(neqn), k(neqn,5), w(neqn)
     integer :: i
     logical :: rejected
 
@@ -136,7 +137,7 @@ contains
       b5(4)  = [439.0_wp/216, -8.0_wp, 3680.0_wp/513, -845.0_wp/4104], &
       b6(5)  = [-8.0_wp/27, 2.0_wp, -3544.0_wp/2565, 1859.0_wp/4104, -11.0_wp/40], &
       c5th(6)= [16.0_wp/135, 0.0_wp, 6656.0_wp/12825, 28561.0_wp/56430, -9.0_wp/50, 2.0_wp/55], &
-      c4th(6)= [25.0_wp/216, 0.0_wp, 1408.0_wp/2565, 2197.0_wp/4104, -1.0_wp/5, 0.0_wp]
+      errc(6)= [1.0_wp/360, 0.0_wp, -128.0_wp/4275, -2197.0_wp/75240, 1.0_wp/50, 2.0_wp/55]
 
     ! --- Input validation ---
     if (neqn <= 0 .or. flag == 0 .or. abs(flag) > 2) then
@@ -159,6 +160,8 @@ contains
     h = dir * max(1.0e-6_wp, min(abs(dist) * 0.1_wp, hmax))
     step_count = 0
     err_prev = 1.0e-4_wp
+    err = 0.0_wp
+    inv_sqrt_neqn = 1.0_wp / sqrt(real(neqn, wp))
     rejected = .false.
     call f(t, y, yp)
 
@@ -174,30 +177,41 @@ contains
         flag = 6; return
       end if
 
-      ! RKF45 stages: reuse yp as k1
-      k(:,1) = yp
-      w = y + h * b21 * k(:,1);                                    call f(t + a(1)*h, w, k(:,2))
-      w = y + h * (b3(1)*k(:,1) + b3(2)*k(:,2));                   call f(t + a(2)*h, w, k(:,3))
-      w = y + h * (b4(1)*k(:,1) + b4(2)*k(:,2) + b4(3)*k(:,3));    call f(t + a(3)*h, w, k(:,4))
-      w = y + h * (b5(1)*k(:,1) + b5(2)*k(:,2) + b5(3)*k(:,3) + b5(4)*k(:,4))
-      call f(t + a(4)*h, w, k(:,5))
-      w = y + h * (b6(1)*k(:,1) + b6(2)*k(:,2) + b6(3)*k(:,3) + b6(4)*k(:,4) + b6(5)*k(:,5))
-      call f(t + a(5)*h, w, k(:,6))
-
-      ! 5th and 4th order solutions
-      y5 = y;  y4 = y
-      do i = 1, 6
-        y5 = y5 + h * c5th(i) * k(:,i)
-        y4 = y4 + h * c4th(i) * k(:,i)
+      ! RKF45 stages: reuse yp as k1 and keep only k2..k6 in workspace
+      do i = 1, neqn
+        w(i) = y(i) + h * b21 * yp(i)
       end do
+      call f(t + a(1)*h, w, k(:,1))
+
+      do i = 1, neqn
+        w(i) = y(i) + h * (b3(1) * yp(i) + b3(2) * k(i,1))
+      end do
+      call f(t + a(2)*h, w, k(:,2))
+
+      do i = 1, neqn
+        w(i) = y(i) + h * (b4(1) * yp(i) + b4(2) * k(i,1) + b4(3) * k(i,2))
+      end do
+      call f(t + a(3)*h, w, k(:,3))
+
+      do i = 1, neqn
+        w(i) = y(i) + h * (b5(1) * yp(i) + b5(2) * k(i,1) + b5(3) * k(i,2) + b5(4) * k(i,3))
+      end do
+      call f(t + a(4)*h, w, k(:,4))
+
+      do i = 1, neqn
+        w(i) = y(i) + h * (b6(1) * yp(i) + b6(2) * k(i,1) + b6(3) * k(i,2) + b6(4) * k(i,3) + b6(5) * k(i,4))
+      end do
+      call f(t + a(5)*h, w, k(:,5))
 
       ! Error estimate (NaN-aware)
       err = 0.0_wp
       do i = 1, neqn
+        y5(i) = y(i) + h * (c5th(1) * yp(i) + c5th(3) * k(i,2) + c5th(4) * k(i,3) + c5th(5) * k(i,4) + c5th(6) * k(i,5))
+        err_i = h * (errc(1) * yp(i) + errc(3) * k(i,2) + errc(4) * k(i,3) + errc(5) * k(i,4) + errc(6) * k(i,5))
         scale = abserr + relerr * max(abs(y(i)), abs(y5(i)))
-        err = max(err, abs(y5(i) - y4(i)) / scale)
+        err = max(err, abs(err_i) / scale)
       end do
-      err = err / sqrt(real(neqn, wp))
+      err = err * inv_sqrt_neqn
       if (ieee_is_nan(err)) then
         ! NaN detected: shrink step and retry
         if (out) call write_step_failure("d02pcf: NaN error estimate, retrying with smaller step", t, h, err, step_count, y, yp)

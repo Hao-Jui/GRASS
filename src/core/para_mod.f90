@@ -10,11 +10,11 @@ module para_mod
   ! -- Running option --------------------------------------------------------
   integer, parameter :: MODE_REGRID  = 1, MODE_DEFAULT = 2
 
-  integer :: run_mode = MODE_REGRID
+  integer :: run_mode = MODE_DEFAULT
 
   ! -- Rotation configuration ------------------------------------------------
   ! uniform / const_j / uryu
-  character(len=20) :: solver_type = "uryu"
+  character(len=20) :: solver_type = "uniform"
   integer, parameter :: COLLOCATION_UNI = 1, COLLOCATION_LEG = 2, COLLOCATION_CHEB = 3
   integer :: angular_collocation = COLLOCATION_UNI
 
@@ -22,15 +22,15 @@ module para_mod
   logical :: output = .false.
   logical :: timing = .false.
   integer, parameter :: SHOOT_FIX1_HC = 1, SHOOT_FIX1_RP = 2, SHOOT_2D = 3
-  integer :: shooting = SHOOT_FIX1_HC
+  integer :: shooting = SHOOT_2D
   character(len=20) :: FIX1 = "Mb_goal"
   character(len=20) :: FIX2 = "chi_goal"
 
   ! -- Resolutions -----------------------------------------------------------
-  integer, parameter :: res  = 1500
+  integer, parameter :: res  = 500
   integer, parameter :: s_pwr = 1
   integer :: SDIV = 2 * res + 1
-  integer :: MDIV = 3001
+  integer :: MDIV = 41
 
   ! -- Target quantities -----------------------------------------------------
   character(len=128) :: eos_file = "MPA1"
@@ -150,7 +150,7 @@ module para_mod
   real(wp), parameter :: MB   = 1.6749286e-24_wp
   real(wp), parameter :: pi   = acos(-1.e0_wp)
 
-  real(wp), parameter :: accuracy  = 1.e-4_wp
+  real(wp), parameter :: accuracy  = 1.e-5_wp
   real(wp), parameter :: tov_rmin  = 1.e-15_wp
   real(wp), parameter :: KAPPA     = 1.e-15_wp * C**2 / G
   real(wp), parameter :: KSCALE    = KAPPA * G / C**4
