@@ -152,6 +152,24 @@ contains
     close(unit)
   end subroutine output_seq
 
+  subroutine damp_2d_step_near_spherical(x_current, delta_trial, rep_current)
+    use shoot_solver_2d_mod, only: rep_map_scale, r_min_ratio, r_eps
+    real(wp), intent(in) :: x_current(2), rep_current
+    real(wp), intent(inout) :: delta_trial(2)
+    real(wp), parameter :: near_spherical_ratio = 0.90_wp
+    real(wp), parameter :: max_gap_fraction = 0.50_wp
+    real(wp) :: rep_cap, x2_limit
+
+    if (rep_current < near_spherical_ratio) return
+
+    rep_cap = min(rep_current + max_gap_fraction * (1.0_wp - rep_current), 1.0_wp - r_eps)
+    x2_limit = log((1.0_wp - rep_cap) / (rep_cap - r_min_ratio)) / rep_map_scale
+
+    if (x_current(2) + delta_trial(2) < x2_limit) then
+      delta_trial(2) = x2_limit - x_current(2)
+    end if
+  end subroutine damp_2d_step_near_spherical
+
   subroutine apply_newton_step
     need_cycle = .false.
     select case (shooting)
@@ -215,6 +233,7 @@ contains
       end if
 
       call clamp_step(delta_x)
+      call damp_2d_step_near_spherical(x, delta_x, r_ratio)
       x = x + delta_x
       call from_solver_coords(x, h_new, r_new)
       h_center = h_new
