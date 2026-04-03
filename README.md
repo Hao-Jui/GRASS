@@ -106,22 +106,101 @@ iter=11-78: Aitken,    dif: 7.6E-4 → 9.6E-9 (67 iters at ρ ≈ 0.847)
 
 ---
 
+## Grid & Coordinates
+
+The code uses a compactified meridional grid:
+- **Radial**: `s ∈ [0, SMAX]` mapped to physical radius `r = r_e * s / (1 - s)` raised to power `s_pwr`
+- **Angular**: `μ ∈ [0, 1]` (cosine of polar angle) on uniform, Legendre, or Chebyshev collocation points
+- **Default resolution**: SDIV = 801, MDIV = 41 (configurable in `para_mod.f90`)
+- **Interpolation**: barycentric Lagrange (4th-order stencil) for spectral-type accuracy
+
+---
+
+## Field Variables
+
+**Metric** (all allocated in `para_mod.f90`):
+- `gama(SDIV, MDIV)` — log conformal factor
+- `rho(SDIV, MDIV)` — log metric deviation (oblate/prolate)
+- `ww(SDIV, MDIV)` — angular velocity frame-dragging
+- `alpha(SDIV, MDIV)` — lapse function
+- `sphi(SDIV, MDIV)` — scalar field (ST theory only)
+
+**Fluid & Thermodynamic**:
+- `pressure`, `energy`, `enthalpy` — from EOS table lookup
+- `velocity_sq` — fluid 3-velocity squared (must be < 1)
+- `F_j` — angular-momentum flux
+
+**Bulk Properties** (computed during each solve):
+- `mass`, `ang_mom`, `chi` — ADM mass, angular momentum, spin parameter
+- `r_e`, `r_ratio` — equatorial radius, polar-to-equatorial ratio
+- `Omega_c`, `Omega_e` — angular velocity (center, equator)
+- `I_inertia`, `Love2` — moment of inertia, tidal Love number
+
+---
+
 ## Repository Layout
 
+**src/core/** — central solver components
+- `para_mod.f90` — global parameters, grid, field allocations, EOS/theory/rotation-law configuration
+- `eos.f90` — EOS table loading and interpolation (log-space, supports phase transitions)
+- `grid.f90` — compactified meridional grid construction
+- `shoot_v2.f90` — Newton shooting driver; calls 1D/2D solvers in `shoot_solver_*_mod.f90`
+- `analysis_v2.f90` — ADM mass, baryon mass, angular momentum, moment of inertia, Love number
+- `constraint_eq.f90` — Hamiltonian constraint evaluation
+- `starting_model.f90`, `sphere.f90` — static and initial-condition setup
+
+**src/theory/** — rotation solver and relaxation
+- `rotation_solver.f90` — outer loop iterating on equatorial radius
+- `spin_integration.f90` — Green's function integrals (metric/scalar targets) via multipole expansion
+- `spin_relaxation.f90`, `relaxation_mod.f90` — 4-stage adaptive relaxation (Picard → Chebyshev → Anderson → Aitken δ²)
+- `spin_workspace.f90` — workspace allocation and geometry caching
+- `spin_updates.f90`, `spin_derivatives.f90` — field updates and grid derivatives
+- `rotational_law_mod.f90` — rotation law implementations (uniform, const-J, Uryu)
+
+**src/tool/** — numerical utilities
+- `toolkit_mod.f90` — barycentric Lagrange interpolation, spectral derivatives, integral accumulation
+- `ad_mod.f90` — automatic differentiation (dual numbers) for dP/dE
+- `cheb_mod.f90`, `spectral_hub.f90` — Chebyshev/Legendre spectral bases
+- `brent.f90` — root finding for rotation laws
+- `nag_compat_mod.f90` — adaptive quadrature integration
+
+**eos/** — tabulated equation-of-state files (user-supplied)
+
+**Cont/** — output directory: Omega.dat, velocity.dat, hamiltonian.dat
+
+---
+
+## Equation of State (EOS) Format
+
+EOS tables are text files with format:
 ```
-src/
-  main.f90             # program entry point
-  core/
-    para_mod.f90       # global parameters, grid/EOS setup
-    toolkit_mod.f90    # interpolation, derivatives, file writers
-    shoot_v2.f90       # shooting / relaxation driver
-    newton_mod.f90     # Newton iteration solver
-    analysis_v2.f90    # global integrals, diagnostics, profiles
-    simpson_mod.f90    # numerical integration routines
-data/eos/              # expected location for EOS tables (user supplied)
-Cont/                  # output directory for diagnostic profiles
-matlab/, not_yet_merged_code/  # legacy utilities / archived experiments
+num_tab
+log_e(1) log_p(1) log_h(1) log_n0(1)
+...
+log_e(num_tab) log_p(num_tab) log_h(num_tab) log_n0(num_tab)
 ```
+where quantities are in **log-space** (e.g., `log_e = ln(e)`, energy density in CGS).
+- `h = 1 + e/p + p/e` (relativistic enthalpy, dimensionless)
+- `n0` is baryon number density
+- Interpolation uses barycentric Lagrange in log-space with phase-transition detection
+
+Default file: `eos/PS_G3.dat` (configurable in `para_mod.f90`).
+
+---
+
+## Solver Data Flow
+
+The main computational loop (in `main.f90`):
+1. **Initialize theory & grid** — set GR/ST, allocate grids in meridional coordinates
+2. **Load EOS** — read tabulated table file
+3. **Select task** — one of: `shoot_v2` (Newton shooting), `MRcurve` (M–R sequences), or `initialize_starting_model` (single model)
+4. **Rotation solver** (in `rotation_solver.f90`):
+   - Outer loop: iterate on equatorial radius `r_e`
+   - Compute Green's function targets for metric and scalar field (via `spin_integration.f90`)
+   - Inner loop: apply 4-stage relaxation to converge metric/scalar toward targets
+   - Check convergence: `|r_e_new / r_e_old - 1| < 1e-7`
+5. **Compute diagnostics** — ADM mass, baryon mass, angular momentum, Love number (in `analysis_v2.f90`)
+6. **Evaluate constraint** — Hamiltonian constraint field written to `Cont/hamiltonian.dat`
 
 ---
 
@@ -159,12 +238,13 @@ make clean
 ## Usage
 
 ```
-./grass gr   # General Relativity
-./grass st   # Scalar–Tensor gravity
+./build/bin/a.out
 ```
 
-The program prints the active theory, loads the EOS tables, assembles the
-grid, and iterates to a self-consistent solution. Diagnostic files are
+Theory (GR or ST) and other options are configured via parameters in
+`src/core/para_mod.f90`. The program prints the active theory, loads the
+EOS tables, assembles the grid, and iterates to a self-consistent
+solution. Diagnostic files are
 written to `./Cont`.
 
 ### Key Outputs
