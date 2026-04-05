@@ -1,14 +1,9 @@
 
-!Subroutine	                                    Purpose
-!reset_newton_state_1d	                        Reinitializes solver state
-!to_solver_coord_1d / from_solver_coord_1d	    Transforms between physical (hc) and solver (x = log(hc)) coordinates
-!clamp_step_1d	                                Trust-region style step limiting (±1.0 max)
-!solve_linear_1d	                              Solves J * delta = rhs with singularity check
-!broyden_update_1d	                            Rank-1 Broyden Jacobian update (secant method style)
-!commit_state_1d	                              Saves current iterate for next Broyden update
-!line_search_1d
+! Active 1D shooting path: textbook Newton in x = log(hc), with
+! a finite-difference Jacobian rebuilt at every iteration and an
+! Armijo backtracking line search for globalization.
 
-module newton_types_mod
+module shoot_solver_1d_types_mod
   implicit none
   type :: newton_state_1d
     logical :: has_jacobian = .false.
@@ -25,12 +20,20 @@ module newton_types_mod
     end subroutine evaluation_function_1d
   end interface
 
-end module newton_types_mod
+end module shoot_solver_1d_types_mod
 
-module shoot_solver_mod_1d
-  use newton_types_mod, only: newton_state_1d
+module shoot_solver_1d_hc_mod
+  use shoot_solver_1d_types_mod, only: newton_state_1d
   implicit none
-  real(8), parameter :: max_step_1d = 1.d0  ! trust-region style clamp on log(h) step; smaller to be less aggressive
+  ! Adaptive step size cap based on error magnitude
+  ! Linear interpolation: cap = CAP_MIN + (CAP_MAX - CAP_MIN) * max(0, 1 - er)
+  ! Reference table (er = error, cap = log-space bound, max change = exp(cap)):
+  !   er = 1.0  -->  cap = 0.2  -->  max h change = ±22%
+  !   er = 0.5  -->  cap = 1.1  -->  max h change = ±3.0×
+  !   er = 0.1  -->  cap = 1.82 -->  max h change = ±6.2×
+  !   er < 0.01 -->  cap ≈ 2.0  -->  max h change = ±7.4× (full Newton)
+  real(8), parameter :: STEP_CAP_MIN = 0.2d0   ! tight cap when er ~ 1 (prevent catastrophe)
+  real(8), parameter :: STEP_CAP_MAX = 2.0d0   ! loose cap near convergence (preserve Newton speed)
 
 contains
   subroutine reset_newton_state_1d(state)
@@ -51,9 +54,13 @@ contains
     real(8), intent(out) :: hc
     hc = exp(x)
   end subroutine from_solver_coord_1d
-  subroutine clamp_step_1d(delta)
+  subroutine clamp_step_1d(delta, er)
     real(8), intent(inout) :: delta
-    delta = max(-max_step_1d, min(delta, max_step_1d))
+    real(8), intent(in)    :: er
+    real(8) :: cap
+    ! Adaptive cap: tight when far from solution, loose when close
+    cap = STEP_CAP_MIN + (STEP_CAP_MAX - STEP_CAP_MIN) * max(0.d0, 1.d0 - er)
+    delta = max(-cap, min(delta, cap))
   end subroutine clamp_step_1d
 
   logical function solve_linear_1d(J, rhs, delta)
@@ -95,7 +102,7 @@ contains
 
   subroutine line_search_1d(x_current, F_current, delta_x, rep, evaluate_func, final_delta, J_est, success)
     ! Armijo backtracking on phi = 0.5*F^2; uses Jacobian estimate when supplied for slope
-    use newton_types_mod, only: evaluation_function_1d
+    use shoot_solver_1d_types_mod, only: evaluation_function_1d
     real(8), intent(in)    :: x_current, F_current, delta_x, rep
     real(8), intent(out)   :: final_delta
     procedure(evaluation_function_1d) :: evaluate_func
@@ -103,8 +110,8 @@ contains
     logical, intent(out), optional :: success
     
     integer, parameter :: max_iter = 15
-    real(8), parameter :: tau = 0.5d0
-    real(8), parameter :: c1 = 1.d-4
+    real(8), parameter :: TAU = 0.5d0
+    real(8), parameter :: C1 = 1.d-4
     real(8)             :: alpha, x_trial, F_trial, hc_trial, rho0_tmp, ee_tmp
     real(8)             :: hc_base
     real(8)             :: phi_old, phi_new, slope0
@@ -147,15 +154,15 @@ contains
     if (present(success)) success = ok
   end subroutine line_search_1d
 
-end module shoot_solver_mod_1d
+end module shoot_solver_1d_hc_mod
 
-module shoot_newton_helpers_1d
+module shoot_solver_1d_hc_helpers_mod
   use analysis_mod, only: mass_radius
   use eos_mod, only: n0_at_h, e_at_h
   use para_mod, only: h_center, r_ratio, Mass, Mass_0, MSUN, M_goal, Mb_goal, FIX1
-  use newton_types_mod, only: newton_state_1d, evaluation_function_1d
-  use shoot_solver_mod_1d, only: from_solver_coord_1d
-  use rotation_uniform, only: rotation_solver
+  use shoot_solver_1d_types_mod, only: newton_state_1d, evaluation_function_1d
+  use shoot_solver_1d_hc_mod, only: from_solver_coord_1d
+  use rotation_solver_mod, only: rotation_solver
   implicit none
 contains  
   subroutine evaluate_solution_1d(hc, rep, F, rho0, ee)
@@ -212,4 +219,4 @@ contains
     end if
   end subroutine build_jacobian_1d
 
-end module shoot_newton_helpers_1d
+end module shoot_solver_1d_hc_helpers_mod

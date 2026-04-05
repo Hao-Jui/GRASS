@@ -51,7 +51,7 @@ module core_parameters
   public :: rho_match, K1, K2, K3
   public :: aa, aaa, dd
   
-  character(len=128) :: eos_name = "PS_G3"
+  character(len=128) :: eos_name = "Zdunik"
   integer, parameter :: num_points = 5931
   
   ! Core density divisions (log10 scale)
@@ -157,26 +157,10 @@ contains
         Gamma1 = 3.000d0; Gamma2 = 3.000d0; Gamma3 = 3.000d0; log_p1 = 34.70364d0
       case ('125H')
         Gamma1 = 3.000d0; Gamma2 = 3.000d0; Gamma3 = 3.000d0; log_p1 = 34.60364d0
-      case ('MPA1_G1')
-        Gamma1 = 4.4798d0; Gamma2 = 3.572d0; Gamma3 = 2.887d0; log_p1 = 34.495d0
-      case ('MPA1_G2')
-        Gamma1 = 3.446d0; Gamma2 = 4.6436d0; Gamma3 = 2.887d0; log_p1 = 34.495d0
-      case ('MPA1_G2m')
-        Gamma1 = 3.446d0; Gamma2 = 2.8576d0; Gamma3 = 2.887d0; log_p1 = 34.495d0
-      case ('MPA1_G2mm')
-        Gamma1 = 3.446d0; Gamma2 = 2.5004d0; Gamma3 = 2.887d0; log_p1 = 34.495d0
-      case ('H4_G1')
-        Gamma1 = 3.7817d0; Gamma2 = 2.246d0; Gamma3 = 2.144d0; log_p1 = 34.669d0
-      case ('PS_G2')
-        Gamma1 = 2.216d0; Gamma2 = 2.132d0; Gamma3 = 2.365d0; log_p1 = 34.671d0
-      case ('H2_G3')
-        Gamma1 = 2.775d0; Gamma2 = 1.855d0; Gamma3 = 2.4154d0; log_p1 = 34.617d0
-      case ('H2_G1')
-        Gamma1 = 2.775d0; Gamma2 = 1.855d0; Gamma3 = 1.858d0; log_p1 = 34.617d0
-      case ('SLy_G2m')
-        Gamma1 = 3.005d0; Gamma2 = 2.0916d0; Gamma3 = 2.851d0; log_p1 = 34.384d0
-      case ('PS_G3')
-        Gamma1 = 2.216d0; Gamma2 = 1.640d0; Gamma3 = 4.000d0; log_p1 = 34.671d0
+      case ('Zdunik')
+        Gamma1 = 3.000d0; Gamma2 = 1.050d0; Gamma3 = 5.100d0; log_p1 = 34.384d0
+      case ('PSt')
+        Gamma1 = 2.216d0; Gamma2 = 1.300d0; Gamma3 = 4.000d0; log_p1 = 34.671d0
       case default
         success = .false.
     end select
