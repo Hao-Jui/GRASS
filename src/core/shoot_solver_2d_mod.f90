@@ -2,7 +2,7 @@
 ! to get started and then switches to the more computationally efficient 
 ! Broyden's method (Jacobian updated algebraically) for subsequent steps, 
 ! which is common when function evaluation is expensive.
-module shoot_solver_mod
+module shoot_solver_2d_mod
   use precision_mod, only: wp
   implicit none
   interface
@@ -13,10 +13,10 @@ module shoot_solver_mod
       real(wp), intent(inout) :: a(lda, *), b(ldb, *)
     end subroutine dgesv
   end interface
-  real(wp), parameter :: r_eps = 1.e-8_wp
-  real(wp), parameter :: r_min_ratio = 0.35e0_wp
-  real(wp), parameter :: max_step = 0.5e0_wp
-  real(wp), parameter :: rep_map_scale = 6.e0_wp
+  real(wp), parameter :: R_EPS = 1.e-8_wp
+  real(wp), parameter :: R_MIN_RATIO = 0.35e0_wp
+  real(wp), parameter :: MAX_STEP = 0.5e0_wp
+  real(wp), parameter :: REP_MAP_SCALE = 6.e0_wp
 
   type, public :: newton_state
     logical :: has_jacobian = .false.
@@ -150,8 +150,8 @@ contains
     logical, intent(out), optional :: success
     
     integer, parameter :: max_iter = 10
-    real(wp), parameter :: tau = 0.5e0_wp
-    real(wp), parameter :: c1 = 1.e-4_wp
+    real(wp), parameter :: TAU = 0.5e0_wp
+    real(wp), parameter :: C1 = 1.e-4_wp
     real(wp)             :: alpha
     real(wp)             :: x_trial(2), F_trial(2), hc_trial, rep_trial
     real(wp)             :: rho0_tmp, ee_tmp, er_tmp
@@ -186,9 +186,9 @@ contains
     final_delta = alpha * delta_x
     if (present(success)) success = ok
   end subroutine line_search
-end module shoot_solver_mod
+end module shoot_solver_2d_mod
 
-module shoot_newton_helpers
+module shoot_solver_2d_helpers_mod
   use analysis_mod, only: mass_radius
   use precision_mod, only: wp
   use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
@@ -196,8 +196,8 @@ module shoot_newton_helpers
   use para_mod, only: r_ratio, h_center, Mass, MSUN, M_goal, Mass_0, Mb_goal, &
                       J_goal, ang_mom, chi, chi_goal, Omega_c, omc_goal, &
                       Omega_K, C, kappa, Omega_e, FIX1, FIX2
-  use shoot_solver_mod, only: newton_state, from_solver_coords
-  use rotation_uniform,  only: rotation_solver
+  use shoot_solver_2d_mod, only: newton_state, from_solver_coords
+  use rotation_solver_mod,  only: rotation_solver
   implicit none
 contains
   subroutine evaluate_solution(hc, rep, F, rho0, ee, er)
@@ -280,4 +280,4 @@ contains
     end if
   end subroutine build_jacobian
 
-end module shoot_newton_helpers
+end module shoot_solver_2d_helpers_mod

@@ -1,15 +1,19 @@
 program grass
+  use iso_fortran_env, only: error_unit
   use eos_mod, only: loadEos
   use grid_mod, only: make_grid, GridTrig
   use shoot_mod, only: shoot_v2
   use toolkit_mod, only: debug_mod_bessel
-  use para_mod, only: wp, initialize_theory, &
+  use para_mod, only: wp, initialize_theory, angular_collocation, run_task, &
                       has_scalar, mphi_goal, scalarton, B_goal, &
                       solver_type, A_diff, lambda1, lambda2, &
                       s_gp, SDIV, MDIV, s_pwr, e_surface, C, KSCALE
   use constrain_mod, only: hamiltonian
+  use starting_model_mod, only: initialize_starting_model
+  use MRcurve_mod, only: MRcurve
   implicit none
   real(wp) :: hamL2
+  character(len=10) :: mu_grid_name
 
   call initialize_theory()
   
@@ -22,6 +26,10 @@ program grass
     write(*,*) "Theory: General Relativity"
   end if
   write(*,*) "Relaxation scheme: Anderson"
+  block
+    character(len=10), parameter :: mu_names(3) = ["Uniform   ", "Legendre  ", "Chebyshev "]
+  write(*,*) "          mu-grid: ", trim(mu_names(angular_collocation))
+  end block
 
   call loadEos
 
@@ -45,8 +53,16 @@ program grass
   
   !call debug_mod_bessel; stop "debug_mod_bessel output written"
   
-  !call MRcurve
-  call shoot_v2
+  select case (run_task)
+  case(1)
+    call shoot_v2
+  case(2)
+    call MRcurve
+  case(3)
+    call initialize_starting_model()
+  case default
+    write(error_unit,*) "Unknown task."; stop 3221
+  end select
 
   call hamiltonian(hamL2)
   write(*,"(A18,es27.16)") "Ham L2:", hamL2

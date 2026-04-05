@@ -1,6 +1,7 @@
 module ope_eq_mod
   use precision_mod, only: wp
-  use para_mod, only: SDIV, MDIV, DS, DM, r_e, s_gp, mu
+  use para_mod, only: SDIV, MDIV, DS, DM, r_e, s_gp, mu, angular_collocation, &
+                      COLLOCATION_UNI, D_mu, D2_mu
   implicit none
   private
 
@@ -45,17 +46,17 @@ contains
       allocate(self%d2s_dr2(SDIV), self%inv_r(SDIV), self%inv_r2(SDIV))
       allocate(self%m1(MDIV))
     end if
-    self%r_phys   = r_e * s_gp / max(1.e-30_wp, 1.e0_wp - s_gp)
-    self%ds_dr    = (1.e0_wp - s_gp)**2 / max(r_e, 1.e-30_wp)
+    self%r_phys   = r_e * s_gp / max(1.e-30_wp, 1.0_wp - s_gp)
+    self%ds_dr    = (1.0_wp - s_gp)**2 / max(r_e, 1.e-30_wp)
     self%ds_dr_sq = self%ds_dr**2
-    self%d2s_dr2  = -2.e0_wp * (1.e0_wp - s_gp)**3 / max(r_e**2, 1.e-30_wp)
+    self%d2s_dr2  = -2.0_wp * (1.0_wp - s_gp)**3 / max(r_e**2, 1.e-30_wp)
     where (self%r_phys >= 1.e-30_wp)
-      self%inv_r = 1.e0_wp / self%r_phys
+      self%inv_r = 1.0_wp / self%r_phys
     elsewhere
-      self%inv_r = 0.e0_wp
+      self%inv_r = 0.0_wp
     end where
     self%inv_r2 = self%inv_r**2
-    self%m1 = 1.e0_wp - mu**2
+    self%m1 = 1.0_wp - mu**2
   end subroutine init
 
   function deriv_r(self, f) result(df_dr)
@@ -81,7 +82,7 @@ contains
     real(wp), intent(in) :: f(:)
     real(wp) :: df_dt(size(f))
     if (size(f) /= MDIV) stop "deriv_t: size mismatch"
-    df_dt = -sqrt(max(0.e0_wp, self%m1)) * deriv_mu_1d(f)
+    df_dt = -sqrt(max(0.0_wp, self%m1)) * deriv_mu_1d(f)
   end function deriv_t
 
   function deriv_tt(self, f) result(df_dtt)
@@ -116,7 +117,7 @@ contains
     end do
     f_T = transpose(f)
     do s = 1, SDIV
-      g%t(s,:) = -sqrt(max(0.e0_wp, self%m1)) * deriv_mu_1d(f_T(:,s))
+      g%t(s,:) = -sqrt(max(0.0_wp, self%m1)) * deriv_mu_1d(f_T(:,s))
     end do
   end function grad
 
@@ -171,7 +172,7 @@ contains
 
     if (size(f,1) /= SDIV .or. size(f,2) /= MDIV) stop "laplacian: size mismatch"
 
-    coeff_r = self%d2s_dr2 + 2.e0_wp * self%inv_r * self%ds_dr  ! d2s/dr2 + (2/r) ds/dr
+    coeff_r = self%d2s_dr2 + 2.0_wp * self%inv_r * self%ds_dr  ! d2s/dr2 + (2/r) ds/dr
     do m = 1, MDIV
       call deriv_s_and_ss_1d(f(:,m), df_ds, d2f_ds2)
       lap(:,m) = d2f_ds2 * self%ds_dr_sq + df_ds * coeff_r
@@ -180,7 +181,7 @@ contains
     f_T = transpose(f)
     do s = 1, SDIV
       call deriv_mu_and_mumu_1d(f_T(:,s), df_dmu, d2f_dmu2)
-      lap(s,:) = lap(s,:) + self%inv_r2(s) * (self%m1 * d2f_dmu2 - 2.e0_wp * mu * df_dmu)
+      lap(s,:) = lap(s,:) + self%inv_r2(s) * (self%m1 * d2f_dmu2 - 2.0_wp * mu * df_dmu)
     end do
   end function laplacian
 
@@ -202,76 +203,76 @@ contains
     n = size(f)
 
     if (n <= 1) then
-      df_ds = 0.e0_wp;  d2f_ds2 = 0.e0_wp
+      df_ds = 0.0_wp;  d2f_ds2 = 0.0_wp
       return
     end if
     if (n <= 2) then
       df_ds(1) = (f(2) - f(1)) / DS;  df_ds(2) = df_ds(1)
-      d2f_ds2  = 0.e0_wp
+      d2f_ds2  = 0.0_wp
       return
     end if
 
     if (n < 5) then
       df_ds(1) = (f(2) - f(1)) / DS
-      if (n > 2) df_ds(2:n-1) = (f(3:n) - f(1:n-2)) / (2.e0_wp * DS)
+      if (n > 2) df_ds(2:n-1) = (f(3:n) - f(1:n-2)) / (2.0_wp * DS)
       df_ds(n) = (f(n) - f(n-1)) / DS
-      d2f_ds2(1) = (f(3) - 2.e0_wp*f(2) + f(1)) / DS**2
-      if (n > 3) d2f_ds2(2:n-1) = (f(3:n) - 2.e0_wp*f(2:n-1) + f(1:n-2)) / DS**2
-      d2f_ds2(n) = (f(n) - 2.e0_wp*f(n-1) + f(n-2)) / DS**2
+      d2f_ds2(1) = (f(3) - 2.0_wp*f(2) + f(1)) / DS**2
+      if (n > 3) d2f_ds2(2:n-1) = (f(3:n) - 2.0_wp*f(2:n-1) + f(1:n-2)) / DS**2
+      d2f_ds2(n) = (f(n) - 2.0_wp*f(n-1) + f(n-2)) / DS**2
       return
     end if
 
     if (n < 7) then
-      df_ds(1)   = (-25.e0_wp*f(1)+48.e0_wp*f(2)-36.e0_wp*f(3)+16.e0_wp*f(4)-3.e0_wp*f(5)) / (12.e0_wp*DS)
-      df_ds(2)   = (-3.e0_wp*f(1)-10.e0_wp*f(2)+18.e0_wp*f(3)-6.e0_wp*f(4)+f(5)) / (12.e0_wp*DS)
-      df_ds(3:n-2) = (-f(5:n)+8.e0_wp*f(4:n-1)-8.e0_wp*f(2:n-3)+f(1:n-4)) / (12.e0_wp*DS)
-      df_ds(n-1) = (3.e0_wp*f(n)+10.e0_wp*f(n-1)-18.e0_wp*f(n-2)+6.e0_wp*f(n-3)-f(n-4)) / (12.e0_wp*DS)
-      df_ds(n)   = (25.e0_wp*f(n)-48.e0_wp*f(n-1)+36.e0_wp*f(n-2)-16.e0_wp*f(n-3)+3.e0_wp*f(n-4)) / (12.e0_wp*DS)
-      d2f_ds2(1)   = (35.e0_wp*f(1)-104.e0_wp*f(2)+114.e0_wp*f(3)-56.e0_wp*f(4)+11.e0_wp*f(5)) / (12.e0_wp*DS**2)
-      d2f_ds2(2)   = (11.e0_wp*f(1)-20.e0_wp*f(2)+6.e0_wp*f(3)+4.e0_wp*f(4)-f(5)) / (12.e0_wp*DS**2)
-      d2f_ds2(3:n-2) = (-f(5:n)+16.e0_wp*f(4:n-1)-30.e0_wp*f(3:n-2)+16.e0_wp*f(2:n-3)-f(1:n-4)) / (12.e0_wp*DS**2)
-      d2f_ds2(n-1) = (11.e0_wp*f(n)-20.e0_wp*f(n-1)+6.e0_wp*f(n-2)+4.e0_wp*f(n-3)-f(n-4)) / (12.e0_wp*DS**2)
-      d2f_ds2(n)   = (35.e0_wp*f(n)-104.e0_wp*f(n-1)+114.e0_wp*f(n-2)-56.e0_wp*f(n-3)+11.e0_wp*f(n-4)) / (12.e0_wp*DS**2)
+      df_ds(1)   = (-25.0_wp*f(1)+48.0_wp*f(2)-36.0_wp*f(3)+16.0_wp*f(4)-3.0_wp*f(5)) / (12.0_wp*DS)
+      df_ds(2)   = (-3.0_wp*f(1)-10.0_wp*f(2)+18.0_wp*f(3)-6.0_wp*f(4)+f(5)) / (12.0_wp*DS)
+      df_ds(3:n-2) = (-f(5:n)+8.0_wp*f(4:n-1)-8.0_wp*f(2:n-3)+f(1:n-4)) / (12.0_wp*DS)
+      df_ds(n-1) = (3.0_wp*f(n)+10.0_wp*f(n-1)-18.0_wp*f(n-2)+6.0_wp*f(n-3)-f(n-4)) / (12.0_wp*DS)
+      df_ds(n)   = (25.0_wp*f(n)-48.0_wp*f(n-1)+36.0_wp*f(n-2)-16.0_wp*f(n-3)+3.0_wp*f(n-4)) / (12.0_wp*DS)
+      d2f_ds2(1)   = (35.0_wp*f(1)-104.0_wp*f(2)+114.0_wp*f(3)-56.0_wp*f(4)+11.0_wp*f(5)) / (12.0_wp*DS**2)
+      d2f_ds2(2)   = (11.0_wp*f(1)-20.0_wp*f(2)+6.0_wp*f(3)+4.0_wp*f(4)-f(5)) / (12.0_wp*DS**2)
+      d2f_ds2(3:n-2) = (-f(5:n)+16.0_wp*f(4:n-1)-30.0_wp*f(3:n-2)+16.0_wp*f(2:n-3)-f(1:n-4)) / (12.0_wp*DS**2)
+      d2f_ds2(n-1) = (11.0_wp*f(n)-20.0_wp*f(n-1)+6.0_wp*f(n-2)+4.0_wp*f(n-3)-f(n-4)) / (12.0_wp*DS**2)
+      d2f_ds2(n)   = (35.0_wp*f(n)-104.0_wp*f(n-1)+114.0_wp*f(n-2)-56.0_wp*f(n-3)+11.0_wp*f(n-4)) / (12.0_wp*DS**2)
       return
     end if
 
-    inv60DS   = 1.e0_wp / (60.e0_wp * DS)
-    inv180DS2 = 1.e0_wp / (180.e0_wp * DS**2)
+    inv60DS   = 1.0_wp / (60.0_wp * DS)
+    inv180DS2 = 1.0_wp / (180.0_wp * DS**2)
 
     ! 6th-order one-sided boundaries (f')
-    df_ds(1) = (-147.e0_wp*f(1)+360.e0_wp*f(2)-450.e0_wp*f(3)+400.e0_wp*f(4) &
-                -225.e0_wp*f(5)+ 72.e0_wp*f(6)- 10.e0_wp*f(7)) * inv60DS
-    df_ds(2) = ( -10.e0_wp*f(1)- 77.e0_wp*f(2)+150.e0_wp*f(3)-100.e0_wp*f(4) &
-                +  50.e0_wp*f(5)- 15.e0_wp*f(6)+  2.e0_wp*f(7)) * inv60DS
-    df_ds(3) = (   2.e0_wp*f(1)- 24.e0_wp*f(2)- 35.e0_wp*f(3)+ 80.e0_wp*f(4) &
-                -  30.e0_wp*f(5)+  8.e0_wp*f(6)-       f(7)) * inv60DS
-    df_ds(n-2) = (       f(n-6)-  8.e0_wp*f(n-5)+ 30.e0_wp*f(n-4)- 80.e0_wp*f(n-3) &
-                 + 35.e0_wp*f(n-2)+ 24.e0_wp*f(n-1)-  2.e0_wp*f(n)) * inv60DS
-    df_ds(n-1) = (  -2.e0_wp*f(n-6)+ 15.e0_wp*f(n-5)- 50.e0_wp*f(n-4)+100.e0_wp*f(n-3) &
-                 -150.e0_wp*f(n-2)+ 77.e0_wp*f(n-1)+ 10.e0_wp*f(n)) * inv60DS
-    df_ds(n)   = (  10.e0_wp*f(n-6)- 72.e0_wp*f(n-5)+225.e0_wp*f(n-4)-400.e0_wp*f(n-3) &
-                 + 450.e0_wp*f(n-2)-360.e0_wp*f(n-1)+147.e0_wp*f(n)) * inv60DS
+    df_ds(1) = (-147.0_wp*f(1)+360.0_wp*f(2)-450.0_wp*f(3)+400.0_wp*f(4) &
+                -225.0_wp*f(5)+ 72.0_wp*f(6)- 10.0_wp*f(7)) * inv60DS
+    df_ds(2) = ( -10.0_wp*f(1)- 77.0_wp*f(2)+150.0_wp*f(3)-100.0_wp*f(4) &
+                +  50.0_wp*f(5)- 15.0_wp*f(6)+  2.0_wp*f(7)) * inv60DS
+    df_ds(3) = (   2.0_wp*f(1)- 24.0_wp*f(2)- 35.0_wp*f(3)+ 80.0_wp*f(4) &
+                -  30.0_wp*f(5)+  8.0_wp*f(6)-       f(7)) * inv60DS
+    df_ds(n-2) = (       f(n-6)-  8.0_wp*f(n-5)+ 30.0_wp*f(n-4)- 80.0_wp*f(n-3) &
+                + 35.0_wp*f(n-2)+ 24.0_wp*f(n-1)-  2.0_wp*f(n)) * inv60DS
+    df_ds(n-1) = (  -2.0_wp*f(n-6)+ 15.0_wp*f(n-5)- 50.0_wp*f(n-4)+100.0_wp*f(n-3) &
+                -150.0_wp*f(n-2)+ 77.0_wp*f(n-1)+ 10.0_wp*f(n)) * inv60DS
+    df_ds(n)   = (  10.0_wp*f(n-6)- 72.0_wp*f(n-5)+225.0_wp*f(n-4)-400.0_wp*f(n-3) &
+                + 450.0_wp*f(n-2)-360.0_wp*f(n-1)+147.0_wp*f(n)) * inv60DS
 
     ! 5th-order one-sided boundaries (f'')
-    d2f_ds2(1) = ( 812.e0_wp*f(1)-3132.e0_wp*f(2)+5265.e0_wp*f(3)-5080.e0_wp*f(4) &
-                 +2970.e0_wp*f(5)- 972.e0_wp*f(6)+ 137.e0_wp*f(7)) * inv180DS2
-    d2f_ds2(2) = ( 137.e0_wp*f(1)- 147.e0_wp*f(2)- 255.e0_wp*f(3)+ 470.e0_wp*f(4) &
-                 - 285.e0_wp*f(5)+  93.e0_wp*f(6)-  13.e0_wp*f(7)) * inv180DS2
-    d2f_ds2(3) = ( -13.e0_wp*f(1)+ 228.e0_wp*f(2)- 420.e0_wp*f(3)+ 200.e0_wp*f(4) &
-                 +  15.e0_wp*f(5)-  12.e0_wp*f(6)+   2.e0_wp*f(7)) * inv180DS2
-    d2f_ds2(n-2) = (   2.e0_wp*f(n-6)-  12.e0_wp*f(n-5)+  15.e0_wp*f(n-4)+200.e0_wp*f(n-3) &
-                   - 420.e0_wp*f(n-2)+ 228.e0_wp*f(n-1)-  13.e0_wp*f(n)) * inv180DS2
-    d2f_ds2(n-1) = ( -13.e0_wp*f(n-6)+  93.e0_wp*f(n-5)- 285.e0_wp*f(n-4)+470.e0_wp*f(n-3) &
-                   - 255.e0_wp*f(n-2)- 147.e0_wp*f(n-1)+ 137.e0_wp*f(n)) * inv180DS2
-    d2f_ds2(n)   = ( 137.e0_wp*f(n-6)- 972.e0_wp*f(n-5)+2970.e0_wp*f(n-4)-5080.e0_wp*f(n-3) &
-                   +5265.e0_wp*f(n-2)-3132.e0_wp*f(n-1)+ 812.e0_wp*f(n)) * inv180DS2
+    d2f_ds2(1) = ( 812.0_wp*f(1)-3132.0_wp*f(2)+5265.0_wp*f(3)-5080.0_wp*f(4) &
+                +2970.0_wp*f(5)- 972.0_wp*f(6)+ 137.0_wp*f(7)) * inv180DS2
+    d2f_ds2(2) = ( 137.0_wp*f(1)- 147.0_wp*f(2)- 255.0_wp*f(3)+ 470.0_wp*f(4) &
+                - 285.0_wp*f(5)+  93.0_wp*f(6)-  13.0_wp*f(7)) * inv180DS2
+    d2f_ds2(3) = ( -13.0_wp*f(1)+ 228.0_wp*f(2)- 420.0_wp*f(3)+ 200.0_wp*f(4) &
+                +  15.0_wp*f(5)-  12.0_wp*f(6)+   2.0_wp*f(7)) * inv180DS2
+    d2f_ds2(n-2) = (   2.0_wp*f(n-6)-  12.0_wp*f(n-5)+  15.0_wp*f(n-4)+200.0_wp*f(n-3) &
+                  - 420.0_wp*f(n-2)+ 228.0_wp*f(n-1)-  13.0_wp*f(n)) * inv180DS2
+    d2f_ds2(n-1) = ( -13.0_wp*f(n-6)+  93.0_wp*f(n-5)- 285.0_wp*f(n-4)+470.0_wp*f(n-3) &
+                  - 255.0_wp*f(n-2)- 147.0_wp*f(n-1)+ 137.0_wp*f(n)) * inv180DS2
+    d2f_ds2(n)   = ( 137.0_wp*f(n-6)- 972.0_wp*f(n-5)+2970.0_wp*f(n-4)-5080.0_wp*f(n-3) &
+                  +5265.0_wp*f(n-2)-3132.0_wp*f(n-1)+ 812.0_wp*f(n)) * inv180DS2
 
     ! Fused 6th-order centered interior: f(i-3:i+3) loaded once for both stencils
     do i = 4, n-3
-      df_ds(i)   = (   -f(i-3) + 9.e0_wp*f(i-2) - 45.e0_wp*f(i-1) &
-                   + 45.e0_wp*f(i+1) -  9.e0_wp*f(i+2) +       f(i+3)) * inv60DS
-      d2f_ds2(i) = (2.e0_wp*f(i-3) - 27.e0_wp*f(i-2) + 270.e0_wp*f(i-1) - 490.e0_wp*f(i) &
-                   +270.e0_wp*f(i+1) - 27.e0_wp*f(i+2) +  2.e0_wp*f(i+3)) * inv180DS2
+      df_ds(i)   = (   -f(i-3) + 9.0_wp*f(i-2) - 45.0_wp*f(i-1) &
+                  + 45.0_wp*f(i+1) -  9.0_wp*f(i+2) +       f(i+3)) * inv60DS
+      d2f_ds2(i) = (2.0_wp*f(i-3) - 27.0_wp*f(i-2) + 270.0_wp*f(i-1) - 490.0_wp*f(i) &
+                  +270.0_wp*f(i+1) - 27.0_wp*f(i+2) +  2.0_wp*f(i+3)) * inv180DS2
     end do
   end subroutine deriv_s_and_ss_1d
 
@@ -283,77 +284,83 @@ contains
 
     n = size(f)
 
+    if (angular_collocation /= COLLOCATION_UNI) then
+      df_dmu = matmul(D_mu, f)
+      d2f_dmu2 = matmul(D2_mu, f)
+      return
+    end if
+
     if (n <= 1) then
-      df_dmu = 0.e0_wp;  d2f_dmu2 = 0.e0_wp
+      df_dmu = 0.0_wp;  d2f_dmu2 = 0.0_wp
       return
     end if
     if (n <= 2) then
       df_dmu(1) = (f(2) - f(1)) / DM;  df_dmu(2) = df_dmu(1)
-      d2f_dmu2  = 0.e0_wp
+      d2f_dmu2  = 0.0_wp
       return
     end if
 
     if (n < 5) then
       df_dmu(1) = (f(2) - f(1)) / DM
-      if (n > 2) df_dmu(2:n-1) = (f(3:n) - f(1:n-2)) / (2.e0_wp * DM)
+      if (n > 2) df_dmu(2:n-1) = (f(3:n) - f(1:n-2)) / (2.0_wp * DM)
       df_dmu(n) = (f(n) - f(n-1)) / DM
-      d2f_dmu2(1) = (f(3) - 2.e0_wp*f(2) + f(1)) / DM**2
-      if (n > 3) d2f_dmu2(2:n-1) = (f(3:n) - 2.e0_wp*f(2:n-1) + f(1:n-2)) / DM**2
-      d2f_dmu2(n) = (f(n) - 2.e0_wp*f(n-1) + f(n-2)) / DM**2
+      d2f_dmu2(1) = (f(3) - 2.0_wp*f(2) + f(1)) / DM**2
+      if (n > 3) d2f_dmu2(2:n-1) = (f(3:n) - 2.0_wp*f(2:n-1) + f(1:n-2)) / DM**2
+      d2f_dmu2(n) = (f(n) - 2.0_wp*f(n-1) + f(n-2)) / DM**2
       return
     end if
 
     if (n < 7) then
-      df_dmu(1)   = (-25.e0_wp*f(1)+48.e0_wp*f(2)-36.e0_wp*f(3)+16.e0_wp*f(4)-3.e0_wp*f(5)) / (12.e0_wp*DM)
-      df_dmu(2)   = (-3.e0_wp*f(1)-10.e0_wp*f(2)+18.e0_wp*f(3)-6.e0_wp*f(4)+f(5)) / (12.e0_wp*DM)
-      df_dmu(3:n-2) = (-f(5:n)+8.e0_wp*f(4:n-1)-8.e0_wp*f(2:n-3)+f(1:n-4)) / (12.e0_wp*DM)
-      df_dmu(n-1) = (3.e0_wp*f(n)+10.e0_wp*f(n-1)-18.e0_wp*f(n-2)+6.e0_wp*f(n-3)-f(n-4)) / (12.e0_wp*DM)
-      df_dmu(n)   = (25.e0_wp*f(n)-48.e0_wp*f(n-1)+36.e0_wp*f(n-2)-16.e0_wp*f(n-3)+3.e0_wp*f(n-4)) / (12.e0_wp*DM)
-      d2f_dmu2(1)   = (35.e0_wp*f(1)-104.e0_wp*f(2)+114.e0_wp*f(3)-56.e0_wp*f(4)+11.e0_wp*f(5)) / (12.e0_wp*DM**2)
-      d2f_dmu2(2)   = (11.e0_wp*f(1)-20.e0_wp*f(2)+6.e0_wp*f(3)+4.e0_wp*f(4)-f(5)) / (12.e0_wp*DM**2)
-      d2f_dmu2(3:n-2) = (-f(5:n)+16.e0_wp*f(4:n-1)-30.e0_wp*f(3:n-2)+16.e0_wp*f(2:n-3)-f(1:n-4)) / (12.e0_wp*DM**2)
-      d2f_dmu2(n-1) = (11.e0_wp*f(n)-20.e0_wp*f(n-1)+6.e0_wp*f(n-2)+4.e0_wp*f(n-3)-f(n-4)) / (12.e0_wp*DM**2)
-      d2f_dmu2(n)   = (35.e0_wp*f(n)-104.e0_wp*f(n-1)+114.e0_wp*f(n-2)-56.e0_wp*f(n-3)+11.e0_wp*f(n-4)) / (12.e0_wp*DM**2)
+      df_dmu(1)   = (-25.0_wp*f(1)+48.0_wp*f(2)-36.0_wp*f(3)+16.0_wp*f(4)-3.0_wp*f(5)) / (12.0_wp*DM)
+      df_dmu(2)   = (-3.0_wp*f(1)-10.0_wp*f(2)+18.0_wp*f(3)-6.0_wp*f(4)+f(5)) / (12.0_wp*DM)
+      df_dmu(3:n-2) = (-f(5:n)+8.0_wp*f(4:n-1)-8.0_wp*f(2:n-3)+f(1:n-4)) / (12.0_wp*DM)
+      df_dmu(n-1) = (3.0_wp*f(n)+10.0_wp*f(n-1)-18.0_wp*f(n-2)+6.0_wp*f(n-3)-f(n-4)) / (12.0_wp*DM)
+      df_dmu(n)   = (25.0_wp*f(n)-48.0_wp*f(n-1)+36.0_wp*f(n-2)-16.0_wp*f(n-3)+3.0_wp*f(n-4)) / (12.0_wp*DM)
+      d2f_dmu2(1)   = (35.0_wp*f(1)-104.0_wp*f(2)+114.0_wp*f(3)-56.0_wp*f(4)+11.0_wp*f(5)) / (12.0_wp*DM**2)
+      d2f_dmu2(2)   = (11.0_wp*f(1)-20.0_wp*f(2)+6.0_wp*f(3)+4.0_wp*f(4)-f(5)) / (12.0_wp*DM**2)
+      d2f_dmu2(3:n-2) = (-f(5:n)+16.0_wp*f(4:n-1)-30.0_wp*f(3:n-2)+16.0_wp*f(2:n-3)-f(1:n-4)) / (12.0_wp*DM**2)
+      d2f_dmu2(n-1) = (11.0_wp*f(n)-20.0_wp*f(n-1)+6.0_wp*f(n-2)+4.0_wp*f(n-3)-f(n-4)) / (12.0_wp*DM**2)
+      d2f_dmu2(n)   = (35.0_wp*f(n)-104.0_wp*f(n-1)+114.0_wp*f(n-2)-56.0_wp*f(n-3)+11.0_wp*f(n-4)) / (12.0_wp*DM**2)
       return
     end if
 
-    inv60DM   = 1.e0_wp / (60.e0_wp * DM)
-    inv180DM2 = 1.e0_wp / (180.e0_wp * DM**2)
+    inv60DM   = 1.0_wp / (60.0_wp * DM)
+    inv180DM2 = 1.0_wp / (180.0_wp * DM**2)
 
     ! 6th-order one-sided boundaries (f')
-    df_dmu(1) = (-147.e0_wp*f(1)+360.e0_wp*f(2)-450.e0_wp*f(3)+400.e0_wp*f(4) &
-                 -225.e0_wp*f(5)+ 72.e0_wp*f(6)- 10.e0_wp*f(7)) * inv60DM
-    df_dmu(2) = ( -10.e0_wp*f(1)- 77.e0_wp*f(2)+150.e0_wp*f(3)-100.e0_wp*f(4) &
-                 +  50.e0_wp*f(5)- 15.e0_wp*f(6)+  2.e0_wp*f(7)) * inv60DM
-    df_dmu(3) = (   2.e0_wp*f(1)- 24.e0_wp*f(2)- 35.e0_wp*f(3)+ 80.e0_wp*f(4) &
-                 -  30.e0_wp*f(5)+  8.e0_wp*f(6)-       f(7)) * inv60DM
-    df_dmu(n-2) = (       f(n-6)-  8.e0_wp*f(n-5)+ 30.e0_wp*f(n-4)- 80.e0_wp*f(n-3) &
-                   + 35.e0_wp*f(n-2)+ 24.e0_wp*f(n-1)-  2.e0_wp*f(n)) * inv60DM
-    df_dmu(n-1) = (  -2.e0_wp*f(n-6)+ 15.e0_wp*f(n-5)- 50.e0_wp*f(n-4)+100.e0_wp*f(n-3) &
-                   -150.e0_wp*f(n-2)+ 77.e0_wp*f(n-1)+ 10.e0_wp*f(n)) * inv60DM
-    df_dmu(n)   = (  10.e0_wp*f(n-6)- 72.e0_wp*f(n-5)+225.e0_wp*f(n-4)-400.e0_wp*f(n-3) &
-                   + 450.e0_wp*f(n-2)-360.e0_wp*f(n-1)+147.e0_wp*f(n)) * inv60DM
+    df_dmu(1) = (-147.0_wp*f(1)+360.0_wp*f(2)-450.0_wp*f(3)+400.0_wp*f(4) &
+                -225.0_wp*f(5)+ 72.0_wp*f(6)- 10.0_wp*f(7)) * inv60DM
+    df_dmu(2) = ( -10.0_wp*f(1)- 77.0_wp*f(2)+150.0_wp*f(3)-100.0_wp*f(4) &
+                +  50.0_wp*f(5)- 15.0_wp*f(6)+  2.0_wp*f(7)) * inv60DM
+    df_dmu(3) = (   2.0_wp*f(1)- 24.0_wp*f(2)- 35.0_wp*f(3)+ 80.0_wp*f(4) &
+                -  30.0_wp*f(5)+  8.0_wp*f(6)-       f(7)) * inv60DM
+    df_dmu(n-2) = (       f(n-6)-  8.0_wp*f(n-5)+ 30.0_wp*f(n-4)- 80.0_wp*f(n-3) &
+                  + 35.0_wp*f(n-2)+ 24.0_wp*f(n-1)-  2.0_wp*f(n)) * inv60DM
+    df_dmu(n-1) = (  -2.0_wp*f(n-6)+ 15.0_wp*f(n-5)- 50.0_wp*f(n-4)+100.0_wp*f(n-3) &
+                  -150.0_wp*f(n-2)+ 77.0_wp*f(n-1)+ 10.0_wp*f(n)) * inv60DM
+    df_dmu(n)   = (  10.0_wp*f(n-6)- 72.0_wp*f(n-5)+225.0_wp*f(n-4)-400.0_wp*f(n-3) &
+                  + 450.0_wp*f(n-2)-360.0_wp*f(n-1)+147.0_wp*f(n)) * inv60DM
 
     ! 5th-order one-sided boundaries (f'')
-    d2f_dmu2(1) = ( 812.e0_wp*f(1)-3132.e0_wp*f(2)+5265.e0_wp*f(3)-5080.e0_wp*f(4) &
-                  +2970.e0_wp*f(5)- 972.e0_wp*f(6)+ 137.e0_wp*f(7)) * inv180DM2
-    d2f_dmu2(2) = ( 137.e0_wp*f(1)- 147.e0_wp*f(2)- 255.e0_wp*f(3)+ 470.e0_wp*f(4) &
-                  - 285.e0_wp*f(5)+  93.e0_wp*f(6)-  13.e0_wp*f(7)) * inv180DM2
-    d2f_dmu2(3) = ( -13.e0_wp*f(1)+ 228.e0_wp*f(2)- 420.e0_wp*f(3)+ 200.e0_wp*f(4) &
-                  +  15.e0_wp*f(5)-  12.e0_wp*f(6)+   2.e0_wp*f(7)) * inv180DM2
-    d2f_dmu2(n-2) = (   2.e0_wp*f(n-6)-  12.e0_wp*f(n-5)+  15.e0_wp*f(n-4)+200.e0_wp*f(n-3) &
-                     - 420.e0_wp*f(n-2)+ 228.e0_wp*f(n-1)-  13.e0_wp*f(n)) * inv180DM2
-    d2f_dmu2(n-1) = ( -13.e0_wp*f(n-6)+  93.e0_wp*f(n-5)- 285.e0_wp*f(n-4)+470.e0_wp*f(n-3) &
-                     - 255.e0_wp*f(n-2)- 147.e0_wp*f(n-1)+ 137.e0_wp*f(n)) * inv180DM2
-    d2f_dmu2(n)   = ( 137.e0_wp*f(n-6)- 972.e0_wp*f(n-5)+2970.e0_wp*f(n-4)-5080.e0_wp*f(n-3) &
-                     +5265.e0_wp*f(n-2)-3132.e0_wp*f(n-1)+ 812.e0_wp*f(n)) * inv180DM2
+    d2f_dmu2(1) = ( 812.0_wp*f(1)-3132.0_wp*f(2)+5265.0_wp*f(3)-5080.0_wp*f(4) &
+                  +2970.0_wp*f(5)- 972.0_wp*f(6)+ 137.0_wp*f(7)) * inv180DM2
+    d2f_dmu2(2) = ( 137.0_wp*f(1)- 147.0_wp*f(2)- 255.0_wp*f(3)+ 470.0_wp*f(4) &
+                  - 285.0_wp*f(5)+  93.0_wp*f(6)-  13.0_wp*f(7)) * inv180DM2
+    d2f_dmu2(3) = ( -13.0_wp*f(1)+ 228.0_wp*f(2)- 420.0_wp*f(3)+ 200.0_wp*f(4) &
+                  +  15.0_wp*f(5)-  12.0_wp*f(6)+   2.0_wp*f(7)) * inv180DM2
+    d2f_dmu2(n-2) = (   2.0_wp*f(n-6)-  12.0_wp*f(n-5)+  15.0_wp*f(n-4)+200.0_wp*f(n-3) &
+                    - 420.0_wp*f(n-2)+ 228.0_wp*f(n-1)-  13.0_wp*f(n)) * inv180DM2
+    d2f_dmu2(n-1) = ( -13.0_wp*f(n-6)+  93.0_wp*f(n-5)- 285.0_wp*f(n-4)+470.0_wp*f(n-3) &
+                    - 255.0_wp*f(n-2)- 147.0_wp*f(n-1)+ 137.0_wp*f(n)) * inv180DM2
+    d2f_dmu2(n)   = ( 137.0_wp*f(n-6)- 972.0_wp*f(n-5)+2970.0_wp*f(n-4)-5080.0_wp*f(n-3) &
+                    +5265.0_wp*f(n-2)-3132.0_wp*f(n-1)+ 812.0_wp*f(n)) * inv180DM2
 
     ! Fused 6th-order centered interior: f(i-3:i+3) loaded once for both stencils
     do i = 4, n-3
-      df_dmu(i)   = (   -f(i-3) + 9.e0_wp*f(i-2) - 45.e0_wp*f(i-1) &
-                    + 45.e0_wp*f(i+1) -  9.e0_wp*f(i+2) +       f(i+3)) * inv60DM
-      d2f_dmu2(i) = (2.e0_wp*f(i-3) - 27.e0_wp*f(i-2) + 270.e0_wp*f(i-1) - 490.e0_wp*f(i) &
-                    +270.e0_wp*f(i+1) - 27.e0_wp*f(i+2) +  2.e0_wp*f(i+3)) * inv180DM2
+      df_dmu(i)   = (   -f(i-3) + 9.0_wp*f(i-2) - 45.0_wp*f(i-1) &
+                    + 45.0_wp*f(i+1) -  9.0_wp*f(i+2) +       f(i+3)) * inv60DM
+      d2f_dmu2(i) = (2.0_wp*f(i-3) - 27.0_wp*f(i-2) + 270.0_wp*f(i-1) - 490.0_wp*f(i) &
+                    +270.0_wp*f(i+1) - 27.0_wp*f(i+2) +  2.0_wp*f(i+3)) * inv180DM2
     end do
   end subroutine deriv_mu_and_mumu_1d
 

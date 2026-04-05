@@ -1,31 +1,32 @@
 module nag_compat_mod
+  use precision_mod, only: wp
   implicit none
 
   ! to include: F06QWF, D02NBF
   abstract interface
     subroutine nag_ode_rhs(t, y, dy)
-      real(8), intent(in) :: t
-      real(8), intent(in) :: y(:)
-      real(8), intent(out) :: dy(:)
+      import wp
+      real(wp), intent(in) :: t
+      real(wp), intent(in) :: y(:)
+      real(wp), intent(out) :: dy(:)
     end subroutine nag_ode_rhs
   end interface
 contains
 
   subroutine d01gaf(x, y, n, ans, er, ifail)
-    implicit none
     integer, intent(in)  :: n
-    real(8), intent(in)  :: x(n), y(n)
-    real(8), intent(out) :: ans, er
+    real(wp), intent(in)  :: x(n), y(n)
+    real(wp), intent(out) :: ans, er
     integer, intent(out) :: ifail
 
     integer :: i, last
-    real(8) :: c, d1, d2, d3, h1, h2, h3, h4
-    real(8) :: r1, r2, r3, r4, s
-    real(8) :: first_step
+    real(wp) :: c, d1, d2, d3, h1, h2, h3, h4
+    real(wp) :: r1, r2, r3, r4, s
+    real(wp) :: first_step
 
     ifail = 0
-    ans   = 0.d0
-    er    = 0.d0
+    ans   = 0.0_wp
+    er    = 0.0_wp
 
     if (n < 4) then
       ifail = 1
@@ -45,7 +46,7 @@ contains
 
     do i = 3, n
       h3 = x(i) - x(i-1)
-      if (h3 * first_step <= 0.d0) then
+      if (h3 * first_step <= 0.0_wp) then
         ifail = 3
         return
       end if
@@ -64,18 +65,18 @@ contains
     h1 = h1 + h4
     r3 = (r2 - d2) / h1
 
-    ans = h2 * ( y(1) + h2 * ( d3/2.d0 - h2 * ( d2/6.d0 - (h2 + 2.d0*h3) * r3 / 12.d0 ) ) )
-    s   = -h2**3 * ( h2*(3.d0*h2 + 5.d0*h4) + 10.d0*h3*h1 ) / 60.d0
-    r4  = 0.d0
+    ans = h2 * ( y(1) + h2 * ( d3/2.0_wp - h2 * ( d2/6.0_wp - (h2 + 2.0_wp*h3) * r3 / 12.0_wp ) ) )
+    s   = -h2**3 * ( h2*(3.0_wp*h2 + 5.0_wp*h4) + 10.0_wp*h3*h1 ) / 60.0_wp
+    r4  = 0.0_wp
 
     last = n - 1
     do i = 3, last
-      ans = ans + h3 * ( (y(i) + y(i-1))/2.d0 - h3*h3*(d2 + r2 + (h2 - h4)*r3)/12.d0 )
-      c   = h3**3 * ( 2.d0*h3*h3 + 5.d0*( h3*(h4 + h2) + 2.d0*h4*h2 ) ) / 120.d0
+      ans = ans + h3 * ( (y(i) + y(i-1))/2.0_wp - h3*h3*(d2 + r2 + (h2 - h4)*r3)/12.0_wp )
+      c   = h3**3 * ( 2.0_wp*h3*h3 + 5.0_wp*( h3*(h4 + h2) + 2.0_wp*h4*h2 ) ) / 120.0_wp
       er  = er + (c + s) * r4
 
       if (i == 3) then
-        s = s + 2.d0 * c
+        s = s + 2.0_wp * c
       else
         s = c
       end if
@@ -96,365 +97,164 @@ contains
         r4 = r4 + h1
         r4 = (r3 - d3) / r4
       else
-        ans = ans + h4 * ( y(n) - h4 * ( r1/2.d0 + h4 * ( r2/6.d0 + (2.d0*h3 + h4) * r3 / 12.d0 ) ) )
-        er  = er - h4**3 * r4 * ( h4*(3.d0*h4 + 5.d0*h2) + 10.d0*h3*(h2 + h3 + h4) ) / 60.d0 + s * r4
+        ans = ans + h4 * ( y(n) - h4 * ( r1/2.0_wp + h4 * ( r2/6.0_wp + (2.0_wp*h3 + h4) * r3 / 12.0_wp ) ) )
+        er  = er - h4**3 * r4 * ( h4*(3.0_wp*h4 + 5.0_wp*h2) + 10.0_wp*h3*(h2 + h3 + h4) ) / 60.0_wp + s * r4
         ans = ans + er
       end if
     end do
   end subroutine d01gaf
 
-  subroutine e02baf(n, x, y, a, b, c, d, info)
-    !! Fit a natural cubic spline passing through (x, y).
-    !! The spline on interval [x_i, x_{i+1}] is
-    !!   S_i(t) = a_i + b_i * t + c_i * t**2 + d_i * t**3,  t = (x - x_i)
-    !! Inputs:
-    !!   n   - number of data points (n >= 2)
-    !!   x   - strictly increasing abscissae (length n)
-    !!   y   - ordinates (length n)
-    !! Outputs:
-    !!   a,b,c,d - spline coefficients for each of the n-1 intervals
-    !!   info    - 0 on success, non-zero otherwise
-    integer, intent(in) :: n
-    real(8), intent(in) :: x(n), y(n)
-    real(8), intent(out) :: a(n-1), b(n-1), c(n-1), d(n-1)
-    integer, intent(out) :: info
-
-    real(8), allocatable :: h(:), alpha(:), l(:), mu(:), z(:), c_full(:)
-    integer :: i
-
-    info = 0
-
-    if (n < 2) then
-      info = 1
-      return
-    end if
-
-    do i = 2, n
-      if (x(i) <= x(i-1)) then
-        info = 2
-        return
-      end if
-    end do
-
-    allocate(h(n-1), alpha(max(1,n-2)))
-    do i = 1, n-1
-      h(i) = x(i+1) - x(i)
-      if (h(i) <= 0.d0) then
-        info = 2
-        deallocate(h, alpha)
-        return
-      end if
-    end do
-
-    if (n > 2) then
-      do i = 2, n-1
-        alpha(i-1) = (3.d0 / h(i)) * (y(i+1) - y(i)) - (3.d0 / h(i-1)) * (y(i) - y(i-1))
-      end do
-    end if
-
-    allocate(l(n), mu(n), z(n), c_full(n))
-    l(1) = 1.d0
-    mu(1) = 0.d0
-    z(1) = 0.d0
-
-    if (n > 2) then
-      do i = 2, n - 1
-        l(i) = 2.d0 * (x(i+1) - x(i-1)) - h(i-1) * mu(i-1)
-        if (abs(l(i)) < epsilon(l(i))) then
-          info = 3
-          deallocate(h, alpha, l, mu, z, c_full)
-          return
-        end if
-        mu(i) = h(i) / l(i)
-        z(i) = (alpha(i-1) - h(i-1) * z(i-1)) / l(i)
-      end do
-    end if
-
-    l(n) = 1.d0
-    z(n) = 0.d0
-    c_full(n) = 0.d0
-
-    do i = n - 1, 1, -1
-      c_full(i) = z(i) - mu(i) * c_full(i+1)
-      b(i) = (y(i+1) - y(i)) / h(i) - h(i) * (c_full(i+1) + 2.d0 * c_full(i)) / 3.d0
-      d(i) = (c_full(i+1) - c_full(i)) / (3.d0 * h(i))
-      a(i) = y(i)
-      c(i) = c_full(i)
-    end do
-
-    deallocate(h, alpha, l, mu, z, c_full)
-  end subroutine e02baf
-
-  subroutine e02bbf(n, x, a, b, c, d, aint, bint, result, info)
-    !! Integrate the cubic spline defined by (x,a,b,c,d) from aint to bint.
-    !! Inputs:
-    !!   n      - number of data points defining the spline (n >= 2)
-    !!   x      - knot positions (length n, strictly increasing)
-    !!   a,b,c,d- spline coefficients as returned by e02baf (length n-1 each)
-    !!   aint   - lower limit of integration
-    !!   bint   - upper limit of integration
-    !! Outputs:
-    !!   result - definite integral of the spline from aint to bint
-    !!   info   - 0 on success, non-zero otherwise
-    integer, intent(in) :: n
-    real(8), intent(in) :: x(n), a(n-1), b(n-1), c(n-1), d(n-1)
-    real(8), intent(in) :: aint, bint
-    real(8), intent(out) :: result
-    integer, intent(out) :: info
-
-    integer :: i, start_idx, end_idx
-    real(8) :: lower, upper, segment_a, segment_b
-    real(8) :: dl, du
-
-    info = 0
-    result = 0.d0
-
-    if (n < 2) then
-      info = 1
-      return
-    end if
-
-    do i = 2, n
-      if (x(i) <= x(i-1)) then
-        info = 2
-        return
-      end if
-    end do
-
-    if (abs(aint - bint) < epsilon(aint)) return
-
-    lower = min(aint, bint)
-    upper = max(aint, bint)
-
-    if (lower < x(1) .or. upper > x(n)) then
-      info = 3
-      return
-    end if
-
-    start_idx = 1
-    do while (start_idx < n .and. x(start_idx+1) <= lower)
-      start_idx = start_idx + 1
-    end do
-
-    end_idx = start_idx
-    do while (end_idx < n .and. x(end_idx+1) < upper)
-      end_idx = end_idx + 1
-    end do
-
-    do i = start_idx, end_idx
-      segment_a = merge(lower, x(i), i == start_idx)
-      segment_b = merge(upper, x(i+1), i == end_idx)
-
-      dl = segment_a - x(i)
-      du = segment_b - x(i)
-
-      result = result + a(i) * (du - dl)                                     &
-                      + b(i) * (du**2 - dl**2) / 2.d0                        &
-                      + c(i) * (du**3 - dl**3) / 3.d0                        &
-                      + d(i) * (du**4 - dl**4) / 4.d0
-    end do
-
-    if (aint > bint) result = -result
-  end subroutine e02bbf
-
   subroutine d02pcf(f, neqn, y, yp, t, tout, relerr, abserr, flag, step_count, out, max_step)
-  ! rkh45
-    implicit none
+    !! Runge-Kutta-Fehlberg 4(5) adaptive integrator.
+    !! Integrates dy/dt = f(t,y) from t to tout.
+    !! flag: in=1 (first call) or 2 (continuation); out=2 (success), 4 (eval limit), 6 (h<hmin), 8 (bad input).
+    use ieee_arithmetic, only: ieee_is_nan
     procedure(nag_ode_rhs) :: f
-    integer, intent(in) :: neqn
-    real(8), intent(inout) :: y(neqn)
-    real(8), intent(inout) :: yp(neqn)
-    real(8), intent(inout) :: t
-    real(8), intent(in) :: tout
-    real(8), intent(inout) :: relerr
-    real(8), intent(inout) :: abserr
-    integer, intent(inout) :: flag
-    integer, intent(out) :: step_count
-    logical, intent(in) :: out
-    real(8), intent(in), optional :: max_step
+    integer,  intent(in)    :: neqn
+    real(wp), intent(inout) :: y(neqn), yp(neqn), t, relerr, abserr
+    real(wp), intent(in)    :: tout
+    integer,  intent(inout) :: flag
+    integer,  intent(out)   :: step_count
+    logical,  intent(in)    :: out
+    real(wp), intent(in), optional :: max_step
 
-    real(8) :: distance, direction, h, hmin, hmax
-    real(8) :: err, fac, scale, tol_small
-    integer :: max_steps, max_evals, nfe, i
-    logical :: eval_limit
-    real(8) :: y4(neqn), y5(neqn)
-    real(8) :: k1(neqn), k2(neqn), k3(neqn), k4(neqn), k5(neqn), k6(neqn)
+    integer,  parameter :: MAX_STEPS = 200000
+    real(wp), parameter :: HMIN = 1.0e-12_wp
+    real(wp), parameter :: FAC_MAX = 5.0_wp, FAC_MIN = 0.1_wp, SAFETY = 0.9_wp
+    real(wp), parameter :: PI_BETA = 0.4_wp / 5, PI_ALPHA = 0.7_wp / 5  ! PI-controller exponents
+    real(wp) :: dir, h, hmax, err, err_prev, fac, fac_ceil, scale, dist, err_i
+    real(wp) :: inv_sqrt_neqn
+    real(wp) :: y5(neqn), k(neqn,5), w(neqn)
+    integer :: i
+    logical :: rejected
 
+    ! --- Butcher tableau (RKF45) ---
+    real(wp), parameter :: &
+      a(5)   = [0.25_wp, 3.0_wp/8, 12.0_wp/13, 1.0_wp, 0.5_wp], &
+      b21    = 0.25_wp, &
+      b3(2)  = [3.0_wp/32, 9.0_wp/32], &
+      b4(3)  = [1932.0_wp/2197, -7200.0_wp/2197, 7296.0_wp/2197], &
+      b5(4)  = [439.0_wp/216, -8.0_wp, 3680.0_wp/513, -845.0_wp/4104], &
+      b6(5)  = [-8.0_wp/27, 2.0_wp, -3544.0_wp/2565, 1859.0_wp/4104, -11.0_wp/40], &
+      c5th(6)= [16.0_wp/135, 0.0_wp, 6656.0_wp/12825, 28561.0_wp/56430, -9.0_wp/50, 2.0_wp/55], &
+      errc(6)= [1.0_wp/360, 0.0_wp, -128.0_wp/4275, -2197.0_wp/75240, 1.0_wp/50, 2.0_wp/55]
 
-    max_steps = 200000
-    max_evals = 6 * max_steps
-    step_count = 0
-    nfe = 0
-    eval_limit = .false.
+    ! --- Input validation ---
+    if (neqn <= 0 .or. flag == 0 .or. abs(flag) > 2) then
+      flag = 8; return
+    end if
+    relerr = max(relerr, 1.0e-12_wp)
+    abserr = max(abserr, 1.0e-18_wp)
 
-    if (neqn <= 0) then
-      flag = 8
-      return
+    dist = tout - t
+    if (abs(dist) < epsilon(dist)) then
+      call f(t, y, yp); flag = 2; return
     end if
 
-    relerr = max(relerr, 1.d-12)
-    abserr = max(abserr, 1.d-18)
-
-    if (flag == 0 .or. abs(flag) > 2) then
-      flag = 8
-      return
-    end if
-
-    distance = tout - t
-    if (abs(distance) < epsilon(distance)) then
-      call f(t, y, yp)
-      flag = 2
-      return
-    end if
-
-    direction = sign(1.d0, distance)
-    call f(t, y, yp)
-    nfe = nfe + 1
-    if (nfe > max_evals) then
-      flag = 4
-      return
-    end if
-
-    hmin = 1.d-12
+    ! --- Initial step size ---
+    dir  = sign(1.0_wp, dist)
+    hmax = abs(dist)
     if (present(max_step)) then
-      hmax = merge(min(abs(distance), max_step), abs(distance), max_step > 0.d0)
-    else
-      hmax = abs(distance)
+      if (max_step > 0.0_wp) hmax = min(hmax, max_step)
     end if
-    h = direction * max(1.d-6, min(abs(distance) / 10.d0, hmax))
-    tol_small = 10.d0 * epsilon(t)
+    h = dir * max(1.0e-6_wp, min(abs(dist) * 0.1_wp, hmax))
+    step_count = 0
+    err_prev = 1.0e-4_wp
+    err = 0.0_wp
+    inv_sqrt_neqn = 1.0_wp / sqrt(real(neqn, wp))
+    rejected = .false.
+    call f(t, y, yp)
 
-    do
-      distance = tout - t
-      if (direction * distance <= 0.d0) exit
-      if (step_count >= max_steps) then
-        flag = 4
-        return
+    ! --- Main integration loop ---
+    do while (dir * (tout - t) > 0.0_wp)
+      if (step_count >= MAX_STEPS) then
+        if (out) call write_step_failure("d02pcf: maximum step count reached", t, h, err, step_count, y, yp)
+        flag = 4; return
+      end if
+      h = dir * min(abs(h), abs(tout - t), hmax)
+      if (abs(h) < HMIN) then
+        if (out) call write_step_failure("d02pcf: step size fell below HMIN", t, h, err, step_count, y, yp)
+        flag = 6; return
       end if
 
-      if (abs(h) > abs(distance)) h = direction * abs(distance)
-      if (abs(h) > hmax) h = direction * hmax
-      if (abs(h) < hmin) then
-        flag = 6
-        return
-      end if
-      call rkf45_step(f, neqn, t, y, h, y4, y5, k1, k2, k3, k4, k5, k6, eval_limit, max_evals, nfe)
-      if (eval_limit) then
-        flag = 4
-        return
-      end if
-
-      err = 0.d0
+      ! RKF45 stages: reuse yp as k1 and keep only k2..k6 in workspace
       do i = 1, neqn
-        scale = abserr + relerr * max(abs(y(i)), abs(y5(i)))
-        if (scale > tol_small) then
-          err = max(err, abs(y5(i) - y4(i)) / scale)
-        end if
+        w(i) = y(i) + h * b21 * yp(i)
       end do
-      err = err / sqrt( dble(neqn) )
+      call f(t + a(1)*h, w, k(:,1))
 
-      if (err <= 1.d0) then
+      do i = 1, neqn
+        w(i) = y(i) + h * (b3(1) * yp(i) + b3(2) * k(i,1))
+      end do
+      call f(t + a(2)*h, w, k(:,2))
+
+      do i = 1, neqn
+        w(i) = y(i) + h * (b4(1) * yp(i) + b4(2) * k(i,1) + b4(3) * k(i,2))
+      end do
+      call f(t + a(3)*h, w, k(:,3))
+
+      do i = 1, neqn
+        w(i) = y(i) + h * (b5(1) * yp(i) + b5(2) * k(i,1) + b5(3) * k(i,2) + b5(4) * k(i,3))
+      end do
+      call f(t + a(4)*h, w, k(:,4))
+
+      do i = 1, neqn
+        w(i) = y(i) + h * (b6(1) * yp(i) + b6(2) * k(i,1) + b6(3) * k(i,2) + b6(4) * k(i,3) + b6(5) * k(i,4))
+      end do
+      call f(t + a(5)*h, w, k(:,5))
+
+      ! Error estimate (NaN-aware)
+      err = 0.0_wp
+      do i = 1, neqn
+        y5(i) = y(i) + h * (c5th(1) * yp(i) + c5th(3) * k(i,2) + c5th(4) * k(i,3) + c5th(5) * k(i,4) + c5th(6) * k(i,5))
+        err_i = h * (errc(1) * yp(i) + errc(3) * k(i,2) + errc(4) * k(i,3) + errc(5) * k(i,4) + errc(6) * k(i,5))
+        scale = abserr + relerr * max(abs(y(i)), abs(y5(i)))
+        err = max(err, abs(err_i) / scale)
+      end do
+      err = err * inv_sqrt_neqn
+      if (ieee_is_nan(err)) then
+        ! NaN detected: shrink step and retry
+        if (out) call write_step_failure("d02pcf: NaN error estimate, retrying with smaller step", t, h, err, step_count, y, yp)
+        h = dir * abs(h) * FAC_MIN
+        rejected = .true.
+        cycle
+      end if
+
+      if (err <= 1.0_wp) then
+        ! Accept step — PI controller with post-rejection ceiling
         t = t + h
         y = y5
         step_count = step_count + 1
         call f(t, y, yp)
-        nfe = nfe + 1
-        if (nfe > max_evals) then
-          flag = 4
-          return
-        end if
-        if (out) then
-          write(*,"(99es27.17e3)") t, y, yp
-        end if
-        if (abs(distance) <= 1.d-15) exit
-        fac = min(5.d0, 0.9d0 * err**(-0.2d0))
-        h = direction * min( abs(h) * fac, hmax )
+        if (out) write(*,"(99es27.17e3)") t, y, yp
+        fac_ceil = merge(1.0_wp, FAC_MAX, rejected)
+        fac = min(fac_ceil, SAFETY * err**(-PI_ALPHA) * err_prev**PI_BETA)
+        err_prev = max(err, 1.0e-8_wp)
+        rejected = .false.
       else
-        fac = max(0.1d0, 0.9d0 * err**(-0.25d0))
-        h = direction * min( abs(h) * fac, hmax )
-        if (abs(h) < hmin) then
-          flag = 6
-          return
-        end if
+        ! Reject step
+        fac = max(FAC_MIN, SAFETY * err**(-0.25_wp))
+        rejected = .true.
       end if
+      h = dir * min(abs(h) * fac, hmax)
     end do
 
     flag = 2
   contains
-    subroutine rkf45_step(f, neqn, t, y, h, y4loc, y5loc, k1, k2, k3, k4, k5, k6, limit_flag, max_eval, nfe_loc)
-      implicit none
-      procedure(nag_ode_rhs) :: f
-      integer, intent(in) :: neqn, max_eval
-      real(8), intent(in) :: t, h
-      real(8), intent(in) :: y(neqn)
-      real(8), intent(out) :: y4loc(neqn), y5loc(neqn)
-      real(8), intent(out) :: k1(neqn), k2(neqn), k3(neqn), k4(neqn), k5(neqn), k6(neqn)
-      logical, intent(out) :: limit_flag
-      integer, intent(inout) :: nfe_loc
+    subroutine write_step_failure(msg, t_now, h_now, err_now, nstep, y_now, yp_now)
+      character(len=*), intent(in) :: msg
+      real(wp), intent(in) :: t_now, h_now, err_now
+      integer, intent(in) :: nstep
+      real(wp), intent(in) :: y_now(:), yp_now(:)
 
-      real(8) :: ywork(neqn)
-      real(8), parameter :: a2 = 0.25d0, a3 = 3.d0/8.d0, a4 = 12.d0/13.d0, a5 = 1.d0, a6 = 0.5d0
-      real(8), parameter :: b21 = 0.25d0
-      real(8), parameter :: b31 = 3.d0/32.d0, b32 = 9.d0/32.d0
-      real(8), parameter :: b41 = 1932.d0/2197.d0, b42 = -7200.d0/2197.d0, b43 = 7296.d0/2197.d0
-      real(8), parameter :: b51 = 439.d0/216.d0, b52 = -8.d0, b53 = 3680.d0/513.d0, b54 = -845.d0/4104.d0
-      real(8), parameter :: b61 = -8.d0/27.d0, b62 = 2.d0, b63 = -3544.d0/2565.d0, b64 = 1859.d0/4104.d0, b65 = -11.d0/40.d0
-      real(8), parameter :: c1 = 16.d0/135.d0, c3 = 6656.d0/12825.d0, c4 = 28561.d0/56430.d0, c5 = -9.d0/50.d0, c6 = 2.d0/55.d0
-      real(8), parameter :: ch1 = 25.d0/216.d0, ch3 = 1408.d0/2565.d0, ch4 = 2197.d0/4104.d0, ch5 = -1.d0/5.d0
-
-      limit_flag = .false.
-
-      call f(t, y, k1)
-      nfe_loc = nfe_loc + 1
-      if (nfe_loc > max_eval) then
-        limit_flag = .true.
-        return
-      end if
-
-      ywork = y + h * b21 * k1
-      call f(t + a2*h, ywork, k2)
-      nfe_loc = nfe_loc + 1
-      if (nfe_loc > max_eval) then
-        limit_flag = .true.
-        return
-      end if
-
-      ywork = y + h * (b31 * k1 + b32 * k2)
-      call f(t + a3*h, ywork, k3)
-      nfe_loc = nfe_loc + 1
-      if (nfe_loc > max_eval) then
-        limit_flag = .true.
-        return
-      end if
-
-      ywork = y + h * (b41 * k1 + b42 * k2 + b43 * k3)
-      call f(t + a4*h, ywork, k4)
-      nfe_loc = nfe_loc + 1
-      if (nfe_loc > max_eval) then
-        limit_flag = .true.
-        return
-      end if
-
-      ywork = y + h * (b51 * k1 + b52 * k2 + b53 * k3 + b54 * k4)
-      call f(t + a5*h, ywork, k5)
-      nfe_loc = nfe_loc + 1
-      if (nfe_loc > max_eval) then
-        limit_flag = .true.
-        return
-      end if
-
-      ywork = y + h * (b61 * k1 + b62 * k2 + b63 * k3 + b64 * k4 + b65 * k5)
-      call f(t + a6*h, ywork, k6)
-      nfe_loc = nfe_loc + 1
-      if (nfe_loc > max_eval) then
-        limit_flag = .true.
-        return
-      end if
-
-      y5loc = y + h * (c1 * k1 + c3 * k3 + c4 * k4 + c5 * k5 + c6 * k6)
-      y4loc = y + h * (ch1 * k1 + ch3 * k3 + ch4 * k4 + ch5 * k5)
-    end subroutine rkf45_step
-
+      write(*,'(A)') trim(msg)
+      write(*,'(A,1X,ES22.14)') "  t         :", t_now
+      write(*,'(A,1X,ES22.14)') "  h         :", h_now
+      write(*,'(A,1X,ES22.14)') "  err       :", err_now
+      write(*,'(A,1X,I0)')      "  step_count:", nstep
+      write(*,'(A,1X,*(ES22.14,1X))') "  y         :", y_now
+      write(*,'(A,1X,*(ES22.14,1X))') "  yp        :", yp_now
+    end subroutine write_step_failure
   end subroutine d02pcf
 
 end module nag_compat_mod

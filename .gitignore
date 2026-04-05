@@ -20,6 +20,12 @@ logs/
 Cont/
 Res/
 
+# MATLAB scripts
+*.m
+
+# Project-level AI config
+CLAUDE.md
+
 # macOS metadata
 .DS_Store
 **/.DS_Store
