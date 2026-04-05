@@ -1,4 +1,3 @@
-
 ! 1D shooting for FIX1 via r_ratio: Newton in x = logit(r_ratio),
 ! with finite-difference Jacobian, Broyden updates, and Armijo
 ! backtracking.  Same target as the 1D hc solver (M_goal or Mb_goal)
@@ -41,7 +40,7 @@ contains
     logical, intent(out), optional :: success
 
     integer, parameter :: max_iter = 15
-    real(8), parameter :: tau = 0.5d0, c1 = 1.d-4
+    real(8), parameter :: TAU = 0.5d0, C1 = 1.d-4
     real(8) :: alpha, x_trial, F_trial, rr_trial, rho0_tmp, ee_tmp
     real(8) :: rr_base, phi_old, phi_new, slope0
     integer :: i
@@ -91,8 +90,8 @@ module shoot_solver_1d_r_ratio_helpers_mod
   use eos_mod, only: n0_at_h, e_at_h
   use para_mod, only: h_center, r_ratio, Mass, Mass_0, MSUN, M_goal, Mb_goal, FIX1
   use shoot_solver_1d_types_mod, only: newton_state_1d, evaluation_function_1d
-  use shoot_solver_1d_r_ratio_mod, only: from_solver_coord_rp
-  use rotation_uniform, only: rotation_solver
+  use shoot_solver_1d_r_ratio_mod, only: from_solver_coord_rp, to_solver_coord_rp
+  use rotation_solver_mod, only: rotation_solver
   implicit none
 contains
   subroutine evaluate_solution_rp(rr, hc, F, rho0, ee)
@@ -125,13 +124,28 @@ contains
     real(8), intent(in)    :: hc
     real(8), intent(out)   :: rho0, ee
     logical, intent(in), optional :: reuse_base
-    real(8) :: delta, xp, Fp, rho_tmp, ee_tmp, rr_p
+    real(8), parameter :: RR_MIN = 1.d-3, RR_MAX = 1.d0 - 1.d-3, RR_FD_STEP = 2.d-3
+    real(8) :: xm, xp, Fm, Fp, rho_tmp, ee_tmp, rr_m, rr_p
 
-    delta = max(abs(x), 1.d0) * 1.d-4
-    xp = x + delta
-    call from_solver_coord_rp(xp, rr_p)
-    call evaluate_solution_rp(rr_p, hc, Fp, rho_tmp, ee_tmp)
-    state%J = (Fp - F) / delta
+    rr = max(rr_min, min(rr, rr_max))
+    rr_m = max(rr_min, rr - rr_fd_step)
+    rr_p = min(rr_max, rr + rr_fd_step)
+
+    if (rr_m < rr .and. rr_p > rr) then
+      call to_solver_coord_rp(rr_m, xm)
+      call to_solver_coord_rp(rr_p, xp)
+      call evaluate_solution_rp(rr_m, hc, Fm, rho_tmp, ee_tmp)
+      call evaluate_solution_rp(rr_p, hc, Fp, rho_tmp, ee_tmp)
+      state%J = (Fp - Fm) / (xp - xm)
+    else if (rr_p > rr) then
+      call to_solver_coord_rp(rr_p, xp)
+      call evaluate_solution_rp(rr_p, hc, Fp, rho_tmp, ee_tmp)
+      state%J = (Fp - F) / (xp - x)
+    else
+      call to_solver_coord_rp(rr_m, xm)
+      call evaluate_solution_rp(rr_m, hc, Fm, rho_tmp, ee_tmp)
+      state%J = (F - Fm) / (x - xm)
+    end if
 
     state%has_jacobian = .true.
     state%has_prev     = .false.

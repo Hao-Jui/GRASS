@@ -10,7 +10,7 @@ module starting_model_mod
                       solver_type, r_ratio, shooting, SHOOT_2D, output, &
                       active_theory, THEORY_GR, mphi_goal, &
                       mphi_burn_threshold, B_coup, B_goal, mphi_r, l_uni
-  use rotation_uniform,  only: rotation_solver
+  use rotation_solver_mod,  only: rotation_solver
   use miscellaneous_mod, only: print_converged_block
   use scalar_burning_mod, only: perform_scalar_burn
   implicit none
@@ -28,12 +28,13 @@ contains
         write(error_unit, '(A)') trim(regrid_error)
         error stop "initialize_starting_model: regrid_read failed"
       end if
+      e_center = .74e15_wp
       e_center = e_center * C * C * KSCALE
       p_center = p_at_e(e_center)
       h_center = h_at_p(p_center)
     case default
       r_ratio  = merge(0.9e0_wp, 1.e0_wp, trim(adjustl(solver_type)) == "uryu")
-      e_center = .7e15_wp
+      e_center = .8e15_wp
       e_center = e_center * C * C * KSCALE
       p_center = p_at_e(e_center)
       h_center = h_at_p(p_center)
@@ -55,9 +56,10 @@ contains
     call single_model()
   contains
     subroutine single_model()
+      use para_mod, only: run_task, OneModel
       use constrain_mod, only: hamiltonian
       real(wp) :: ee, rho0, hamL2, t0, t1
-      !r_ratio = 0.9970_wp
+      r_ratio = 0.6_wp
 
       output = .true.; call cpu_time(t0)
           call rotation_solver
@@ -70,7 +72,7 @@ contains
       write(*,*) " "; write(*,"(A, f10.4)") "Elapsed time [s]: ", t1-t0
       call hamiltonian(hamL2)
       write(*,"(A18,es27.16)") "Ham L2:", hamL2; write(*,*) " "
-      !stop "One model solved!"
+      if (run_task == OneModel) stop "One model solved!"
     end subroutine single_model
   end subroutine initialize_starting_model
 end module starting_model_mod

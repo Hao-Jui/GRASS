@@ -1,16 +1,5 @@
 module shoot_mod
-contains
-
-subroutine shoot_v2
-  use analysis_mod, only: solution_properties
-  use eos_mod, only: n0_at_h, e_at_h
-  use para_mod, only: wp, h_center, r_ratio, mass, mass_0, mass_p, chi, chi_goal, &
-                      Omega_e, KAPPA, C, KSCALE, MB, MSUN, pi, n_sat, &
-                      I_inertia, Love2, M2, M4, S3, T_kin, &
-                      mphi_goal, B_goal, eos_file, sound_speed, r_circ, &
-                      accuracy, output, shooting, SHOOT_FIX1_HC, SHOOT_FIX1_RP, SHOOT_2D, &
-                      start, finish, &
-                      n_of_relaxation_steps
+  use para_mod, only: wp
   use shoot_solver_2d_mod, only: newton_state, init_newton_state, reset_newton_state, &
                                  solve_linear, clamp_step, from_solver_coords, to_solver_coords, &
                                  broyden_update, commit_state
@@ -18,16 +7,12 @@ subroutine shoot_v2
   use shoot_solver_1d_hc_mod, only: reset_newton_state_1d, solve_linear_1d, &
     line_search_1d, from_solver_coord_1d, to_solver_coord_1d, &
     clamp_step_1d, broyden_update_1d, commit_state_1d
-  use rotation_uniform,  only: rotation_solver
-  use starting_model_mod, only: initialize_starting_model
-  use miscellaneous_mod, only: log_kepler_sequence, print_converged_block
-  use shoot_solver_2d_helpers_mod, only: evaluate_solution, build_jacobian
-  use shoot_solver_1d_hc_helpers_mod, only: evaluate_solution_1d, build_jacobian_1d
   use shoot_solver_1d_r_ratio_mod, only: from_solver_coord_rp, to_solver_coord_rp, &
                                          clamp_step_rp, line_search_rp
-  use shoot_solver_1d_r_ratio_helpers_mod, only: evaluate_solution_rp, build_jacobian_rp
   implicit none
-  integer :: it, i_idx, iteration_cap
+  private
+  public :: shoot_v2
+
   real(wp) :: er, rho0, ee
   real(wp) :: F(2), x(2), delta_x(2), rhs(2), h_new, r_new
   real(wp) :: F1d, x1d, delta_x1d, rhs1d
@@ -37,19 +22,63 @@ subroutine shoot_v2
   type(newton_state_1d) :: solver_state_rp
   logical :: step_ok, need_cycle
   real(wp) :: prev_er1d, prev_er2d, prev_er_rp
-  real(wp) :: er_best
-  integer  :: n_stall
-  integer, parameter :: STALL_LIMIT = 8
-  real(wp), parameter :: STALL_TOL = 1.e-6_wp
-  call initialize_starting_model()
-  ! Always initialize 2D state since the run can switch from 1D to 2D mid-sequence.
-  call init_newton_state(solver_state, 2)
 
-  write(unit=*, fmt=*) " "
-  !chi_goal = 0.e0_wp
-  iteration_cap = 1
+contains
 
-  do i_idx = 1, iteration_cap
+  subroutine shoot_v2
+    use para_mod, only: shooting, SHOOT_FIX1_HC
+    use starting_model_mod, only: initialize_starting_model
+    integer :: iteration_cap
+
+    call initialize_starting_model()
+    call init_newton_state(solver_state, 2)
+
+    write(unit=*, fmt=*) " "
+    iteration_cap = 100
+
+    if (iteration_cap == 1) then
+      call shoot_single()
+    else
+      call shoot_sequence(iteration_cap)
+    end if
+  end subroutine shoot_v2
+
+  subroutine shoot_sequence(iteration_cap)
+    use para_mod, only: h_center, r_ratio, Omega_e, KAPPA, C, pi, &
+                        shooting, SHOOT_FIX1_HC, SHOOT_FIX1_RP
+    integer, intent(in) :: iteration_cap
+    integer :: i_idx
+
+    do i_idx = 1, iteration_cap
+      call shoot_single()
+      call output_seq()
+
+      back_bending_project: block
+        real(wp) :: Oe
+        Oe = Omega_e * (C/sqrt(kappa)) / 2.0_wp / pi
+        h_center = merge(h_center + 0.002_wp, h_center + 0.005_wp, Oe < 350.0_wp) ! spin it down
+        if (shooting == SHOOT_FIX1_HC) then
+          r_ratio = min(r_ratio, 0.95_wp)
+        end if
+        shooting = SHOOT_FIX1_RP
+      end block back_bending_project
+    end do
+  end subroutine shoot_sequence
+
+  subroutine shoot_single()
+    use analysis_mod, only: solution_properties
+    use eos_mod, only: n0_at_h, e_at_h
+    use para_mod, only: h_center, r_ratio, output, shooting, &
+                        SHOOT_FIX1_HC, SHOOT_FIX1_RP, SHOOT_2D, &
+                        accuracy, n_of_relaxation_steps, start, finish
+    use rotation_solver_mod, only: rotation_solver
+    use miscellaneous_mod, only: print_converged_block
+    integer :: it
+    real(wp) :: er_best
+    integer  :: n_stall
+    integer, parameter :: STALL_LIMIT = 8
+    real(wp), parameter :: STALL_TOL = 1.e-6_wp
+
     select case (shooting)
     case (SHOOT_FIX1_HC)
       call reset_newton_state_1d(solver_state_1d); prev_er1d = huge(1.e0_wp)
@@ -59,9 +88,6 @@ subroutine shoot_v2
       call reset_newton_state(solver_state); prev_er2d = huge(1.e0_wp)
     end select
 
-    ! ---------------------------------------------------------------
-    ! Shooting stellar parameters
-    ! ---------------------------------------------------------------
     it = 1
     er = 1.e99_wp
     er_best = huge(1.e0_wp)
@@ -85,7 +111,7 @@ subroutine shoot_v2
       end if
       if (n_stall >= STALL_LIMIT) then
         write(*,"(A,ES10.3,A)") "  Shooting stalled (er=", er, "), accepting solution."
-        exit
+        stop
       end if
 
       call apply_newton_step
@@ -95,9 +121,6 @@ subroutine shoot_v2
       if (it == 1000) stop "Required bulk properties cannot be reached."
     end do
 
-    ! ---------------------------------------------------------------
-    ! Recording the desired solution
-    ! ---------------------------------------------------------------
     output = .true.
     call rotation_solver; call solution_properties
     output = .false.
@@ -107,34 +130,23 @@ subroutine shoot_v2
     write(unit=*, fmt=*) " "
     write(*,'(A,2es18.9)') "converged rho0, ee:", rho0, ee
     call print_converged_block(rho0, ee)
+  end subroutine shoot_single
 
-    call output_seq()
-
-    back_bending_project: block
-        real(wp) :: Oe
-        Oe = Omega_e * (C/sqrt(kappa)) / 2.0_wp / pi
-        h_center = merge(h_center + 0.002_wp, h_center + 0.005_wp, Oe < 350.0_wp )
-        if (shooting == SHOOT_FIX1_HC) then
-          r_ratio = min(r_ratio, 0.95_wp)
-        end if
-        shooting = SHOOT_FIX1_RP
-    end block back_bending_project
-
-    !call log_kepler_sequence()
-  end do ! looping models
-
-contains
   subroutine output_seq()
-    use para_mod, only: rho_uni, ang_mom
+    use para_mod, only: rho_uni, ang_mom, h_center, r_ratio, &
+                        mass, mass_0, mass_p, chi, T_kin, r_circ, &
+                        Omega_e, KAPPA, C, KSCALE, MB, MSUN, pi, n_sat, &
+                        I_inertia, Love2, M2, M4, S3, &
+                        eos_file, sound_speed
     use eos_mod, only: p_at_e
     character(len=1024) :: filename
     real(wp) :: Q_bar, T_over_W, pp, traceT
     integer  :: unit, ios
+    pp   = p_at_e(ee)
     traceT  = 3.0_wp*pp*1.80171810e-39_wp/KSCALE - ee*rho_uni/(C * C * KSCALE)
     Q_bar = merge(-1.d0, M2/chi**2, chi < 1.e-30_wp)
     T_over_W=merge(-1.d0, T_kin/abs(Mass_p - Mass + T_kin), chi < 1.e-30_wp)
 
-    
     write(filename, '(A, A, A, F0.2, A)') &
       "/Users/horay/Data4Projects/HT/Seq_", trim(eos_file), "_M", mass_0/MSUN, ".dat"
 
@@ -148,7 +160,8 @@ contains
             Mass/MSUN, Mass_0/MSUN,                & ! 6-7
             I_inertia, Love2, Q_bar,               & ! 8-10
             M2, S3, M4, chi, T_over_W, ang_mom,    & ! 11-16
-            Omega_e*(C/sqrt(kappa)), r_circ/1e5_wp
+            Omega_e*(C/sqrt(kappa)), r_ratio,      & ! 17-18
+            r_circ/1e5_wp
     close(unit)
   end subroutine output_seq
 
@@ -156,8 +169,8 @@ contains
     use shoot_solver_2d_mod, only: rep_map_scale, r_min_ratio, r_eps
     real(wp), intent(in) :: x_current(2), rep_current
     real(wp), intent(inout) :: delta_trial(2)
-    real(wp), parameter :: near_spherical_ratio = 0.90_wp
-    real(wp), parameter :: max_gap_fraction = 0.50_wp
+    real(wp), parameter :: NEAR_SPHERICAL_RATIO = 0.90_wp
+    real(wp), parameter :: MAX_GAP_FRACTION = 0.50_wp
     real(wp) :: rep_cap, x2_limit
 
     if (rep_current < near_spherical_ratio) return
@@ -171,6 +184,12 @@ contains
   end subroutine damp_2d_step_near_spherical
 
   subroutine apply_newton_step
+    use para_mod, only: h_center, r_ratio, shooting, &
+                        SHOOT_FIX1_HC, SHOOT_FIX1_RP, SHOOT_2D, accuracy
+    use shoot_solver_2d_helpers_mod, only: evaluate_solution
+    use shoot_solver_1d_hc_helpers_mod, only: evaluate_solution_1d
+    use shoot_solver_1d_r_ratio_helpers_mod, only: evaluate_solution_rp
+
     need_cycle = .false.
     select case (shooting)
     case (SHOOT_FIX1_HC)
@@ -243,6 +262,12 @@ contains
   end subroutine apply_newton_step
 
   subroutine evaluate_and_update
+    use para_mod, only: h_center, r_ratio, shooting, &
+                        SHOOT_FIX1_HC, SHOOT_FIX1_RP, SHOOT_2D
+    use shoot_solver_2d_helpers_mod, only: evaluate_solution, build_jacobian
+    use shoot_solver_1d_hc_helpers_mod, only: evaluate_solution_1d, build_jacobian_1d
+    use shoot_solver_1d_r_ratio_helpers_mod, only: evaluate_solution_rp, build_jacobian_rp
+
     select case (shooting)
     case (SHOOT_FIX1_HC)
       call evaluate_solution_1d(h_center, r_ratio, F1d, rho0, ee)
@@ -290,7 +315,7 @@ contains
     end select
   end subroutine evaluate_and_update
 
-end subroutine shoot_v2
+end module shoot_mod
 
 subroutine print_iter_status(it, rho0, ee, er)
   use para_mod, only: wp, active_theory, THEORY_GR, &
@@ -328,5 +353,3 @@ subroutine print_iter_status(it, rho0, ee, er)
   write(*,'(1X,A)') repeat('=', 36)
   write(*, *) " "
 end subroutine print_iter_status
-
-end module shoot_mod

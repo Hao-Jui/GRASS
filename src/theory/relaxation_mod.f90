@@ -1,4 +1,4 @@
-module anderson_optimized
+module anderson_optimized_mod
   use precision_mod, only: wp
   use para_mod, only: SDIV, MDIV
   implicit none
@@ -37,7 +37,7 @@ contains
     real(wp) :: accel_field(SDIV,MDIV)
     real(wp), pointer, contiguous :: residual_vec(:), history_vec(:)
     integer :: k, i, info, idx_curr, idx, N
-    real(wp), parameter :: blend = 0.3e0_wp, damping = 0.3e0_wp
+    real(wp), parameter :: BLEND = 0.3e0_wp, DAMPING = 0.3e0_wp
     integer, parameter :: conservative_steps = 3
     real(wp), allocatable, save :: delta(:,:)
 
@@ -90,7 +90,7 @@ contains
     
   end subroutine anderson_accel_optimized
 
-end module anderson_optimized
+end module anderson_optimized_mod
 
 module JFNK_mod
   use precision_mod, only: wp
@@ -475,13 +475,17 @@ module aitken_mod
   use para_mod, only: SDIV, MDIV
   implicit none
   private
-  public :: aitken_delta2
+  public :: aitken_delta2, aitken_reset
 
   real(wp), allocatable, save :: aitk1_rho(:,:), aitk1_gama(:,:), aitk1_ww(:,:), aitk1_sphi(:,:)
   real(wp), allocatable, save :: aitk2_rho(:,:), aitk2_gama(:,:), aitk2_ww(:,:), aitk2_sphi(:,:)
   integer, save :: n_aitk_hist = 0
 
 contains
+
+  subroutine aitken_reset
+    n_aitk_hist = 0
+  end subroutine aitken_reset
 
   subroutine aitken_delta2(rho, gama, ww, sphi, prev_rho, prev_gama, prev_ww, prev_sphi, &
                           n_rho_locked, N_RHO_LOCK, has_scalar, fired)

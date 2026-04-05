@@ -93,7 +93,7 @@ contains
     read(unit, *, iostat=ios) log_e(1), log_p(1), log_h(1), log_n0(1)
     if (ios /= 0) error stop "loadEos: malformed EOS row"
     enthalpy_min = log(log_h(1))
-    if (log_h(1) <= 1._wp) error stop "loadEos: first enthalpy h(1) <= 1 — log(log(h)) is undefined"
+    if (log_h(1) <= 1._wp) error stop "loadEos: first enthalpy h(1) <= 1, and thus log(log(h)) is undefined"
 
     do i = 2, num_tab
       read(unit, *, iostat=ios) log_e(i), log_p(i), log_h(i), log_n0(i)
@@ -518,7 +518,7 @@ contains
     real(wp) :: x0, x0_log, min_e, max_e
     real(wp) :: ee_clamped
     logical :: fatal_error
-    real(wp), parameter :: clamp_tol = 1.d-12
+    real(wp), parameter :: CLAMP_TOL = 1.d-12
 
     info = 0
     fatal_error = .false.

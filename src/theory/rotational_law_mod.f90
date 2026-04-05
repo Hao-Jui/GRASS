@@ -128,7 +128,7 @@ contains
     real(8) :: guess, Fa, rsm, wwsm, sgp, mum, omg_max_h, diff_Fmax
     real(8), dimension(SDIV) :: omg_mu_0
     integer :: imax, s
-    real(8), parameter :: tolerance = 1.d-5
+    real(8), parameter :: TOLERANCE = 1.d-5
 
     Fmax_h = current_Fmax_h
 

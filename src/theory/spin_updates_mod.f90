@@ -1,4 +1,4 @@
-module spin_updates
+module spin_updates_mod
   use, intrinsic :: iso_fortran_env, only: wp => real64
   implicit none
   private
@@ -348,4 +348,4 @@ contains
     end if
   end subroutine update_eos_and_velocity
 
-end module spin_updates
+end module spin_updates_mod
