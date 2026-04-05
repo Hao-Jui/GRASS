@@ -6,7 +6,8 @@ or Scalar–Tensor (ST) gravity. The code integrates the field equations on a
 compactified meridional grid, reads tabulated equations of state (EOS),
 and outputs diagnostic profiles that characterise the equilibrium model.
 
-The lastest official release: 6139a9f
+The v1 release: 6139a9f
+The lastest official release: 8a7b201
 
 ---
 
