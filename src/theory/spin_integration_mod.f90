@@ -1,16 +1,19 @@
-module spin_integration
+module spin_integration_mod
+  use iso_fortran_env, only: int32
   use para_mod, only: wp, SDIV, MDIV, LMAX, s_gp, mu, sin_theta, s_pwr, &
                       rho, gama, alpha, ww, omg, sphi, &
                       energy, pressure, enthalpy, velocity_sq, &
                       P_2n, P1_2n_1, l_uni, KAPPA, C, G, MSUN, MB, pi, KSCALE, &
-                      r_ratio, r_e, enthalpy_min, &
-                      Omega_c, Omega_e, M2, S3, M4, sphi_m, &
+                      r_ratio, r_e, enthalpy_min, s_e, SMAX, &
+                      Omega_c, Omega_e, sphi_m, &
                       B_coup, mphi_r, mass, mass_0, ang_mom, &
                       A_diff, lambda1, lambda2, solver_type, output, timing, eos_file
+  use cheb_mod, only: cheb_fit_stats, cheb_std_base, cheb_get_deriv_point
   use eos_mod, only: n0_at_e
+  use exporter_mod, only: initial_data_for_sacra_aei
   use toolkit_mod, only: bessel_even_tables
-  use spin_derivatives, only: deriv_s_sub, deriv_m_sub
-  use spin_workspace
+  use spin_derivatives_mod, only: deriv_s_sub, deriv_m_sub
+  use spin_workspace_mod
   implicit none
   private
   public :: get_all_targets, update_alpha_potential, output_helper
@@ -214,11 +217,9 @@ contains
     real(wp), intent(in) :: root_mphi_re
     integer, parameter :: TILE = 8
     integer :: ncols, c1, c2, ic, n
-    real(wp), allocatable :: proj(:,:)
     real(wp) :: f2n(SDIV), lp(SDIV), rs(SDIV), mscale(SDIV)
 
     ncols = min(TILE, max(1, LMAX+1))
-    allocate(proj(SDIV, ncols))
 
     D2_metric_gama(:,1) = 0.0_wp
     D2_metric_omega(:,1) = 0.0_wp
@@ -228,10 +229,10 @@ contains
     do c1 = 1, LMAX+1, ncols
       c2 = min(LMAX+1, c1 + ncols - 1)
       call dgemm('N', 'N', SDIV, c2-c1+1, MDIV, 1.0_wp, S_metric_rho, SDIV, &
-                 weighted_even_basis(:,c1:c2), MDIV, 0.0_wp, proj, SDIV)
+                 weighted_even_basis(:,c1:c2), MDIV, 0.0_wp, proj_work(:,1:c2-c1+1), SDIV)
       do ic = 1, c2 - c1 + 1
         n = c1 + ic - 2
-        call green_rho(n, f2n, proj(:,ic), radial_quad_weights, D2_metric_rho(:,c1+ic-1), lp, rs)
+        call green_rho(n, f2n, proj_work(:,ic), radial_quad_weights, D2_metric_rho(:,c1+ic-1), lp, rs)
         f2n(2:) = f2n(2:) * rad_ratio_g(2:)
       end do
     end do
@@ -240,9 +241,9 @@ contains
       do c1 = 1, LMAX+1, ncols
         c2 = min(LMAX+1, c1 + ncols - 1)
         call dgemm('N', 'N', SDIV, c2-c1+1, MDIV, 1.0_wp, S_metric_sphi, SDIV, &
-                   weighted_even_basis(:,c1:c2), MDIV, 0.0_wp, proj, SDIV)
+                   weighted_even_basis(:,c1:c2), MDIV, 0.0_wp, proj_work(:,1:c2-c1+1), SDIV)
         do ic = 1, c2 - c1 + 1
-          call green_bessel(c1+ic-1, proj(:,ic), mscale, D2_metric_sphi(:,c1+ic-1), lp, rs)
+          call green_bessel(c1+ic-1, proj_work(:,ic), mscale, D2_metric_sphi(:,c1+ic-1), lp, rs)
         end do
       end do
     else
@@ -250,10 +251,10 @@ contains
       do c1 = 1, LMAX+1, ncols
         c2 = min(LMAX+1, c1 + ncols - 1)
         call dgemm('N', 'N', SDIV, c2-c1+1, MDIV, 1.0_wp, S_metric_sphi, SDIV, &
-                   weighted_even_basis(:,c1:c2), MDIV, 0.0_wp, proj, SDIV)
+                   weighted_even_basis(:,c1:c2), MDIV, 0.0_wp, proj_work(:,1:c2-c1+1), SDIV)
         do ic = 1, c2 - c1 + 1
           n = c1 + ic - 2
-          call green_rho(n, f2n, proj(:,ic), radial_quad_weights, D2_metric_sphi(:,c1+ic-1), lp, rs)
+          call green_rho(n, f2n, proj_work(:,ic), radial_quad_weights, D2_metric_sphi(:,c1+ic-1), lp, rs)
           f2n(2:) = f2n(2:) * rad_ratio_g(2:)
         end do
       end do
@@ -265,10 +266,10 @@ contains
       do c1 = 1, LMAX, ncols
         c2 = min(LMAX, c1 + ncols - 1)
         call dgemm('N', 'N', SDIV, c2-c1+1, MDIV, 1.0_wp, S_metric_gama, SDIV, &
-                   weighted_gama_basis(:,c1:c2), MDIV, 0.0_wp, proj, SDIV)
+                   weighted_gama_basis(:,c1:c2), MDIV, 0.0_wp, proj_work(:,1:c2-c1+1), SDIV)
         do ic = 1, c2 - c1 + 1
           n = c1 + ic - 1
-          call green_multipole(n, f2n, proj(:,ic), radial_quad_weights, &
+          call green_multipole(n, f2n, proj_work(:,ic), radial_quad_weights, &
                                rad_inv_s1, .false., D2_metric_gama(:,n+1), lp, rs)
           f2n(2:) = f2n(2:) * rad_ratio_g(2:)
         end do
@@ -279,17 +280,15 @@ contains
       do c1 = 1, LMAX, ncols
         c2 = min(LMAX, c1 + ncols - 1)
         call dgemm('N', 'N', SDIV, c2-c1+1, MDIV, 1.0_wp, S_metric_omega, SDIV, &
-                   weighted_omega_basis(:,c1:c2), MDIV, 0.0_wp, proj, SDIV)
+                   weighted_omega_basis(:,c1:c2), MDIV, 0.0_wp, proj_work(:,1:c2-c1+1), SDIV)
         do ic = 1, c2 - c1 + 1
           n = c1 + ic - 1
-          call green_multipole(n, f2n, proj(:,ic), radial_quad_weights, &
+          call green_multipole(n, f2n, proj_work(:,ic), radial_quad_weights, &
                                rad_left_rho, .true., D2_metric_omega(:,n+1), lp, rs)
           f2n(2:) = f2n(2:) * rad_ratio_g(2:)
         end do
       end do
     end if
-
-    deallocate(proj)
 
   contains
 
@@ -401,9 +400,6 @@ contains
   end subroutine project_integrate
 
   subroutine reconstruct()
-    integer :: si, mi
-    real(wp) :: emhalf
-
     call dgemm('N','T', SDIV, MDIV, LMAX+1, 1.0_wp, D2_metric_rho, SDIV, P_2n, MDIV, &
                0.0_wp, target_rho, SDIV)
 
@@ -418,19 +414,10 @@ contains
     if (is_spherical()) then
       call dgemm('N','T', SDIV, MDIV, 1, -(2.0_wp/pi), D2_metric_gama(:,2:2), SDIV, &
                  recon_gama_basis(:,1:1), MDIV, 0.0_wp, target_gama, SDIV)
-      do mi = 1, MDIV
-        do si = 1, SDIV
-          emhalf = 1.0_wp / e_gsm_cache(si,mi)
-          target_rho(si,mi) = -emhalf * target_rho(si,mi)
-          target_gama(si,mi) = emhalf * target_gama(si,mi)
-        end do
-      end do
+      target_rho = -target_rho / e_gsm_cache
+      target_gama = target_gama / e_gsm_cache
       if (is_massive_scalar()) then
-        do mi = 1, MDIV
-          do si = 1, SDIV
-            target_sphi(si,mi) = target_sphi(si,mi) / e_gsm_cache(si,mi)
-          end do
-        end do
+        target_sphi = target_sphi / e_gsm_cache
       end if
       target_ww = 0.0_wp
       return
@@ -441,20 +428,11 @@ contains
     call dgemm('N','T', SDIV, MDIV, LMAX, -(2.0_wp/pi), D2_metric_gama(:,2:LMAX+1), SDIV, &
                recon_gama_basis, MDIV, 0.0_wp, target_gama, SDIV)
 
-    do mi = 1, MDIV
-      do si = 1, SDIV
-        emhalf = 1.0_wp / e_gsm_cache(si,mi)
-        target_rho(si,mi) = -emhalf * target_rho(si,mi)
-        target_gama(si,mi) = emhalf * target_gama(si,mi)
-        target_ww(si,mi) = emhalf / e_rsm_cache(si,mi) * target_ww(si,mi)
-      end do
-    end do
+    target_rho = -target_rho / e_gsm_cache
+    target_gama = target_gama / e_gsm_cache
+    target_ww = target_ww / (e_gsm_cache * e_rsm_cache)
     if (is_massive_scalar()) then
-      do mi = 1, MDIV
-        do si = 1, SDIV
-          target_sphi(si,mi) = target_sphi(si,mi) / e_gsm_cache(si,mi)
-        end do
-      end do
+      target_sphi = target_sphi / e_gsm_cache
     end if
   end subroutine reconstruct
 
@@ -583,9 +561,7 @@ contains
 
     alpha(SDIV,:) = 0.0_wp
     adj_const = alpha(:,MDIV) - ( gama(:,MDIV) - rho(:,MDIV) )/2.0_wp
-    do m = 1, MDIV
-      alpha(:,m) = alpha(:,m) - adj_const
-    end do
+    alpha = alpha - spread(adj_const, dim=2, ncopies=MDIV)
     if (timing) then; call cpu_time(t1); dt(4) = t1 - t0; end if
 
     if (timing) then
@@ -606,23 +582,68 @@ contains
     end if
   end subroutine update_alpha_potential
 
-  subroutine output_helper(D2_rho, D2_omega)
-    real(wp), intent(in) :: D2_rho(SDIV,LMAX+1), D2_omega(SDIV,LMAX+1)
-    real(wp) :: r_inf, rho_0, t0, t1
-    character(512) :: fname
+  function cheb_r_coeff(D2_col, n_pow) result(coeff)
+    real(wp), intent(in) :: D2_col(SDIV)
+    integer,  intent(in) :: n_pow
+    real(wp) :: coeff
+    integer :: s0, n_ext, n_deg, deriv_order
+    real(wp) :: R0
+    real(wp), allocatable :: coeffs(:)
+    type(cheb_fit_stats) :: stats
+    integer, parameter :: orders = 31
+
+    s0 = min(SDIV, count(s_gp < s_e) + 1)
+    n_ext = SDIV - s0 + 1
+    n_deg = min(n_ext - 1, orders)
+    deriv_order = s_pwr * n_pow
+    R0 = r_e * sqrt(KAPPA)
+    allocate(coeffs(0:n_deg))
+
+    call cheb_std_base(n_deg, n_ext, s_gp(s0:SDIV), D2_col(s0:SDIV), s_e, SMAX, coeffs, stats)
+    if (.false.) then
+      write(*,'(A,I0,A,I0,A,I0)') ' cheb_r_coeff: n_pow=', n_pow, ', deriv_order=', deriv_order, &
+                                  ', n_deg=', stats%n_deg
+      write(*,'(A,1X,ES12.5)') ' fitting error=', stats%rms_rel
+      write(*,'(A,1X,ES12.5)') '         L_inf=', stats%linf_rel
+      write(*,'(A,1X,ES12.5)') 'weight at tail=', stats%coeff_tail_l2_ratio
+    end if
+    ! With r = R0 * (s / (1-s))^s_pwr, the exterior tail obeys
+    ! D2(s) = a_n * R0^{-n} * ((1-s)/s)^{s_pwr*n} + higher orders.
+    ! Recover a_n from the matching endpoint derivative of the fitted polynomial.
+    coeff = real((-1)**deriv_order, wp) * R0**n_pow * &
+            cheb_get_deriv_point(n_deg, coeffs, s_e, SMAX, 1.0_wp, deriv_order) / &
+            real(factorial_int(deriv_order), wp)
+    deallocate(coeffs)
+  end function cheb_r_coeff
+
+  pure integer function factorial_int(n) result(val)
+    integer, intent(in) :: n
+    integer :: k
+    val = 1
+    do k = 2, n
+      val = val * k
+    end do
+  end function factorial_int
+
+  subroutine write_moment_tail(D2_rho, D2_omega, D2_gama)
+    use para_mod, only:  M2, S3, M4, S5, M6
+    real(wp), intent(in) :: D2_rho(SDIV,LMAX+1), D2_omega(SDIV,LMAX+1), D2_gama(SDIV,LMAX+1)
     character(64) :: tail_fmt
     integer :: s, unit, ios, sig_digits, field_width
+    real(wp) :: r_inf, nu_monopole(SDIV)
+    nu_monopole = -0.5_wp * D2_rho(:,1) - (1.0_wp / pi) * D2_gama(:,2)
 
-    r_inf = r_e * sqrt(KAPPA) * (s_gp(SDIV - 1) / ( 1.0_wp - s_gp(SDIV - 1) ))**s_pwr
-    M2 = - D2_rho  (SDIV-1,1+1 ) / 2.0_wp * r_inf**3 * ( C**2 / G / Mass )**3
-    S3 = - D2_omega(SDIV-1,2+1 ) / 2.0_wp * r_inf**5 * ( C**2 / G / Mass )**4 / sqrt(KAPPA)
-    M4 =   D2_rho  (SDIV-1,2+1 ) / 2.0_wp * r_inf**5 * ( C**2 / G / Mass )**5
-
-    !if (.not. output) &
-      return
-
-    call cpu_time(t0); write(*,*) " "
-    write(*,"(A)",advance='no') " Off-loading data ..."
+    r_inf = r_e * sqrt(KAPPA) * (s_gp(SDIV - 1) / ( 1.e0_wp - s_gp(SDIV - 1) ))**s_pwr
+    M2 = - D2_metric_rho  (SDIV-1,1+1 ) / 2.e0_wp * r_inf**3 * ( C**2 / G / Mass )**3
+    S3 = - D2_metric_omega(SDIV-1,2+1 ) / 2.e0_wp * r_inf**5 * ( C**2 / G / Mass )**4 / sqrt(KAPPA)
+    M4 =   D2_metric_rho  (SDIV-1,2+1 ) / 2.e0_wp * r_inf**5 * ( C**2 / G / Mass )**5
+    
+    ! alternative method 
+    !M2 = - cheb_r_coeff(D2_rho  (:,1+1), 3) / 2.0_wp * ( C**2 / G / Mass )**3
+    !S3 = - cheb_r_coeff(D2_omega(:,2+1), 5) / 2.0_wp * ( C**2 / G / Mass )**4 / sqrt(KAPPA)
+    !M4 =   cheb_r_coeff(D2_rho  (:,2+1), 5) / 2.0_wp * ( C**2 / G / Mass )**5
+    !S5 = - cheb_r_coeff(D2_omega(:,3+1), 7) / 2.0_wp * ( C**2 / G / Mass )**6 / sqrt(KAPPA)
+    !M6 = - cheb_r_coeff(D2_rho  (:,3+1), 7) / 2.0_wp * ( C**2 / G / Mass )**7
 
     open(newunit=unit, file="Cont/moment_tail.dat", status='replace', action='write', iostat=ios)
     if (ios /= 0) then
@@ -636,6 +657,27 @@ contains
       write(unit,tail_fmt) s_gp(s), D2_rho(s,:), D2_omega(s,:)
     end do
     close(unit)
+  end subroutine write_moment_tail
+
+  subroutine output_helper(D2_rho, D2_omega, D2_gama)
+    use para_mod, only: run_task, MRbuild, donut
+    use donu_mod, only: donutization_number
+    real(wp), intent(in) :: D2_rho(SDIV,LMAX+1), D2_omega(SDIV,LMAX+1), D2_gama(SDIV,LMAX+1)
+    real(wp) :: radial_geom(SDIV), volume_density(SDIV,MDIV)
+    real(wp) :: rho_0, t0, t1
+    character(512) :: fname
+    character(len=*), parameter :: restart_binary_path = "./Res/res.rst"
+
+    if (.not. output .or. run_task == MRbuild) return
+
+    call cpu_time(t0); write(*,*) " "
+    write(*,"(A)",advance='no') " Off-loading data ..."
+
+    call write_moment_tail(D2_rho, D2_omega, D2_gama)
+
+    radial_geom = radial_quad_weights * dble(s_pwr) * (s_gp / (1.0_wp - s_gp))**(3*s_pwr - 1) / (1.0_wp - s_gp)**2
+    volume_density = exp(2.0_wp * alpha + 0.5_wp * (gama - rho))
+    donut = donutization_number(sphi * sqrt(B_coup), volume_density, radial_geom, angular_quad_weights)
 
     rho_0 = n0_at_e(energy(1,1)) * MB
     write(fname,"(A, A, A, f0.2, A, f0.3, A, es0.2e2, A,es0.2e2, A, es0.3e2, A, f0.3)") &
@@ -655,51 +697,56 @@ contains
     end select
     fname = trim(fname)//".dat"
 
-    call write_output_file(trim(fname))
-    call write_output_file("./Res/res.dat")
+    !call initial_data_for_sacra_aei(trim(fname))
+    call write_restart_file(restart_binary_path)
 
     call cpu_time(t1); write(*,"(A, f12.6, A)") "   took ", t1-t0, " [s]"
   end subroutine output_helper
 
-  subroutine write_output_file(filename)
+  subroutine write_restart_file(filename)
     character(len=*), intent(in) :: filename
-    integer :: unit, ios, s, m
-    integer :: sig_digits, exp_digits, field_width
-    real(wp) :: rho_0_val
-    character(len=256) :: header_fmt, data_fmt
+    integer :: unit, ios
+    integer(int32) :: header_ints(6)
+    real(wp) :: header_meta(5)
+    real(wp), allocatable :: restart_data(:,:,:)
+    character(len=8), parameter :: restart_magic = "GRASSRST01"
+    integer(int32), parameter :: restart_format_version = 1_int32
+    integer(int32), parameter :: restart_field_count = 10_int32
 
-    sig_digits = precision(1.0_wp) - 1
-    exp_digits = 3
-    if (range(1.0_wp) > 999) exp_digits = 4
-    field_width = sig_digits + exp_digits + 10
-    write(header_fmt,'("(3(i0,3x), 5es",i0,".",i0,"e",i0,")")') field_width, sig_digits, exp_digits
-    write(data_fmt,  '("(13es",i0,".",i0,"e",i0,")")') field_width, sig_digits, exp_digits
+    header_ints = [restart_format_version, int(storage_size(1.0_wp), int32), restart_field_count, &
+                   int(SDIV, int32), int(MDIV, int32), int(s_pwr, int32)]
+    header_meta = [r_e, energy(1,1), r_ratio, Omega_e, Omega_c]
 
-    open(newunit=unit, file=filename, status='replace', action='write', iostat=ios)
+    allocate(restart_data(restart_field_count, SDIV, MDIV), source=0.0_wp)
+    restart_data(1,:,:)  = alpha
+    restart_data(2,:,:)  = gama
+    restart_data(3,:,:)  = rho
+    restart_data(4,:,:)  = ww
+    restart_data(5,:,:)  = pressure
+    restart_data(6,:,:)  = energy
+    restart_data(7,:,:)  = enthalpy
+    restart_data(8,:,:)  = velocity_sq
+    restart_data(9,:,:)  = omg
+    restart_data(10,:,:) = sphi
+
+    open(newunit=unit, file=filename, status='replace', action='write', &
+         access='stream', form='unformatted', iostat=ios)
     if (ios /= 0) then
-      write(*,*) "write_eq_profile: failed to open file ", trim(filename)
+      write(*,*) "write_restart_file: failed to open file ", trim(filename)
+      deallocate(restart_data)
       return
     end if
 
-    write(unit, fmt=header_fmt) SDIV, MDIV, s_pwr, r_e*sqrt(KAPPA)/1.e5_wp, &
-            energy(1,1)/(C*C*KSCALE), r_ratio, Omega_e* (C/sqrt(kappa)), Omega_c* (C/sqrt(kappa))
-
-    do s = 1, SDIV
-      do m = 1, MDIV
-        if (enthalpy(s,m) > enthalpy_min) then
-          rho_0_val = n0_at_e(energy(s,m)) * MB
-        else
-          rho_0_val = 0.0_wp
-        end if
-
-        write(unit, fmt=data_fmt) s_gp(s), mu(m), alpha(s,m), gama(s,m), rho(s,m), &
-          ww(s,m) * (C/sqrt(kappa)), pressure(s,m)/KSCALE, energy(s,m)/(C*C*KSCALE), &
-          enthalpy(s,m), rho_0_val, velocity_sq(s,m), omg(s,m) * (C/sqrt(kappa)), &
-          sphi(s,m) * sqrt(B_coup)
-      end do
-    end do
+    write(unit, iostat=ios) restart_magic
+    if (ios == 0) write(unit, iostat=ios) header_ints
+    if (ios == 0) write(unit, iostat=ios) header_meta
+    if (ios == 0) write(unit, iostat=ios) s_gp
+    if (ios == 0) write(unit, iostat=ios) mu
+    if (ios == 0) write(unit, iostat=ios) restart_data
+    if (ios /= 0) write(*,*) "write_restart_file: failed while writing ", trim(filename)
 
     close(unit)
-  end subroutine write_output_file
+    deallocate(restart_data)
+  end subroutine write_restart_file
 
-end module spin_integration
+end module spin_integration_mod

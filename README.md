@@ -13,14 +13,13 @@ The lastest official release: 6139a9f
 ## Features
 
 - Uniformly rotating, axisymmetric neutron-star configurations.
-- GR and ST theories selectable at run time (`gr` or `st`).
 - Tabulated EOS support (pressure, energy density, enthalpy tables).
 - Compactified grid in meridional coordinates with spectral-type
   interpolation.
 - Batch integration helper (`integrate_profiles`) to reduce repeated NAG
   calls.
-- Post-processing exports including angular velocity, enthalpy,
-  sound-speed squared (`dP/dE`), and angular-momentum flux.
+- Newton shooting solvers (1D and 2D) to match target bulk properties
+  such as gravitational mass, baryon mass, spin parameter, and axis ratio.
 
 ---
 

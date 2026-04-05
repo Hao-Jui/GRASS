@@ -1,4 +1,4 @@
-module spin_derivatives
+module spin_derivatives_mod
   use, intrinsic :: iso_fortran_env, only: wp => real64
   use para_mod, only: r_ratio
   implicit none
@@ -93,4 +93,4 @@ contains
     call deriv_m_sub(temp, df_dsm)
   end function deriv_sm_vec
 
-end module spin_derivatives
+end module spin_derivatives_mod

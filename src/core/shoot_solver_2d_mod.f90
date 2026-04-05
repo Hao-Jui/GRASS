@@ -13,10 +13,10 @@ module shoot_solver_2d_mod
       real(wp), intent(inout) :: a(lda, *), b(ldb, *)
     end subroutine dgesv
   end interface
-  real(wp), parameter :: r_eps = 1.e-8_wp
-  real(wp), parameter :: r_min_ratio = 0.35e0_wp
-  real(wp), parameter :: max_step = 0.5e0_wp
-  real(wp), parameter :: rep_map_scale = 6.e0_wp
+  real(wp), parameter :: R_EPS = 1.e-8_wp
+  real(wp), parameter :: R_MIN_RATIO = 0.35e0_wp
+  real(wp), parameter :: MAX_STEP = 0.5e0_wp
+  real(wp), parameter :: REP_MAP_SCALE = 6.e0_wp
 
   type, public :: newton_state
     logical :: has_jacobian = .false.
@@ -150,8 +150,8 @@ contains
     logical, intent(out), optional :: success
     
     integer, parameter :: max_iter = 10
-    real(wp), parameter :: tau = 0.5e0_wp
-    real(wp), parameter :: c1 = 1.e-4_wp
+    real(wp), parameter :: TAU = 0.5e0_wp
+    real(wp), parameter :: C1 = 1.e-4_wp
     real(wp)             :: alpha
     real(wp)             :: x_trial(2), F_trial(2), hc_trial, rep_trial
     real(wp)             :: rho0_tmp, ee_tmp, er_tmp
@@ -197,7 +197,7 @@ module shoot_solver_2d_helpers_mod
                       J_goal, ang_mom, chi, chi_goal, Omega_c, omc_goal, &
                       Omega_K, C, kappa, Omega_e, FIX1, FIX2
   use shoot_solver_2d_mod, only: newton_state, from_solver_coords
-  use rotation_uniform,  only: rotation_solver
+  use rotation_solver_mod,  only: rotation_solver
   implicit none
 contains
   subroutine evaluate_solution(hc, rep, F, rho0, ee, er)

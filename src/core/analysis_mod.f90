@@ -5,22 +5,25 @@ subroutine mass_radius()
   use para_mod, only: wp, SDIV, MDIV, s_gp, s_pwr, s_e, mu, &
                       gama, rho, alpha, ww, omg, sphi, energy, pressure, velocity_sq, &
                       r_e, r_ratio, r_circ, &
-                      mass, mass_0, mass_p, T_kin, ang_mom, chi, Omega_K, &
+                      mass, mass_0, mass_s, mass_p, T_kin, ang_mom, chi, Omega_K, &
                       B_coup, mphi_r, pi, KAPPA, C, G, MSUN, &
                       v_plus, v_minus, V_rr_p, V_rr_m, output
   use toolkit_mod, only: interp, deriv_s_1d, integrate_profiles
   implicit none
-  integer :: s
+  integer :: s, j
+  integer, dimension(MDIV) :: s_peak_idx
   real(wp) :: s1
-  real(wp), dimension(MDIV) :: acoup, vphi, vel_safe
-  real(wp), dimension(MDIV,5) :: mu_integrand_buffer
+  real(wp), dimension(MDIV,6) :: mu_integrand_buffer
   real(wp), dimension(SDIV) :: mass_weight, ang_weight
-  real(wp), dimension(SDIV) :: d_m, d_m0, d_mp, d_j, d_t
+  real(wp), dimension(SDIV) :: d_m, d_m0, d_ms, d_mp, d_j, d_t
   real(wp), dimension(SDIV,MDIV) :: rho_0
-  real(wp), dimension(SDIV,5) :: integrand_buffer
-  real(wp), dimension(5) :: integral_results, mu_results
+  real(wp), dimension(SDIV,6) :: integrand_buffer
+  real(wp), dimension(6) :: integral_results, mu_results
+  real(wp), dimension(MDIV) :: sqr1mmu2
   real(wp) :: j_local
   logical :: use_scalar ! local snapshot of the flag
+  real(wp), allocatable :: alpha_t(:,:), energy_t(:,:), gama_t(:,:), omg_t(:,:), pressure_t(:,:)
+  real(wp), allocatable :: rho_0_t(:,:), rho_t(:,:), sphi_t(:,:), velocity_sq_t(:,:), ww_t(:,:)
 
   real(wp), dimension(SDIV) :: gama_mu_0, rho_mu_0, ww_mu_0, gama_mu_1, rho_mu_1, sphi_mu_0
   real(wp), dimension(SDIV) :: d_r_e, d_g_e, d_o_e
@@ -30,40 +33,68 @@ subroutine mass_radius()
   call prepare_common_data(rho_0, gama_mu_0, rho_mu_0, ww_mu_0, gama_mu_1, rho_mu_1, sphi_mu_0, use_scalar)
   Mass   = 0.0_wp
   mass_0 = 0.0_wp
+  mass_s = 0.0_wp
   mass_p = 0.0_wp
   T_kin  = 0.0_wp
   j_local = 0.0_wp
   if (.not. use_scalar) sphi = 0.0_wp
+  sqr1mmu2 = sqrt(max(0.0_wp, 1.0_wp - mu**2))
+
+  allocate(alpha_t(MDIV,SDIV), energy_t(MDIV,SDIV), gama_t(MDIV,SDIV), omg_t(MDIV,SDIV), &
+           pressure_t(MDIV,SDIV), rho_0_t(MDIV,SDIV), rho_t(MDIV,SDIV), sphi_t(MDIV,SDIV), &
+           velocity_sq_t(MDIV,SDIV), ww_t(MDIV,SDIV))
+  alpha_t = transpose(alpha)
+  energy_t = transpose(energy)
+  gama_t = transpose(gama)
+  omg_t = transpose(omg)
+  pressure_t = transpose(pressure)
+  rho_0_t = transpose(rho_0)
+  rho_t = transpose(rho)
+  sphi_t = transpose(sphi)
+  velocity_sq_t = transpose(velocity_sq)
+  ww_t = transpose(ww)
+
+  ! Find radial index where sphi peaks for each angular direction
+  do j = 1, MDIV
+    s_peak_idx(j) = maxloc(sphi(:,j), dim=1)
+  enddo
 
   do s = 1, SDIV
     block
-      real(wp), dimension(MDIV) :: acoup, acoup3, acoup4, vphi, vel_safe, e2ag, e_mr, ehgr, invlf, sqrlf, sqr1mmu2
-      acoup = exp(-sphi(s,:)**2 * B_coup / 4.0_wp)
+      real(wp), dimension(MDIV) :: acoup, acoup3, acoup4, vphi, vel_safe, e2ag, e_mr, ehgr, invlf, sqrlf, mask_sphi
+      acoup = exp(-sphi_t(:,s)**2 * B_coup / 4.0_wp)
       acoup3 = acoup**3
       acoup4 = acoup**4
-      vphi  = mphi_r * sphi(s,:)**2 / 2.0_wp
+      vphi  = mphi_r * sphi_t(:,s)**2 / 2.0_wp
       s1 = (s_gp(s)/(1.0_wp-s_gp(s)))**s_pwr
-      vel_safe = min(max(velocity_sq(s,:), 0.0_wp), 1.0_wp - 1.e-12_wp)
+      vel_safe = min(max(velocity_sq_t(:,s), 0.0_wp), 1.0_wp - 1.e-12_wp)
 
-      e2ag = exp(2.0_wp*alpha(s,:)+gama(s,:))
-      e_mr = exp(-rho(s,:))
-      ehgr = exp(2.0_wp*alpha(s,:) + (gama(s,:) - rho(s,:))/2.0_wp)
+      e2ag = exp(2.0_wp*alpha_t(:,s)+gama_t(:,s))
+      e_mr = exp(-rho_t(:,s))
+      ehgr = exp(2.0_wp*alpha_t(:,s) + (gama_t(:,s) - rho_t(:,s))/2.0_wp)
       invlf = 1.0_wp / (1.0_wp - vel_safe)
       sqrlf = sqrt(vel_safe)
-      sqr1mmu2 = sqrt(1.0_wp-mu(:)**2)
+
+      ! Conditional mask: only compute baryon mass where:
+      ! 1) sphi < 1e-3 AND
+      ! 2) s is inside the radius where sphi peaks (for each mu direction)
+      mask_sphi = merge(1.0_wp, 0.0_wp, &
+                       (abs(sphi_t(:,s)) < 1.0e-4_wp) .and. (s <= s_peak_idx(:)))
 
       mu_integrand_buffer(:,1) = e2ag * &
-                                ( ( ( energy(s,:) + pressure(s,:) ) * acoup4 * invlf ) * &
-                                  ( 1.0_wp + vel_safe + 2.0_wp * sqrlf * s1 * sqr1mmu2 * r_e * ww(s,:) * e_mr ) &
-                                  + 2.0_wp*pressure(s,:) * acoup4 - vphi / (2.0_wp*pi) )
-      mu_integrand_buffer(:,2) = ehgr * rho_0(s,:) * acoup3 / sqrt(1.0_wp-vel_safe)
-      mu_integrand_buffer(:,3) = ehgr * energy(s,:) * acoup4 / sqrt(1.0_wp-vel_safe)
-      mu_integrand_buffer(:,4) = sqr1mmu2 * exp(2.0_wp*alpha(s,:) + gama(s,:) - rho(s,:)) * &
-                                (energy(s,:) + pressure(s,:)) * acoup4 * sqrlf * invlf
-      mu_integrand_buffer(:,5) = mu_integrand_buffer(:,4) * omg(s,:)
+                                ( ( ( energy_t(:,s) + pressure_t(:,s) ) * acoup4 * invlf ) * &
+                                  ( 1.0_wp + vel_safe + 2.0_wp * sqrlf * s1 * sqr1mmu2 * r_e * ww_t(:,s) * e_mr ) &
+                                  + 2.0_wp*pressure_t(:,s) * acoup4 - vphi / (2.0_wp*pi) )
+      mu_integrand_buffer(:,2) = ehgr * rho_0_t(:,s) * acoup3 / sqrt(1.0_wp-vel_safe)
+      mu_integrand_buffer(:,3) = ehgr * energy_t(:,s) * acoup4 / sqrt(1.0_wp-vel_safe)
+      mu_integrand_buffer(:,4) = sqr1mmu2 * exp(2.0_wp*alpha_t(:,s) + gama_t(:,s) - rho_t(:,s)) * &
+                                (energy_t(:,s) + pressure_t(:,s)) * acoup4 * sqrlf * invlf
+      mu_integrand_buffer(:,5) = mu_integrand_buffer(:,4) * omg_t(:,s)
+      mu_integrand_buffer(:,6) = mu_integrand_buffer(:,2) * mask_sphi
       call integrate_profiles(mu, mu_integrand_buffer, mu_results)
       d_m(s)  = mu_results(1)
       d_m0(s) = mu_results(2)
+      d_ms(s) = mu_results(6)
       d_mp(s) = mu_results(3)
       d_j(s)  = mu_results(4)
       d_t(s)  = mu_results(5)
@@ -75,17 +106,19 @@ subroutine mass_radius()
 
   integrand_buffer(:,1) = mass_weight * d_m(:)
   integrand_buffer(:,2) = mass_weight * d_m0(:)
-  integrand_buffer(:,3) = mass_weight * d_mp(:)
-  integrand_buffer(:,4) = ang_weight  * d_j(:)
-  integrand_buffer(:,5) = ang_weight  * d_t(:)
+  integrand_buffer(:,3) = mass_weight * d_ms(:)
+  integrand_buffer(:,4) = mass_weight * d_mp(:)
+  integrand_buffer(:,5) = ang_weight  * d_j(:)
+  integrand_buffer(:,6) = ang_weight  * d_t(:)
 
   call integrate_profiles(s_gp, integrand_buffer, integral_results)
 
   Mass    = integral_results(1) * 4.0_wp * pi * sqrt(kappa)*C**2 * r_e**3 / G
   mass_0  = integral_results(2) * 4.0_wp * pi * sqrt(kappa)*C**2 * r_e**3 / G
-  mass_p  = integral_results(3) * 4.0_wp * pi * sqrt(kappa)*C**2 * r_e**3 / G
-  j_local = integral_results(4) * 4.0_wp * pi * kappa * C**3 * r_e**4 / G
-  T_kin   = integral_results(5) * 2.0_wp * pi * sqrt(kappa) * C**2 * r_e**4 / G
+  mass_s  = integral_results(3) * 4.0_wp * pi * sqrt(kappa)*C**2 * r_e**3 / G
+  mass_p  = integral_results(4) * 4.0_wp * pi * sqrt(kappa)*C**2 * r_e**3 / G
+  j_local = integral_results(5) * 4.0_wp * pi * kappa * C**3 * r_e**4 / G
+  T_kin   = integral_results(6) * 2.0_wp * pi * sqrt(kappa) * C**2 * r_e**4 / G
   Omega_K = Kepler()
 
   ang_mom = j_local * C / (G*MSUN**2)
@@ -119,6 +152,7 @@ contains
         +(( doe / ( 8.0_wp + dge - dre ) ) * r_e * exp(-rho_equator) )**2 )
     val = (C/sqrt(kappa)) * (wwe + vek*exp(rho_equator)/r_e)
     r_circ  = sqrt(kappa) * r_e * exp((gama_equator-rho_equator)/2.0_wp) * exp(-sphi_equator**2 * B_coup / 4.0_wp)
+
     if (output) call write_velocity_table
   end function Kepler
 
@@ -185,7 +219,8 @@ subroutine solution_properties()
                       pi, mphi_r, B_goal, mphi_goal, h_center, sphi_m, &
                       B_coup, KAPPA, C, n_sat, KSCALE, output
   use cheb_mod, only: cheb_diff_matrix, cheb_std_base, cheb_get_val_point
-  use miscellaneous_mod, only: write_eq_profile, initial_data_for_spec
+  use miscellaneous_mod, only: write_eq_profile
+  use exporter_mod, only: initial_data_for_spec
   use toolkit_mod, only: interp, interp_dual, deriv_s_1d, integrate_profiles
   use ad_mod, only: dual, dual_var
   implicit none
@@ -193,8 +228,8 @@ subroutine solution_properties()
   real(wp), dimension(SDIV) :: d_r_e, d_g_e
   real(wp), dimension(SDIV) :: gama_mu_0, rho_mu_0, ww_mu_0, gama_mu_1, rho_mu_1, sphi_mu_0
   real(wp), dimension(SDIV) :: sound_slope, sphi_deriv, pres_deriv
-  real(wp), dimension(SDIV) :: effective_pressure, effective_energy, scal_potential
-  real(wp), dimension(SDIV) :: pressure_slope, energy_slope, effective_cs, T_trace
+  real(wp), dimension(SDIV) :: effective_pressure, effective_energy, scal_op
+  real(wp), dimension(SDIV) :: pressure_slope, energy_slope, effective_cs, traceT
   real(wp), dimension(SDIV) :: susceptibility, suscep_slope
   real(wp), dimension(SDIV,MDIV) :: rho_0
   character(128) :: profile_file, mphi_str, B_str, M_str, sdiv_str, mdiv_str
@@ -206,7 +241,7 @@ subroutine solution_properties()
 
   call prepare_common_data(rho_0, gama_mu_0, rho_mu_0, ww_mu_0, gama_mu_1, rho_mu_1, sphi_mu_0, use_scalar)
 
-  T_trace = - energy(:,1) + 3.0_wp * pressure(:,1)
+  traceT = - energy(:,1) + 3.0_wp * pressure(:,1)
 
   if (use_scalar) then
     do s = 1, SDIV
@@ -215,11 +250,10 @@ subroutine solution_properties()
     end do
     effective_pressure = sphi_deriv**2 / (8.0_wp * pi) - mphi_r * sphi_mu_0**2 / (4.0_wp * pi)
     effective_energy   = sphi_deriv**2 / (8.0_wp * pi) + mphi_r * sphi_mu_0**2 / (4.0_wp * pi)
-    scal_potential = ( 2.0_wp * pi * B_goal * T_trace &
-          * exp( - B_goal * sphi_mu_0**2 / 2.0_wp ) + mphi_r ) * exp( gama(:,1) ) &
-          + (1.0_wp-s_gp)**3 / max(s_gp, 1.e-10_wp) / r_e**2 * exp( rho(:,1) ) * d_r_e
+    scal_op = ( 2.0_wp * pi * B_goal * traceT * exp( - B_goal * sphi_mu_0**2 / 2.0_wp ) + mphi_r ) &
+            * exp( 2.0_wp * alpha(:,1) )
   else
-    effective_pressure = 0.0_wp; effective_energy = 0.0_wp; scal_potential = 0.0_wp; sphi_deriv = 0.0_wp
+    effective_pressure = 0.0_wp; effective_energy = 0.0_wp; scal_op = 0.0_wp; sphi_deriv = 0.0_wp
   end if
 
   susceptibility_idx_hint = 1
@@ -244,7 +278,7 @@ subroutine solution_properties()
     suscep_slope(s) = deriv_s_1d(susceptibility, s)
   enddo
 
-  if (output) call radial_configuration()
+  !if (output) call radial_configuration()
   !call to_alexis()
   !call to_sizeng()
   call mass_radius()
@@ -258,92 +292,19 @@ subroutine solution_properties()
       + 3.0_wp * (1.0_wp - 2.0_wp * cc)**2 * (2.0_wp * cc * (yy - 1.0_wp) - yy + 2.0_wp) * log(1.0_wp - 2.0_wp * cc)
   Love2 = 8.0_wp / 5.0_wp * cc**5 * (1.0_wp - 2.0_wp * cc)**2 * (2.0_wp * cc * (yy - 1.0_wp) - yy + 2.0_wp) &
         / dom * 2.0_wp / cc**(2*2+1) / dble(2*2-1)
-  !call spectral_analysis()
 contains
-
-  subroutine spectral_analysis()
-    real(wp), allocatable, dimension(:) :: x, s_collocate, dgama_coll, src_coll
-    real(wp), allocatable, dimension(:,:) :: D, op
-    real(wp), allocatable :: A(:,:), wr(:), wi(:)
-    real(wp), allocatable :: WORK(:)
-    real(wp) :: scale
-    real(wp) :: vl_dummy(1,1), vr_dummy(1,1)
-    integer :: N, i, info, unit, ios, LWORK
-    interface
-      subroutine dgeev(jobvl, jobvr, n, a, lda, wr, wi, vl, ldvl, vr, ldvr, work, lwork, info)
-        import :: wp
-        implicit none
-        character(len=1), intent(in) :: jobvl, jobvr
-        integer, intent(in) :: n, lda, ldvl, ldvr, lwork
-        integer, intent(out) :: info
-        real(wp), intent(inout) :: a(lda, *)
-        real(wp), intent(out) :: wr(*), wi(*), vl(ldvl, *), vr(ldvr, *), work(*)
-      end subroutine dgeev
-    end interface
-    
-    scale = 2.0_wp / max(s_e, 1.e-12_wp)
-
-    write(mphi_str,"(f10.0)") mphi_goal
-    profile_file = './Cont/eigenvalues_mphi'//trim(adjustl(mphi_str))//'log'
-    open(newunit=unit,file=profile_file,status='unknown',position='append',iostat=ios)
-    if (ios /= 0) then
-      write(*,*) 'Error opening file eigenvalues.log, IOSTAT=', ios
-    end if
-    
-    do N = 31, 55, 8
-      LWORK = 3*(N+1) + 10
-      allocate( x(0:N), s_collocate(0:N), dgama_coll(0:N), src_coll(0:N) )
-      allocate( D(0:N,0:N), op(0:N,0:N) )
-      allocate( A(N+1,N+1), wr(N+1), wi(N+1) )
-      allocate( WORK(LWORK) )
-      !---------------------------------------------------------------
-      ! Chebyshev grid in enthalpy s ∈ [0, s_e]
-      !---------------------------------------------------------------
-      do i = 0, N
-        x(i) = cos( pi * dble(i) / dble(N) )
-      end do
-      call cheb_diff_matrix(N, D)
-      D = scale * D
-      s_collocate = 0.5e0_wp * s_e * (x + 1.0_wp)
-      do i = 0, N
-        call interp(s_gp, d_g_e, SDIV, s_collocate(i), dgama_coll(i))
-        call interp(s_gp, scal_potential, SDIV, s_collocate(i), src_coll(i))
-      enddo
-      
-      op = matmul(D, D)
-      do i = 0, N
-        op(i, :) = op(i, :) * ( (1.0_wp-s_collocate(i))**2 / r_e )**2 &
-                  + (dgama_coll(i)*( (1.0_wp-s_collocate(i))**2 / r_e )**2 &
-                  - 2.0_wp*( (1.0_wp-s_collocate(i)) / r_e )**2) * D(i, :)
-        op(i, i) = op(i, i) - src_coll(i)
-      end do
-
-      A = op
-      info = 0
-      
-      call dgeev('N', 'N', N+1, A, N+1, wr, wi, vl_dummy, 1, vr_dummy, 1, WORK, LWORK, info)
-
-      write(unit,"(99es15.6e3)",Advance='NO') maxval(wr), minval(wr)
-      deallocate(x, s_collocate, dgama_coll, src_coll)
-      deallocate(D, op, A, wr, wi)
-      deallocate(WORK)
-    enddo
-    write(unit,"(10es15.6e3)") h_center, mphi_r, sphi_m
-    close(unit)
-  end subroutine spectral_analysis
-
   subroutine radial_configuration()
-    use para_mod, only: mass_0
-    integer :: i
-    do i = 2, 2
-      if (i == 1) then 
-        write(profile_file, '(A,I0,"_",I0,"_B",ES0.2,"_mphi",ES0.2,"_M",F0.2,"_Mb",F0.4,".dat")') &
-          "/Users/horay/Data4Projects/crazy/Dat/1dprofile_", &
-          SDIV, MDIV, B_goal, mphi_goal, mass / MSUN, mass_0 / MSUN
-      else
+    use para_mod, only: mass_0, eos_file
+    integer :: i = 1    
+    select case(i)
+    case(1)
+        write(profile_file, '(A, A, "_", I0, "_B", ES0.2, "_mphi", ES0.2,"_M",F0.2,"_Mb",F0.4,".dat")') &
+          "/Users/horay/Data4Projects/crazy/Map/1dprofile_", &
+          trim(eos_file), SDIV, B_goal, mphi_goal, mass / MSUN, mass_0 / MSUN
+    case(2)
         profile_file = "/Users/horay/ptmp/GRASS/Res/1dprofile.dat"
-      end if
-      call write_eq_profile(profile_file,(SDIV-1)/2,&
+    end select
+    call write_eq_profile(profile_file,(SDIV-1)/2, &
           gama(:,1), rho(:,1), alpha(:,1),         &
           ww(:,1), omg(:,1),                       &
           enthalpy(:,1),                           & ! 7
@@ -356,7 +317,6 @@ contains
           effective_cs,                            &
           effective_pressure/KSCALE,               & 
           effective_energy/(C*C*KSCALE)  )
-    end do
 
     if (.false.) then ! Debug: Chebyshev fit of gama over the stellar interior [s_gp(1), s_gp(res+1)]
       block
@@ -400,8 +360,8 @@ contains
   end subroutine to_alexis  
 
   subroutine to_sizeng()
-    real(wp), parameter :: rho_to_km = 1.e12_wp * 6.67408e-20_wp / (2.99792458e5_wp)**2
-    real(wp), parameter :: K_km = 218.04217865726338e0_wp
+    real(wp), parameter :: RHO_TO_KM = 1.e12_wp * 6.67408e-20_wp / (2.99792458e5_wp)**2
+    real(wp), parameter :: K_KM = 218.04217865726338e0_wp
     profile_file = "./Cont/sizeng.dat"
     call initial_data_for_spec( profile_file, rho_0 / (KSCALE*C**2) * rho_to_km * K_km, &
         alpha, rho, gama, ww * ( sqrt(K_km) / sqrt(KAPPA) ), sqrt(velocity_sq) )
