@@ -45,3 +45,5 @@ venv/
 ENV/
 .ipynb_checkpoints
 .mypy_cache/
+libgrass.a
+tests/bin/
