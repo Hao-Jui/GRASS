@@ -194,7 +194,7 @@ contains
     case (THEORY_ST)
       call apply_st_defaults()
     case default
-      stop "initialize_theory: unknown theory mode"
+      error stop "initialize_theory: unknown theory mode"
     end select
 
     solver_type = trim(to_lower_str(adjustl(solver_type)))

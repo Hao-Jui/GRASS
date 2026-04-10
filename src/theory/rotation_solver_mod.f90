@@ -1,4 +1,5 @@
 module rotation_solver_mod
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_nan
   use analysis_mod, only: mass_radius
   use precision_mod, only: wp
   use para_mod, only: active_theory, THEORY_GR, &
@@ -46,7 +47,7 @@ subroutine rotation_solver
 
   if ( maxval(sphi*sqrt_B_coup) < 1.e-3_wp ) sphi = sphi * 10._wp
   if (zero_scalar_mode) sphi = 0._wp
-  if ( any(isnan(sphi)) ) stop "NaN found in sphi"
+  if ( any(ieee_is_nan(sphi)) ) stop "NaN found in sphi"
 
   call allocate_workspace
   if (trim(solver_type) == "uryu") call reset_uryu_peak_cache()

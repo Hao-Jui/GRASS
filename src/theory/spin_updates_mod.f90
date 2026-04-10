@@ -1,5 +1,6 @@
 module spin_updates_mod
   use precision_mod, only: wp
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_nan
   implicit none
   private
   public :: update_equatorial_radius, update_angular_velocity, update_eos_and_velocity, reset_uryu_peak_cache
@@ -54,7 +55,7 @@ contains
     r_e_new = sqrt( r_e_new_sq )
     dif = abs(r_e_old - r_e_new) / r_e_new
 
-    if (r_e_new / r_e_old > 2 .or. isnan(r_e_new) ) then
+    if (r_e_new / r_e_old > 2 .or. ieee_is_nan(r_e_new) ) then
       write(*,"(a,es22.14)") " r_e_old        :", r_e_old
       write(*,"(a,es22.14)") " r_e_new        :", r_e_new
       write(*,"(a,es22.14)") " grgr           :", grgr
@@ -73,7 +74,7 @@ contains
       write(*,"(a,es22.14)") " s_p_cached     :", s_p_cached
       write(*,"(a,es22.14)") " r_ratio        :", r_ratio
       if (has_scalar) write(*,"(a,es22.14)") " B_coup         :", B_coup
-      stop 'r_e cannot be found.'
+      error stop 'r_e cannot be found.'
     endif
   end subroutine update_equatorial_radius
 
@@ -112,7 +113,7 @@ contains
         write(*,"('Solving for axis ratio: ', f12.5)") r_ratio
         write(*,"(10A15)") "gama_pole", "rho_pole", "gama_equator", "rho_equator", "sphi_pole", "sphi_equator"
         write(*,"(10es15.3)") gama_pole_h, rho_pole_h, gama_equator_h, rho_equator_h, sphi_pole_h, sphi_equator_h
-        stop "Omega can't be found; Line 99 of spin helper"
+        error stop "Omega can't be found; Line 99 of spin helper"
       endif
 
       select case(trim(solver_type))
@@ -123,7 +124,7 @@ contains
       case("uryu")
         call uryu_rotation(re2_val)
       case default
-        stop "Unknown solver type"
+        error stop "Unknown solver type"
       end select
     end associate
   contains

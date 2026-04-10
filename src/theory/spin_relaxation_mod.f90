@@ -350,7 +350,7 @@ contains
       if (abs(rho(2,1))>100.0_wp .or. abs(gama(2,1))>300.0_wp .or. abs(ww(2,1))>100.0_wp &
           .or. abs(sphi(2,1))>10.0_wp) then
         write(*,"(i5,4es18.9)") n_of_it, rho(2,1), gama(2,1), ww(2,1), sphi(2,1)
-        stop "something diverged"
+        error stop "something diverged"
       end if
     end subroutine check_divergence
 

@@ -368,13 +368,13 @@ contains
 
     if (m < 0 .or. m > l .or. abs(x) > 1.0_wp) then
       write(*,*) m, l, x
-      stop "Bad arguments in routine PLGNDR"
+      error stop "Bad arguments in routine PLGNDR"
     endif
 
     pmm = 1.0_wp
     pll = 0.0_wp
     if (m > 0) then
-      somx2 = dsqrt((1.0_wp - x) * (1.0_wp + x))
+      somx2 = sqrt((1.0_wp - x) * (1.0_wp + x))
       fact = 1.0_wp
       do ll = 1, m
         pmm = pmm * (-fact * somx2)
