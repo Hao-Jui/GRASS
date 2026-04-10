@@ -1,5 +1,6 @@
 module donu_mod
   use precision_mod, only: wp
+  use para_mod, only: PI
   
   implicit none
   private
@@ -7,7 +8,6 @@ module donu_mod
 
   integer, parameter :: default_eta_size = 600
   real(wp), parameter :: ONE_THIRD = 1.0_wp / 3.0_wp
-  real(wp), parameter :: PI = 4.0_wp * atan(1.0_wp)
 
 contains
 
