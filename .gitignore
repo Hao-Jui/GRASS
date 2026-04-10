@@ -47,3 +47,7 @@ ENV/
 .mypy_cache/
 libgrass.a
 tests/bin/
+.omc/
+.codesight/
+build-test/
+build.log
