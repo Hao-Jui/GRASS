@@ -51,8 +51,8 @@ module para_mod
   real(wp) :: A_diff  = 0.5_wp
   real(wp) :: lambda1 = 1.5_wp
   real(wp) :: lambda2 = 0.3_wp
-  integer :: uyru_p  = 1
-  integer :: uyru_q  = 3
+  integer :: uryu_p  = 1
+  integer :: uryu_q  = 3
 
   real(wp) :: parA = 1.0_wp
   real(wp) :: parB = 1.0_wp

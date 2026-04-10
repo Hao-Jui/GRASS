@@ -59,7 +59,7 @@ contains
   end subroutine diff_rotation_uryu
 
   subroutine rotation_law_uryu(x, fx, re, rho_p, ww_p, sgp, mugp)
-    use para_mod, only: wp, uyru_p, uyru_q, Omega_c
+    use para_mod, only: wp, uryu_p, uryu_q, Omega_c
     implicit none
     real(wp), intent(in) :: x, re, rho_p, ww_p, sgp, mugp
     real(wp), intent(out):: fx
@@ -67,7 +67,7 @@ contains
 
     sin2m = 1._wp - mugp**2
     Fj = (x-ww_p) * sgp**2 * sin2m / ( ctx_exp2re2rho * (1._wp-sgp)**2 - (x-ww_p)**2 * sgp**2 * sin2m )
-    fx = x / Omega_c * ( 1._wp + (Fj / cached_aa)**(uyru_p+uyru_q) ) - ( 1._wp + (Fj / cached_bb)**uyru_p )
+    fx = x / Omega_c * ( 1._wp + (Fj / cached_aa)**(uryu_p+uryu_q) ) - ( 1._wp + (Fj / cached_bb)**uryu_p )
   end subroutine rotation_law_uryu
 
   elemental real(wp) function intF(x, F_at_x)
@@ -86,29 +86,29 @@ contains
   end function intF
 
   pure elemental real(wp) function AA_h(F_e, F_m)
-    use para_mod, only: wp, lambda1, lambda2, uyru_p, uyru_q
+    use para_mod, only: wp, lambda1, lambda2, uryu_p, uryu_q
     implicit none
     real(wp), intent(in) :: F_e, F_m
     real(wp) :: tmp1, tmp2
 
-    tmp1 = lambda2 * F_e**uyru_q &
-        - lambda1 * F_m**uyru_q
-    tmp2 = (lambda1-1._wp) * F_e**uyru_p &
-        - (lambda2-1._wp) * F_m**uyru_p
-    AA_h = ( (F_e*F_m)**uyru_p * tmp1 / tmp2 )**(1._wp/real(uyru_p+uyru_q, wp))
+    tmp1 = lambda2 * F_e**uryu_q &
+        - lambda1 * F_m**uryu_q
+    tmp2 = (lambda1-1._wp) * F_e**uryu_p &
+        - (lambda2-1._wp) * F_m**uryu_p
+    AA_h = ( (F_e*F_m)**uryu_p * tmp1 / tmp2 )**(1._wp/real(uryu_p+uryu_q, wp))
   end function
 
   pure elemental real(wp) function BB_h(F_e, F_m)
-    use para_mod, only: wp, lambda1, lambda2, uyru_p, uyru_q
+    use para_mod, only: wp, lambda1, lambda2, uryu_p, uryu_q
     implicit none
     real(wp), intent(in) :: F_e, F_m
     real(wp) :: tmp1, tmp2
 
-    tmp1 = lambda2 * F_e**uyru_q &
-        - lambda1 * F_m**uyru_q
-    tmp2 = lambda2 * (lambda1-1._wp) * F_e**(uyru_p+uyru_q) &
-        - lambda1 * (lambda2-1._wp) * F_m**(uyru_p+uyru_q)
-    BB_h = F_e * F_m * ( tmp1 / tmp2 )**(1._wp/real(uyru_p, wp))
+    tmp1 = lambda2 * F_e**uryu_q &
+        - lambda1 * F_m**uryu_q
+    tmp2 = lambda2 * (lambda1-1._wp) * F_e**(uryu_p+uryu_q) &
+        - lambda1 * (lambda2-1._wp) * F_m**(uryu_p+uryu_q)
+    BB_h = F_e * F_m * ( tmp1 / tmp2 )**(1._wp/real(uryu_p, wp))
   end function
 
   subroutine set_shoot_context(rho_equator_h, gama_equator_h, ww_equator_h, rho_pole_h, gama_pole_h)
