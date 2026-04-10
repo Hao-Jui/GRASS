@@ -1,12 +1,13 @@
 module ad_mod
+  use precision_mod, only: wp
   ! Dual-number forward-mode automatic differentiation.
   ! A dual value stores (f, f'), and overloaded arithmetic/exp/log
   ! propagate derivatives automatically.
   implicit none
 
   type :: dual
-    real(8) :: val
-    real(8) :: der
+    real(wp) :: val
+    real(wp) :: der
   end type dual
 
   interface operator(+)
@@ -36,14 +37,14 @@ module ad_mod
 contains
 
   pure function dual_const(x) result(d)
-    real(8), intent(in) :: x
+    real(wp), intent(in) :: x
     type(dual) :: d
     d%val = x
     d%der = 0.d0
   end function dual_const
 
   pure function dual_var(x) result(d)
-    real(8), intent(in) :: x
+    real(wp), intent(in) :: x
     type(dual) :: d
     d%val = x
     d%der = 1.d0
@@ -58,14 +59,14 @@ contains
 
   pure function add_dr(a, b) result(c)
     type(dual), intent(in) :: a
-    real(8),  intent(in) :: b
+    real(wp),  intent(in) :: b
     type(dual) :: c
     c%val = a%val + b
     c%der = a%der
   end function add_dr
 
   pure function add_rd(a, b) result(c)
-    real(8),  intent(in) :: a
+    real(wp),  intent(in) :: a
     type(dual), intent(in) :: b
     type(dual) :: c
     c%val = a + b%val
@@ -81,14 +82,14 @@ contains
 
   pure function sub_dr(a, b) result(c)
     type(dual), intent(in) :: a
-    real(8),  intent(in) :: b
+    real(wp),  intent(in) :: b
     type(dual) :: c
     c%val = a%val - b
     c%der = a%der
   end function sub_dr
 
   pure function sub_rd(a, b) result(c)
-    real(8),  intent(in) :: a
+    real(wp),  intent(in) :: a
     type(dual), intent(in) :: b
     type(dual) :: c
     c%val = a - b%val
@@ -111,14 +112,14 @@ contains
 
   pure function mul_dr(a, b) result(c)
     type(dual), intent(in) :: a
-    real(8),  intent(in) :: b
+    real(wp),  intent(in) :: b
     type(dual) :: c
     c%val = a%val * b
     c%der = a%der * b
   end function mul_dr
 
   pure function mul_rd(a, b) result(c)
-    real(8),  intent(in) :: a
+    real(wp),  intent(in) :: a
     type(dual), intent(in) :: b
     type(dual) :: c
     c%val = a * b%val
@@ -128,7 +129,7 @@ contains
   pure function div_dd(a, b) result(c)
     type(dual), intent(in) :: a, b
     type(dual) :: c
-    real(8) :: inv
+    real(wp) :: inv
     inv = 1.d0 / b%val
     c%val = a%val * inv
     c%der = (a%der - c%val * b%der) * inv
@@ -136,19 +137,19 @@ contains
 
   pure function div_dr(a, b) result(c)
     type(dual), intent(in) :: a
-    real(8),  intent(in) :: b
+    real(wp),  intent(in) :: b
     type(dual) :: c
-    real(8) :: inv
+    real(wp) :: inv
     inv = 1.d0 / b
     c%val = a%val * inv
     c%der = a%der * inv
   end function div_dr
 
   pure function div_rd(a, b) result(c)
-    real(8),  intent(in) :: a
+    real(wp),  intent(in) :: a
     type(dual), intent(in) :: b
     type(dual) :: c
-    real(8) :: inv
+    real(wp) :: inv
     inv = 1.d0 / b%val
     c%val = a * inv
     c%der = -c%val * b%der * inv
@@ -157,7 +158,7 @@ contains
   pure function exp_d(a) result(c)
     type(dual), intent(in) :: a
     type(dual) :: c
-    real(8) :: ev
+    real(wp) :: ev
     ev = exp(a%val)
     c%val = ev
     c%der = ev * a%der

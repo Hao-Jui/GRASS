@@ -4,25 +4,28 @@
 ! Armijo backtracking line search for globalization.
 
 module shoot_solver_1d_types_mod
+  use precision_mod, only: wp
   implicit none
   type :: newton_state_1d
     logical :: has_jacobian = .false.
     logical :: has_prev     = .false.
-    real(8) :: J            = 0.d0
-    real(8) :: x_prev       = 0.d0
-    real(8) :: F_prev       = 0.d0
+    real(wp) :: J            = 0.d0
+    real(wp) :: x_prev       = 0.d0
+    real(wp) :: F_prev       = 0.d0
   end type newton_state_1d
 
   abstract interface
     subroutine evaluation_function_1d(hc, rep, F, rho0, ee)
-      real(8), intent(in)  :: hc, rep
-      real(8), intent(out) :: F, rho0, ee
+      import :: wp
+      real(wp), intent(in)  :: hc, rep
+      real(wp), intent(out) :: F, rho0, ee
     end subroutine evaluation_function_1d
   end interface
 
 end module shoot_solver_1d_types_mod
 
 module shoot_solver_1d_hc_mod
+  use precision_mod, only: wp
   use shoot_solver_1d_types_mod, only: newton_state_1d
   implicit none
   ! Adaptive step size cap based on error magnitude
@@ -32,8 +35,8 @@ module shoot_solver_1d_hc_mod
   !   er = 0.5  -->  cap = 1.1  -->  max h change = ±3.0×
   !   er = 0.1  -->  cap = 1.82 -->  max h change = ±6.2×
   !   er < 0.01 -->  cap ≈ 2.0  -->  max h change = ±7.4× (full Newton)
-  real(8), parameter :: STEP_CAP_MIN = 0.2d0   ! tight cap when er ~ 1 (prevent catastrophe)
-  real(8), parameter :: STEP_CAP_MAX = 2.0d0   ! loose cap near convergence (preserve Newton speed)
+  real(wp), parameter :: STEP_CAP_MIN = 0.2d0   ! tight cap when er ~ 1 (prevent catastrophe)
+  real(wp), parameter :: STEP_CAP_MAX = 2.0d0   ! loose cap near convergence (preserve Newton speed)
 
 contains
   subroutine reset_newton_state_1d(state)
@@ -45,27 +48,27 @@ contains
     state%F_prev       = 0.d0
   end subroutine reset_newton_state_1d
   subroutine to_solver_coord_1d(hc, x)
-    real(8), intent(in)  :: hc
-    real(8), intent(out) :: x
+    real(wp), intent(in)  :: hc
+    real(wp), intent(out) :: x
     x = log(max(hc, 1.d-12))
   end subroutine to_solver_coord_1d
   subroutine from_solver_coord_1d(x, hc)
-    real(8), intent(in)  :: x
-    real(8), intent(out) :: hc
+    real(wp), intent(in)  :: x
+    real(wp), intent(out) :: hc
     hc = exp(x)
   end subroutine from_solver_coord_1d
   subroutine clamp_step_1d(delta, er)
-    real(8), intent(inout) :: delta
-    real(8), intent(in)    :: er
-    real(8) :: cap
+    real(wp), intent(inout) :: delta
+    real(wp), intent(in)    :: er
+    real(wp) :: cap
     ! Adaptive cap: tight when far from solution, loose when close
     cap = STEP_CAP_MIN + (STEP_CAP_MAX - STEP_CAP_MIN) * max(0.d0, 1.d0 - er)
     delta = max(-cap, min(delta, cap))
   end subroutine clamp_step_1d
 
   logical function solve_linear_1d(J, rhs, delta)
-    real(8), intent(in)  :: J, rhs
-    real(8), intent(out) :: delta
+    real(wp), intent(in)  :: J, rhs
+    real(wp), intent(out) :: delta
     if (abs(J) < 1.d-12) then
       delta = 0.d0
       solve_linear_1d = .false.
@@ -76,8 +79,8 @@ contains
   end function solve_linear_1d
   subroutine broyden_update_1d(state, x, F)
     type(newton_state_1d), intent(inout) :: state
-    real(8), intent(in) :: x, F
-    real(8) :: dx, dF, x_scale, f_scale
+    real(wp), intent(in) :: x, F
+    real(wp) :: dx, dF, x_scale, f_scale
 
     if (.not. state%has_prev) return
     if (.not. state%has_jacobian) return
@@ -94,7 +97,7 @@ contains
   end subroutine broyden_update_1d
   subroutine commit_state_1d(state, x, F)
     type(newton_state_1d), intent(inout) :: state
-    real(8), intent(in) :: x, F
+    real(wp), intent(in) :: x, F
     state%x_prev = x
     state%F_prev = F
     state%has_prev = .true.
@@ -103,18 +106,18 @@ contains
   subroutine line_search_1d(x_current, F_current, delta_x, rep, evaluate_func, final_delta, J_est, success)
     ! Armijo backtracking on phi = 0.5*F^2; uses Jacobian estimate when supplied for slope
     use shoot_solver_1d_types_mod, only: evaluation_function_1d
-    real(8), intent(in)    :: x_current, F_current, delta_x, rep
-    real(8), intent(out)   :: final_delta
+    real(wp), intent(in)    :: x_current, F_current, delta_x, rep
+    real(wp), intent(out)   :: final_delta
     procedure(evaluation_function_1d) :: evaluate_func
-    real(8), intent(in), optional :: J_est
+    real(wp), intent(in), optional :: J_est
     logical, intent(out), optional :: success
     
     integer, parameter :: max_iter = 15
-    real(8), parameter :: TAU = 0.5d0
-    real(8), parameter :: C1 = 1.d-4
-    real(8)             :: alpha, x_trial, F_trial, hc_trial, rho0_tmp, ee_tmp
-    real(8)             :: hc_base
-    real(8)             :: phi_old, phi_new, slope0
+    real(wp), parameter :: TAU = 0.5d0
+    real(wp), parameter :: C1 = 1.d-4
+    real(wp)             :: alpha, x_trial, F_trial, hc_trial, rho0_tmp, ee_tmp
+    real(wp)             :: hc_base
+    real(wp)             :: phi_old, phi_new, slope0
     integer             :: i
     logical             :: ok
 
@@ -157,18 +160,19 @@ contains
 end module shoot_solver_1d_hc_mod
 
 module shoot_solver_1d_hc_helpers_mod
+  use precision_mod, only: wp
   use analysis_mod, only: mass_radius
   use eos_mod, only: n0_at_h, e_at_h
-  use para_mod, only: h_center, r_ratio, Mass, Mass_0, MSUN, M_goal, Mb_goal, FIX1
+  use para_mod, only: wp, h_center, r_ratio, Mass, Mass_0, MSUN, M_goal, Mb_goal, FIX1
   use shoot_solver_1d_types_mod, only: newton_state_1d, evaluation_function_1d
   use shoot_solver_1d_hc_mod, only: from_solver_coord_1d
   use rotation_solver_mod, only: rotation_solver
   implicit none
 contains  
   subroutine evaluate_solution_1d(hc, rep, F, rho0, ee)
-    real(8), intent(in)  :: hc, rep
-    real(8), intent(out) :: F, rho0, ee
-    real(8) :: devi
+    real(wp), intent(in)  :: hc, rep
+    real(wp), intent(out) :: F, rho0, ee
+    real(wp) :: devi
 
     h_center = hc
     r_ratio  = rep
@@ -193,14 +197,14 @@ contains
   subroutine build_jacobian_1d(state, x, F, hc, rep, rho0, ee, reuse_base)
     ! Finite-difference J; optionally reuse the caller’s base residual to save a solve
     type(newton_state_1d), intent(inout) :: state
-    real(8), intent(in)    :: x
-    real(8), intent(inout) :: F
-    real(8), intent(inout) :: hc
-    real(8), intent(in)    :: rep
-    real(8), intent(out)   :: rho0, ee
+    real(wp), intent(in)    :: x
+    real(wp), intent(inout) :: F
+    real(wp), intent(inout) :: hc
+    real(wp), intent(in)    :: rep
+    real(wp), intent(out)   :: rho0, ee
     logical, intent(in), optional :: reuse_base
-    real(8) :: delta, xp, Fp, rho_tmp, ee_tmp
-    real(8) :: hc_p
+    real(wp) :: delta, xp, Fp, rho_tmp, ee_tmp
+    real(wp) :: hc_p
 
     ! Use a larger FD step to avoid flat slopes from numerical noise near root
     delta = max(abs(x), 1.d0) * 1.d-4
