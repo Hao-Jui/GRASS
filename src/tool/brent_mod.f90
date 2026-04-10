@@ -77,7 +77,7 @@ subroutine brent_core(x_guess, scale_up, scale_down, tol, return_value, f, small
     end if
     if (.not. bracketed) then
       if (present(logfile)) write(*,*) "check  ", logfile
-      stop "brent_core: failed to bracket root"
+      error stop "brent_core: failed to bracket root"
     end if
     call f(a, fa)
     call f(b, fb)
@@ -143,7 +143,7 @@ subroutine brent_core(x_guess, scale_up, scale_down, tol, return_value, f, small
     call f(b, fb)
   end do brent_loop
 
-  stop "brent_core: exceeding maximum iterations"
+  error stop "brent_core: exceeding maximum iterations"
 
 contains
 

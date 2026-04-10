@@ -188,7 +188,7 @@ contains
     elseif ( trim(FIX1) == "Mb_goal" ) then
       devi = Mass_0/MSUN/Mb_goal - 1._wp
     else
-      stop "evaluate_solution: unknown FIX1"
+      error stop "evaluate_solution: unknown FIX1"
     endif
 
     F = devi

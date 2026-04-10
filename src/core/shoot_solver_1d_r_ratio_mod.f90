@@ -114,7 +114,7 @@ contains
     else if (trim(FIX1) == "Mb_goal") then
       F = Mass_0 / MSUN / Mb_goal - 1._wp
     else
-      stop "evaluate_solution_rp: unknown FIX1"
+      error stop "evaluate_solution_rp: unknown FIX1"
     end if
   end subroutine evaluate_solution_rp
 

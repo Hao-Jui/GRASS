@@ -22,7 +22,7 @@ subroutine sphere
         real(wp), intent(in) :: r_eq
       end subroutine set_disk
     end interface
-    integer :: s, m
+    integer :: s, m, unit
     real(wp) r_is_s, r_is_final, r_final, m_final, &
           lambda_s, nu_s, e_s, gama_eq, rho_eq
     real(wp), dimension(SDIV) :: gama_mu_0, rho_mu_0
@@ -72,8 +72,8 @@ subroutine sphere
     if ( disk_present ) then 
     call set_disk(r_e)
 
-    open(217,file="./Res/disk.dat")
-    write(217,*) "test"
+    open(newunit=unit,file="./Res/disk.dat")
+    write(unit,*) "test"
     do s = 1, SDIV
         do m = 1, MDIV
           if ( enthalpy(s,m) <= enthalpy_min ) then
@@ -84,12 +84,12 @@ subroutine sphere
             energy  (s,m) = e_at_h(enthalpy(s,m))
           endif
           ! no info on pressure, enthalpy, and rho_0 yet; only to check energy
-          write(217,"(99es27.17)") s_gp(s), mu(m), alpha(s,m), gama(s,m), rho(s,m), ww(s,m) * (C/sqrt(kappa)), & ! 1-6
+          write(unit,"(99es27.17)") s_gp(s), mu(m), alpha(s,m), gama(s,m), rho(s,m), ww(s,m) * (C/sqrt(kappa)), & ! 1-6
             pressure(s,m)/KSCALE, energy(s,m)/(C*C*KSCALE), enthalpy(s,m), 0._wp, & ! 7-10
             velocity_sq(s,m), omg(s,m) * (C/sqrt(kappa)) ! 11-12
         enddo
       enddo
-    close(217)
+    close(unit)
     write(*,*) "Disk bestowed!"
   endif
 

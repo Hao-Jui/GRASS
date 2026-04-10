@@ -1,4 +1,5 @@
 module eos_mod
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_nan
   use precision_mod, only: wp
   use toolkit_mod, only: same_abscissa, pt_interp_action, n_order, bary_w
   use para_mod, only: log_e, log_p, log_h, log_n0, num_tab, n_PT, phase_transition
@@ -133,7 +134,7 @@ contains
     end if
     write(output_unit, *) "EOS data is in with log(h_min) =", enthalpy_min
 
-    if (any(isnan(log_e)) .or. any(isnan(log_p)) .or. any(isnan(log_h))) error stop "loadEos: wrong table"
+    if (any(ieee_is_nan(log_e)) .or. any(ieee_is_nan(log_p)) .or. any(ieee_is_nan(log_h))) error stop "loadEos: wrong table"
   end subroutine loadEos
 
 

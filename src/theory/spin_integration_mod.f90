@@ -579,7 +579,7 @@ contains
     end if
     if (any(alpha .ge. 300.0)) then
       write(*,*) "Error: Alpha fails in at least one row."
-      stop "alpha fails"
+      error stop "alpha fails"
     end if
   end subroutine update_alpha_potential
 

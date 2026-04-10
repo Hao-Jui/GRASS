@@ -220,7 +220,7 @@ contains
     case ('Mb_goal')
       deviA = Mass_0/MSUN/Mb_goal - 1._wp
     case default
-      stop "evaluate_solution: unknown FIX1"
+      error stop "evaluate_solution: unknown FIX1"
     end select
 
     select case (trim(FIX2))

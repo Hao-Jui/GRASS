@@ -85,7 +85,7 @@ contains
     open(newunit=unit, file=trim(filename), access='append', action='write', iostat=ios)
     if (ios /= 0) then
       write(*,'(A,I0,3X,A)') 'ERROR: Cannot open output file. IOSTAT = ', ios, trim(filename)
-      stop 1829
+      error stop 1829
     end if
     write(unit,"(99es18.9e3)") &
             ee/(C * C * KSCALE), rho0*MB/n_sat,    & ! 1-2
