@@ -128,7 +128,7 @@ contains
     write(output_unit, *) "# EOS: ", eos_file
     if (n_PT > 0) then
       do i = 1, n_PT
-        write(output_unit, "(A,i0,A,X,i0)") " p_at_PT(", i, "):", p_at_PT(i)
+        write(output_unit, "(A,i0,A,1X,i0)") " p_at_PT(", i, "):", p_at_PT(i)
       end do
       phase_transition = .true.
     end if
