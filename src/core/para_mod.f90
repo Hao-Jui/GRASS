@@ -4,7 +4,7 @@ module para_mod
   ! -- Theory selection ------------------------------------------------------
   integer, parameter :: THEORY_GR = 0
   integer, parameter :: THEORY_ST = 1
-  integer :: active_theory = THEORY_GR
+  integer :: active_theory = THEORY_ST
 
   ! hybrid / anderson
   ! -- Running option --------------------------------------------------------
@@ -14,11 +14,11 @@ module para_mod
 
   ! -- Running mode ----------------------------------------------------------
   integer, parameter :: shoot = 1, MRbuild = 2, OneModel = 3
-  integer :: run_task = shoot
+  integer :: run_task = shoot 
 
   ! -- Rotation configuration ------------------------------------------------
   ! uniform / const_j / uryu
-  character(len=20) :: solver_type = "uryu"
+  character(len=20) :: solver_type = "uniform"
   integer, parameter :: COLLOCATION_UNI = 1, COLLOCATION_LEG = 2, COLLOCATION_CHEB = 3
   integer :: angular_collocation = COLLOCATION_LEG
 
@@ -26,7 +26,7 @@ module para_mod
   logical :: output = .false.
   logical :: timing = .false.
   integer, parameter :: SHOOT_FIX1_HC = 1, SHOOT_FIX1_RP = 2, SHOOT_2D = 3
-  integer :: shooting = SHOOT_2D
+  integer :: shooting = SHOOT_FIX1_HC
   character(len=20) :: FIX1 = "Mb_goal"
   character(len=20) :: FIX2 = "chi_goal"
 

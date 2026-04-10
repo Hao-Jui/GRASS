@@ -34,7 +34,7 @@ contains
     call init_newton_state(solver_state, 2)
 
     write(unit=*, fmt=*) " "
-    iteration_cap = 100
+    iteration_cap = 1
 
     if (iteration_cap == 1) then
       call shoot_single()

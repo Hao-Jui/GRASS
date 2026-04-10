@@ -36,6 +36,7 @@ SOURCES := \
   $(SRC_TOOL)/nag_compat_mod.f90 \
   $(SRC_TOOL)/brent_mod.f90 \
   $(SRC_TOOL)/cheb_mod.f90 \
+  $(SRC_TOOL)/spline_mod.f90 \
   $(SRC_TOOL)/donutization_mod.f90 \
   $(SRC_TOOL)/spectral_hub_mod.f90 \
   $(SRC_CORE)/para_mod.f90 \
@@ -120,7 +121,7 @@ $(OBJDIR)/%.o: %.f90
 	$(FC) $(FFLAGS) -c -o $@ $<
 
 clean:
-	$(RM) -r $(BUILDDIR)
+	$(RM) -r $(BUILDDIR) $(LIBGRASS) tests/bin
 
 # --- Test targets ---
 LIBGRASS := libgrass.a
