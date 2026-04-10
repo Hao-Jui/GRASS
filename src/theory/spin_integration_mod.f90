@@ -663,7 +663,7 @@ contains
     use para_mod, only: run_task, MRbuild, donut
     use donu_mod, only: donutization_number
     real(wp), intent(in) :: D2_rho(SDIV,LMAX+1), D2_omega(SDIV,LMAX+1), D2_gama(SDIV,LMAX+1)
-    real(wp) :: radial_geom(SDIV), volume_density(SDIV,MDIV)
+    real(wp) :: radial_geom(SDIV), volume_density(SDIV,MDIV), baryon_dens(SDIV,MDIV)
     real(wp) :: rho_0, t0, t1
     character(512) :: fname
     character(len=*), parameter :: restart_binary_path = "./Res/res.rst"
@@ -677,7 +677,25 @@ contains
 
     radial_geom = radial_quad_weights * dble(s_pwr) * (s_gp / (1.0_wp - s_gp))**(3*s_pwr - 1) / (1.0_wp - s_gp)**2
     volume_density = exp(2.0_wp * alpha + 0.5_wp * (gama - rho))
-    donut = donutization_number(sphi * sqrt(B_coup), volume_density, radial_geom, angular_quad_weights)
+    block
+      integer :: s_, m_
+      real(wp) :: n0_val, vel_safe
+      do s_ = 1, SDIV
+        do m_ = 1, MDIV
+          n0_val = n0_at_e(energy(s_, m_))
+          vel_safe = min(max(velocity_sq(s_, m_), 0.0_wp), 1.0_wp - 1.0e-12_wp)
+          if (n0_val > 0.0_wp) then
+            baryon_dens(s_, m_) = n0_val * MB * KSCALE * C**2 &
+                                * exp(-0.75_wp * sphi(s_, m_)**2 * B_coup) &
+                                / sqrt(1.0_wp - vel_safe)
+          else
+            baryon_dens(s_, m_) = 0.0_wp
+          end if
+        end do
+      end do
+    end block
+    donut = donutization_number(sphi * sqrt(B_coup), volume_density, baryon_dens, &
+                                radial_geom, angular_quad_weights)
 
     rho_0 = n0_at_e(energy(1,1)) * MB
     write(fname,"(A, A, A, f0.2, A, f0.3, A, es0.2e2, A,es0.2e2, A, es0.3e2, A, f0.3)") &
