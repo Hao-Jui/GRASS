@@ -121,3 +121,28 @@ $(OBJDIR)/%.o: %.f90
 
 clean:
 	$(RM) -r $(BUILDDIR)
+
+# --- Test targets ---
+LIBGRASS := libgrass.a
+LIB_OBJECTS := $(filter-out $(OBJDIR)/src/main.o,$(OBJECTS))
+
+$(LIBGRASS): $(LIB_OBJECTS)
+	ar rcs $@ $^
+
+.PHONY: test test-unit test-integration test-debug
+
+test: test-unit test-integration
+	@echo "All tests passed."
+
+ABSFFLAGS := -I$(CURDIR) -I$(CURDIR)/$(MODDIR) -J$(CURDIR)/$(MODDIR) \
+  $(filter-out -I. -I$(MODDIR) -J$(MODDIR),$(FFLAGS))
+
+test-unit: $(LIBGRASS)
+	@$(MAKE) -C tests unit FC=$(FC) FFLAGS="$(ABSFFLAGS)" LIBGRASS=$(CURDIR)/$(LIBGRASS) LIBS="$(LIBS)"
+
+test-integration: $(LIBGRASS)
+	@$(MAKE) -C tests integration FC=$(FC) FFLAGS="$(ABSFFLAGS)" LIBGRASS=$(CURDIR)/$(LIBGRASS) LIBS="$(LIBS)"
+
+test-debug:
+	@$(MAKE) MODE=Debug $(LIBGRASS)
+	@$(MAKE) -C tests sanitizer FC=$(FC) FFLAGS="$(ABSFFLAGS)" LIBGRASS=$(CURDIR)/$(LIBGRASS) LIBS="$(LIBS)"
