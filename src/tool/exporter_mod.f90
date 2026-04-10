@@ -28,10 +28,10 @@ contains
                             "  AngM = ", ang_mom * l_uni**2 / K_km,         &
                             "   E = ", mass / MSUN * l_uni / sqrt(K_km)
     write(unit,"(2i12)") SDIV, MDIV
-    write(unit,"(2es21.12)") r_e * sqrt(KAPPA) / 1.d5 / sqrt(K_km), 1.0d0, &
-                            Omega_c * ( sqrt(K_km) / sqrt(KAPPA) ), 0.0d0
+    write(unit,"(2es21.12)") r_e * sqrt(KAPPA) / 1.e5_wp / sqrt(K_km), 1.0_wp, &
+                            Omega_c * ( sqrt(K_km) / sqrt(KAPPA) ), 0.0_wp
     do s = 1, SDIV
-      r_s = r_e * sqrt(KAPPA) / 1.d5 / sqrt(K_km) * s_gp(s) / (1.d0 - s_gp(s))
+      r_s = r_e * sqrt(KAPPA) / 1.e5_wp / sqrt(K_km) * s_gp(s) / (1._wp - s_gp(s))
       do m = 1, MDIV
         write(unit,"(4es22.12)") r_s, mu(m), var1(s,m), var2(s,m), &
                                 var3(s,m), var4(s,m), var5(s,m), var6(s,m)

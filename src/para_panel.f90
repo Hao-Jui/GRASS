@@ -38,19 +38,19 @@ module para_mod
 
   ! -- Target quantities -----------------------------------------------------
   character(len=128) :: eos_file = "MPA1"
-  real(wp) :: M_goal   = 1.2e0_wp
-  real(wp) :: Mb_goal  = 2.e0_wp
-  real(wp) :: J_goal   = 1.6e0_wp
-  real(wp) :: chi_goal = 0.1e0_wp
+  real(wp) :: M_goal   = 1.2_wp
+  real(wp) :: Mb_goal  = 2._wp
+  real(wp) :: J_goal   = 1.6_wp
+  real(wp) :: chi_goal = 0.1_wp
   real(wp) :: omc_goal = 30.0_wp
 
   real(wp) :: B_goal   = 3.5e1_wp
   real(wp) :: mphi_goal = 0.2_wp
 
   ! -- Rotation-law parameters (KEH, Uryu enabled) --------------------------
-  real(wp) :: A_diff  = 0.5e0_wp
-  real(wp) :: lambda1 = 1.5e0_wp
-  real(wp) :: lambda2 = 0.3e0_wp
+  real(wp) :: A_diff  = 0.5_wp
+  real(wp) :: lambda1 = 1.5_wp
+  real(wp) :: lambda2 = 0.3_wp
   integer :: uyru_p  = 1
   integer :: uyru_q  = 3
 
@@ -59,8 +59,8 @@ module para_mod
 
   real(wp) :: cofA = 30.0_wp
   real(wp) :: cofB = 0.0_wp
-  real(wp) :: cofp = 0.8e0_wp
-  real(wp) :: cofq = 0.9e0_wp
+  real(wp) :: cofp = 0.8_wp
+  real(wp) :: cofq = 0.9_wp
 
   ! -- Equation of state -----------------------------------------------------
   logical :: phase_transition = .false.
@@ -75,12 +75,12 @@ module para_mod
 
   ! -- Grid configuration ----------------------------------------------------
   integer, parameter :: LMAX = 10
-  real(wp) :: SMAX  = 1.0_wp - (1.e-1_wp)**(9.0_wp / dble(s_pwr))
+  real(wp) :: SMAX  = 1.0_wp - (1.e-1_wp)**(9.0_wp / real(s_pwr, wp))
   integer, parameter :: RDIV = 1800
 
   real(wp) :: DS = 0.0_wp
   real(wp) :: DM = 0.0_wp
-  real(wp), parameter :: S_E = 0.5e0_wp
+  real(wp), parameter :: S_E = 0.5_wp
 
   real(wp), allocatable :: s_gp(:), mu(:), sin_theta(:)
   real(wp), allocatable :: D_mu(:,:), D_mu_t(:,:), D2_mu(:,:), w_mu(:)
@@ -88,8 +88,8 @@ module para_mod
   ! -- Disk helper quantities (kept for compatibility) ----------------------
   logical :: disk_present = .false.
   real(wp) :: edge_in = 800.0_wp
-  real(wp) :: s_inner = 0.5e0_wp
-  real(wp) :: j_disk  = 4.5e0_wp
+  real(wp) :: s_inner = 0.5_wp
+  real(wp) :: j_disk  = 4.5_wp
   real(wp) :: p_max_disk = 0.0_wp
   real(wp) :: h_max_disk = 0.0_wp
   integer :: i_isco_p = 1
@@ -113,9 +113,9 @@ module para_mod
   real(wp) :: donut      = 0.0_wp
 
   real(wp) :: B_burn_init = 16.0_wp
-  real(wp) :: mphi_burn_seed = 0.1e0_wp
+  real(wp) :: mphi_burn_seed = 0.1_wp
   integer, parameter :: scalar_burn_max_iter = 200
-  real(wp), parameter :: MPHI_BURN_THRESHOLD = 0.1e0_wp
+  real(wp), parameter :: MPHI_BURN_THRESHOLD = 0.1_wp
 
   ! Bulk properties
   real(wp) :: Omega_c = 0.0_wp
@@ -162,13 +162,13 @@ module para_mod
   real(wp), parameter :: TOV_RMIN  = 1.e-15_wp
   real(wp), parameter :: KAPPA     = 1.e-15_wp * C**2 / G
   real(wp), parameter :: KSCALE    = KAPPA * G / C**4
-  real(wp), parameter :: E_SURFACE = 7.8e0_wp * C**2 * KSCALE
+  real(wp), parameter :: E_SURFACE = 7.8_wp * C**2 * KSCALE
   real(wp), parameter :: P_SURFACE = 1.01e8_wp * KSCALE
   real(wp), parameter :: RHO_UNI   = 7.4259154861063358e-19_wp
   real(wp), parameter :: PRS_UNI = rho_uni/(C*1.e5_wp)**2
   real(wp), parameter :: F_UNI     = 2.029739818539300e5_wp
   real(wp), parameter :: HBAR      = 6.582119569e-16_wp
-  real(wp), parameter :: L_UNI     = 1.4769994423016508e0_wp
+  real(wp), parameter :: L_UNI     = 1.4769994423016508_wp
   real(wp), parameter :: N_SAT     = 2.7e14_wp
   real(wp), parameter :: SCALARTON = HBAR * C / l_uni / 1.e5_wp
 contains
@@ -199,9 +199,9 @@ contains
 
     solver_type = trim(to_lower_str(adjustl(solver_type)))
 
-    DS   = SMAX / (dble(SDIV) - 1.0_wp)
-    DM   = 1.0_wp  / (dble(MDIV) - 1.0_wp)
-    s_inner = edge_in**(1.0_wp / dble(s_pwr)) / (edge_in**(1.0_wp / dble(s_pwr)) + 1.0_wp)
+    DS   = SMAX / (real(SDIV, wp) - 1.0_wp)
+    DM   = 1.0_wp  / (real(MDIV, wp) - 1.0_wp)
+    s_inner = edge_in**(1.0_wp / real(s_pwr, wp)) / (edge_in**(1.0_wp / real(s_pwr, wp)) + 1.0_wp)
 
     call allocate_fields()
   end subroutine initialize_theory

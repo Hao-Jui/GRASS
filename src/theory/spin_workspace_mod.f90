@@ -63,22 +63,22 @@ contains
     else
       call compute_effective_d01gaf_weights(mu, angular_quad_weights)
     end if
-    wfac_cache = 1.e0_wp / (1.e0_wp - s_gp)**2
-    s1_geom = s_gp * (1.e0_wp - s_gp)
+    wfac_cache = 1._wp / (1._wp - s_gp)**2
+    s1_geom = s_gp * (1._wp - s_gp)
     s1_sq_geom = s1_geom**2
-    s1_one_minus_s_geom = s1_geom * (1.e0_wp - s_gp)
-    s2_geom = (s_gp / (1.e0_wp - s_gp))**2
+    s1_one_minus_s_geom = s1_geom * (1._wp - s_gp)
+    s2_geom = (s_gp / (1._wp - s_gp))**2
     sgp4_geom = s_gp**4
-    m1_geom = 1.e0_wp - mu**2
-    rad_inv_s1(2:) = dble(s_pwr) / (s_gp(2:) * (1.e0_wp - s_gp(2:)))
-    rad_left_rho(2:) = dble(s_pwr) * s_gp(2:)**(s_pwr - 1) / (1.e0_wp - s_gp(2:))**(s_pwr + 1)
-    rad_right_gama(2:) = dble(s_pwr) * s_gp(2:)**(2 * s_pwr - 1) / (1.e0_wp - s_gp(2:))**(2 * s_pwr + 1)
-    rad_ratio_s(2:) = ((1.e0_wp - s_gp(2:)) / s_gp(2:))**s_pwr
-    rad_ratio_g(2:) = ((1.e0_wp - s_gp(2:)) / s_gp(2:))**(2 * s_pwr)
-    sin_theta_inv = 0.e0_wp
-    where (sin_theta > 1.e-12_wp) sin_theta_inv = 1.e0_wp / sin_theta
+    m1_geom = 1._wp - mu**2
+    rad_inv_s1(2:) = real(s_pwr, wp) / (s_gp(2:) * (1._wp - s_gp(2:)))
+    rad_left_rho(2:) = real(s_pwr, wp) * s_gp(2:)**(s_pwr - 1) / (1._wp - s_gp(2:))**(s_pwr + 1)
+    rad_right_gama(2:) = real(s_pwr, wp) * s_gp(2:)**(2 * s_pwr - 1) / (1._wp - s_gp(2:))**(2 * s_pwr + 1)
+    rad_ratio_s(2:) = ((1._wp - s_gp(2:)) / s_gp(2:))**s_pwr
+    rad_ratio_g(2:) = ((1._wp - s_gp(2:)) / s_gp(2:))**(2 * s_pwr)
+    sin_theta_inv = 0._wp
+    where (sin_theta > 1.e-12_wp) sin_theta_inv = 1._wp / sin_theta
     allocate(sgp_term_1d(SDIV))
-    sgp_term_1d = s_gp / (1.e0_wp - s_gp)
+    sgp_term_1d = s_gp / (1._wp - s_gp)
     sgp_term_2d_cache = spread(sgp_term_1d, 2, MDIV)
     sin_theta_2d_cache = spread(sin_theta, 1, SDIV)
     sgp_2d_cache = spread(s_gp, 2, MDIV)
@@ -90,11 +90,11 @@ contains
     if (LMAX > 0) then
       weighted_gama_basis = spread(angular_quad_weights, 2, LMAX) * sin_2n_1_theta
       weighted_omega_basis = spread(angular_quad_weights * sin_theta, 2, LMAX) * P1_2n_1(:,2:LMAX+1)
-      recon_gama_basis = 0.e0_wp
-      recon_gama_basis(:,1) = 1.e0_wp
+      recon_gama_basis = 0._wp
+      recon_gama_basis(:,1) = 1._wp
       do n = 2, LMAX
         recon_gama_basis(1:MDIV-1,n) = sin_2n_1_theta(1:MDIV-1,n) * sin_theta_inv(1:MDIV-1) / real(2*n-1, wp)
-        recon_gama_basis(MDIV,n) = 1.e0_wp
+        recon_gama_basis(MDIV,n) = 1._wp
       end do
       do n = 1, LMAX
         recon_omega_basis(1:MDIV-1,n) = -P1_2n_1(1:MDIV-1,n+1) * sin_theta_inv(1:MDIV-1) / real(2*n*(2*n-1), wp)
@@ -133,14 +133,14 @@ contains
     if (size(w) /= n) stop "compute_effective_d01gaf_weights: size mismatch"
 
     allocate(basis(n))
-    basis = 0.e0_wp
+    basis = 0._wp
 
     do i = 1, n
-      basis(i) = 1.e0_wp
+      basis(i) = 1._wp
       call d01gaf(x, basis, n, ans, er, ifail)
       if (ifail /= 0) stop "compute_effective_d01gaf_weights: d01gaf failed"
       w(i) = ans
-      basis(i) = 0.e0_wp
+      basis(i) = 0._wp
     end do
 
     deallocate(basis)

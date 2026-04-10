@@ -82,7 +82,7 @@ contains
     end if
     term = x; sum = term
     do k = 2, 20
-      term = term * x / dble(k)
+      term = term * x / real(k, wp)
       sum = sum + term
       if (abs(term) < 1.e-20_wp) exit
     end do
@@ -385,12 +385,12 @@ contains
     if (l == m) then
       plgndr = pmm
     else
-      pmmp1 = x * dble(2*m + 1) * pmm
+      pmmp1 = x * real(2*m + 1, wp) * pmm
       if (l == (m + 1)) then
         plgndr = pmmp1
       else
         do ll = (m + 2), l
-          pll = (x * dble(2*ll - 1) * pmmp1 - dble(ll + m - 1) * pmm) / dble(ll - m)
+          pll = (x * real(2*ll - 1, wp) * pmmp1 - real(ll + m - 1, wp) * pmm) / real(ll - m, wp)
           pmm = pmmp1
           pmmp1 = pll
         enddo
@@ -422,7 +422,7 @@ contains
     integer :: k
     odd_double_factorial = 1.0_wp
     do k = m, 1, -2
-      odd_double_factorial = odd_double_factorial * dble(k)
+      odd_double_factorial = odd_double_factorial * real(k, wp)
     end do
   end function odd_double_factorial
 
@@ -440,7 +440,7 @@ contains
     sum_series = 1.0_wp
     term_factor = 1.0_wp
     do k = 1, 64
-      term_factor = term_factor * x2 / (2.0_wp*dble(k)*(2.0_wp*dble(n+k)+1.0_wp))
+      term_factor = term_factor * x2 / (2.0_wp*real(k, wp)*(2.0_wp*real(n+k, wp)+1.0_wp))
       sum_series = sum_series + term_factor
       if (abs(term_factor) < max(1.e-18_wp, abs(sum_series)*1.e-16_wp)) exit
     end do
@@ -473,7 +473,7 @@ contains
       bessel_down_workspace(Lrec)   = 1.0_wp
       do l_idx = Lrec, 1, -1
         bessel_down_workspace(l_idx-1) = bessel_down_workspace(l_idx+1) + &
-          ((2.0_wp*dble(l_idx)+1.0_wp)/x) * bessel_down_workspace(l_idx)
+          ((2.0_wp*real(l_idx, wp)+1.0_wp)/x) * bessel_down_workspace(l_idx)
       end do
       scale = (sinh(x) / x) / bessel_down_workspace(0)
       spherical_i_value = scale * bessel_down_workspace(n)
@@ -481,7 +481,7 @@ contains
     end if
 
     if (x > 700.0_wp) then
-      sinh_x = 0.5e0_wp * exp(x); cosh_x = sinh_x
+      sinh_x = 0.5_wp * exp(x); cosh_x = sinh_x
     else
       sinh_x = sinh(x); cosh_x = cosh(x)
     end if
@@ -495,7 +495,7 @@ contains
       spherical_i_value = i_curr; return
     end if
     do ell_idx = 1, n-1
-      i_next = i_prev - (dble(2*ell_idx + 1)/x) * i_curr
+      i_next = i_prev - (real(2*ell_idx + 1, wp)/x) * i_curr
       i_prev = i_curr; i_curr = i_next
     end do
     spherical_i_value = i_curr
@@ -527,7 +527,7 @@ contains
       spherical_k_value = k_curr; return
     end if
     do ell = 1, n-1
-      k_next = k_prev + (dble(2*ell + 1)/x) * k_curr
+      k_next = k_prev + (real(2*ell + 1, wp)/x) * k_curr
       k_prev = k_curr; k_curr = clip_besselk(k_next)
     end do
     spherical_k_value = k_curr
@@ -576,7 +576,7 @@ contains
       bessel_down_workspace(lrec) = 1.0_wp
       do l_idx = lrec, 1, -1
         bessel_down_workspace(l_idx-1) = bessel_down_workspace(l_idx+1) + &
-          ((2.0_wp * dble(l_idx) + 1.0_wp) / xx) * bessel_down_workspace(l_idx)
+          ((2.0_wp * real(l_idx, wp) + 1.0_wp) / xx) * bessel_down_workspace(l_idx)
       end do
       scale = (sinh(xx) / xx) / bessel_down_workspace(0)
       do n = 0, lmax
@@ -584,7 +584,7 @@ contains
       end do
     else
       if (xx > 700.0_wp) then
-        sinh_x = 0.5e0_wp * exp(xx); cosh_x = sinh_x
+        sinh_x = 0.5_wp * exp(xx); cosh_x = sinh_x
       else
         sinh_x = sinh(xx); cosh_x = cosh(xx)
       end if

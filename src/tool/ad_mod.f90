@@ -40,14 +40,14 @@ contains
     real(wp), intent(in) :: x
     type(dual) :: d
     d%val = x
-    d%der = 0.d0
+    d%der = 0._wp
   end function dual_const
 
   pure function dual_var(x) result(d)
     real(wp), intent(in) :: x
     type(dual) :: d
     d%val = x
-    d%der = 1.d0
+    d%der = 1._wp
   end function dual_var
 
   pure function add_dd(a, b) result(c)
@@ -130,7 +130,7 @@ contains
     type(dual), intent(in) :: a, b
     type(dual) :: c
     real(wp) :: inv
-    inv = 1.d0 / b%val
+    inv = 1._wp / b%val
     c%val = a%val * inv
     c%der = (a%der - c%val * b%der) * inv
   end function div_dd
@@ -140,7 +140,7 @@ contains
     real(wp),  intent(in) :: b
     type(dual) :: c
     real(wp) :: inv
-    inv = 1.d0 / b
+    inv = 1._wp / b
     c%val = a%val * inv
     c%der = a%der * inv
   end function div_dr
@@ -150,7 +150,7 @@ contains
     type(dual), intent(in) :: b
     type(dual) :: c
     real(wp) :: inv
-    inv = 1.d0 / b%val
+    inv = 1._wp / b%val
     c%val = a * inv
     c%der = -c%val * b%der * inv
   end function div_rd

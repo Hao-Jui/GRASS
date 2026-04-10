@@ -37,7 +37,7 @@ contains
     real(wp) :: accel_field(SDIV,MDIV)
     real(wp), pointer, contiguous :: residual_vec(:), history_vec(:)
     integer :: k, i, info, idx_curr, idx, N
-    real(wp), parameter :: BLEND = 0.3e0_wp, DAMPING = 0.3e0_wp
+    real(wp), parameter :: BLEND = 0.3_wp, DAMPING = 0.3_wp
     integer, parameter :: conservative_steps = 3
     real(wp), allocatable, save :: delta(:,:)
 
@@ -57,7 +57,7 @@ contains
 
     ! Early iterations: simple damping, but still seed valid history.
     if (iter < conservative_steps) then
-      current_field = damping * current_field + (1.0e0_wp - damping) * target_field
+      current_field = damping * current_field + (1.0_wp - damping) * target_field
       return
     end if
 
@@ -73,19 +73,19 @@ contains
     end do
 
     ! F_mat(1:k,1:k) = delta(:,1:k)^T @ delta(:,1:k)  — all k^2 dot products in one DGEMM
-    call dgemm('T', 'N', k, k, N, 1.e0_wp, delta, N, delta, N, 0.e0_wp, F_mat, m_hist)
+    call dgemm('T', 'N', k, k, N, 1._wp, delta, N, delta, N, 0._wp, F_mat, m_hist)
 
     ! gamma(1:k) = delta(:,1:k)^T @ residual
-    call dgemv('T', N, k, 1.e0_wp, delta, N, residual_vec, 1, 0.e0_wp, gamma, 1)
+    call dgemv('T', N, k, 1._wp, delta, N, residual_vec, 1, 0._wp, gamma, 1)
 
     call DPOSV('U', k, 1, F_mat, m_hist, gamma, m_hist, info)
 
     if (info == 0) then
       accel_field = target_field
-      call dgemv('N', N, k, -1.e0_wp, delta, N, gamma, 1, 1.e0_wp, accel_field(1,1), 1)
-      current_field = blend * current_field + (1.0e0_wp - blend) * accel_field
+      call dgemv('N', N, k, -1._wp, delta, N, gamma, 1, 1._wp, accel_field(1,1), 1)
+      current_field = blend * current_field + (1.0_wp - blend) * accel_field
     else
-      current_field = blend * current_field + (1.0e0_wp - blend) * target_field
+      current_field = blend * current_field + (1.0_wp - blend) * target_field
     end if
     
   end subroutine anderson_accel_optimized
@@ -497,7 +497,7 @@ contains
     logical,  intent(out)   :: fired
 
     real(wp) :: denom, step_n, x_k, hist1_prev, candidate
-    real(wp), parameter :: MAX_AITKEN_JUMP = 10.e0_wp
+    real(wp), parameter :: MAX_AITKEN_JUMP = 10._wp
     logical :: apply_aitken
     integer  :: s, m
 
@@ -524,10 +524,10 @@ contains
         x_k = rho(s,m)
         if (apply_aitken) then
           step_n = x_k - aitk1_rho(s,m)
-          denom  = x_k - 2.e0_wp*aitk1_rho(s,m) + aitk2_rho(s,m)
+          denom  = x_k - 2._wp*aitk1_rho(s,m) + aitk2_rho(s,m)
           if (abs(denom) > 1.e-14_wp .and. abs(step_n) <= MAX_AITKEN_JUMP * abs(denom)) then
             candidate = x_k - step_n**2 / denom
-            if (abs(candidate) <= 100.e0_wp) rho(s,m) = candidate
+            if (abs(candidate) <= 100._wp) rho(s,m) = candidate
           end if
         end if
         hist1_prev = aitk1_rho(s,m)
@@ -537,10 +537,10 @@ contains
         x_k = gama(s,m)
         if (apply_aitken) then
           step_n = x_k - aitk1_gama(s,m)
-          denom  = x_k - 2.e0_wp*aitk1_gama(s,m) + aitk2_gama(s,m)
+          denom  = x_k - 2._wp*aitk1_gama(s,m) + aitk2_gama(s,m)
           if (abs(denom) > 1.e-14_wp .and. abs(step_n) <= MAX_AITKEN_JUMP * abs(denom)) then
             candidate = x_k - step_n**2 / denom
-            if (abs(candidate) <= 300.e0_wp) gama(s,m) = candidate
+            if (abs(candidate) <= 300._wp) gama(s,m) = candidate
           end if
         end if
         hist1_prev = aitk1_gama(s,m)
@@ -550,10 +550,10 @@ contains
         x_k = ww(s,m)
         if (apply_aitken) then
           step_n = x_k - aitk1_ww(s,m)
-          denom  = x_k - 2.e0_wp*aitk1_ww(s,m) + aitk2_ww(s,m)
+          denom  = x_k - 2._wp*aitk1_ww(s,m) + aitk2_ww(s,m)
           if (abs(denom) > 1.e-14_wp .and. abs(step_n) <= MAX_AITKEN_JUMP * abs(denom)) then
             candidate = x_k - step_n**2 / denom
-            if (abs(candidate) <= 100.e0_wp) ww(s,m) = candidate
+            if (abs(candidate) <= 100._wp) ww(s,m) = candidate
           end if
         end if
         hist1_prev = aitk1_ww(s,m)
@@ -564,10 +564,10 @@ contains
           x_k = sphi(s,m)
           if (apply_aitken) then
             step_n = x_k - aitk1_sphi(s,m)
-            denom  = x_k - 2.e0_wp*aitk1_sphi(s,m) + aitk2_sphi(s,m)
+            denom  = x_k - 2._wp*aitk1_sphi(s,m) + aitk2_sphi(s,m)
             if (abs(denom) > 1.e-14_wp .and. abs(step_n) <= MAX_AITKEN_JUMP * abs(denom)) then
               candidate = x_k - step_n**2 / denom
-              if (abs(candidate) <= 10.e0_wp) sphi(s,m) = candidate
+              if (abs(candidate) <= 10._wp) sphi(s,m) = candidate
             end if
           end if
           hist1_prev = aitk1_sphi(s,m)

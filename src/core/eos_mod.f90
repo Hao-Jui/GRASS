@@ -518,11 +518,11 @@ contains
     real(wp) :: x0, x0_log, min_e, max_e
     real(wp) :: ee_clamped
     logical :: fatal_error
-    real(wp), parameter :: CLAMP_TOL = 1.d-12
+    real(wp), parameter :: CLAMP_TOL = 1.e-12_wp
 
     info = 0
     fatal_error = .false.
-    derivative = 0.d0
+    derivative = 0._wp
 
     if (n < 0) then
       info = 1
@@ -534,14 +534,14 @@ contains
     else if (n >= num_tab) then
       info = 4
       fatal_error = .true.
-    else if (ee <= 0.d0) then
+    else if (ee <= 0._wp) then
       info = 3
       fatal_error = .true.
     end if
 
     if (fatal_error) then
       if (present(status)) status = info
-      derivative = 0.d0
+      derivative = 0._wp
       return
     end if
 
@@ -549,7 +549,7 @@ contains
     max_e = e_tab(num_tab)
 
     ee_clamped = max(min_e, min(max_e, ee))
-    if (abs(ee_clamped - ee) > clamp_tol * max(1.d0, abs(ee_clamped))) info = 5
+    if (abs(ee_clamped - ee) > clamp_tol * max(1._wp, abs(ee_clamped))) info = 5
 
     x0 = ee_clamped
     x0_log = log(x0)
@@ -577,7 +577,7 @@ contains
       info = 4
       fatal_error = .true.
       if (present(status)) status = info
-      derivative = 0.d0
+      derivative = 0._wp
       return
     end if
     
@@ -591,11 +591,11 @@ contains
     call fornberg_weights(x0, e_tab(left:right), n_points, n, deriv_coeffs_work(1:n_points, 1:n+1))
     derivative = dot_product(deriv_coeffs_work(1:n_points, n+1), p_tab(left:right))
 
-    if (abs(ee_clamped - ee) > clamp_tol * max(1.d0, abs(ee_clamped))) &
+    if (abs(ee_clamped - ee) > clamp_tol * max(1._wp, abs(ee_clamped))) &
       info = max(info, 5)
 
     if (present(status)) status = info
-    if (fatal_error) derivative = 0.d0
+    if (fatal_error) derivative = 0._wp
 
   contains
     ! helper that constructs finite-difference weights for arbitrary 
@@ -611,13 +611,13 @@ contains
       integer :: i, j, k, max_k
       real(wp) :: c1, c2, c3, c4, c5
 
-      c(:, :) = 0.d0
-      c(1,1) = 1.d0
-      c1 = 1.d0
+      c(:, :) = 0._wp
+      c(1,1) = 1._wp
+      c1 = 1._wp
       c4 = x(1) - x0_local
 
       do i = 2, m
-        c2 = 1.d0
+        c2 = 1._wp
         c5 = c4
         c4 = x(i) - x0_local
         max_k = min(i - 1, n_deriv)

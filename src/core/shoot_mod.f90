@@ -81,16 +81,16 @@ contains
 
     select case (shooting)
     case (SHOOT_FIX1_HC)
-      call reset_newton_state_1d(solver_state_1d); prev_er1d = huge(1.e0_wp)
+      call reset_newton_state_1d(solver_state_1d); prev_er1d = huge(1._wp)
     case (SHOOT_FIX1_RP)
-      call reset_newton_state_1d(solver_state_rp); prev_er_rp = huge(1.e0_wp)
+      call reset_newton_state_1d(solver_state_rp); prev_er_rp = huge(1._wp)
     case (SHOOT_2D)
-      call reset_newton_state(solver_state); prev_er2d = huge(1.e0_wp)
+      call reset_newton_state(solver_state); prev_er2d = huge(1._wp)
     end select
 
     it = 1
     er = 1.e99_wp
-    er_best = huge(1.e0_wp)
+    er_best = huge(1._wp)
     n_stall = 0
     do
       call cpu_time(start)
@@ -103,7 +103,7 @@ contains
 
       if (er <= accuracy .or. output) exit
 
-      if (er < er_best * (1.e0_wp - STALL_TOL)) then
+      if (er < er_best * (1._wp - STALL_TOL)) then
         er_best = er
         n_stall = 0
       else
@@ -144,8 +144,8 @@ contains
     integer  :: unit, ios
     pp   = p_at_e(ee)
     traceT  = 3.0_wp*pp*1.80171810e-39_wp/KSCALE - ee*rho_uni/(C * C * KSCALE)
-    Q_bar = merge(-1.d0, M2/chi**2, chi < 1.e-30_wp)
-    T_over_W=merge(-1.d0, T_kin/abs(Mass_p - Mass + T_kin), chi < 1.e-30_wp)
+    Q_bar = merge(-1._wp, M2/chi**2, chi < 1.e-30_wp)
+    T_over_W=merge(-1._wp, T_kin/abs(Mass_p - Mass + T_kin), chi < 1.e-30_wp)
 
     write(filename, '(A, A, A, F0.2, A)') &
       "/Users/horay/Data4Projects/HT/Seq_", trim(eos_file), "_M", mass_0/MSUN, ".dat"
@@ -337,7 +337,7 @@ subroutine print_iter_status(it, rho0, ee, er)
   write(*,"(A10,ES18.9,A10)")    "rho_c :", rho0*MB,"g/cm^3"
   write(*,"(A10,ES18.9,A10,ES18.9)") "e_c   :", ee/(C*C*KSCALE),"g/cm^3", ee/(C*C*KSCALE)*rho_uni
   write(*,"(A10,ES18.9)")       "rp/re :", r_ratio
-  write(*,"(A10,ES18.9,A4)")    "OMG_c :", omega_c/(2.e0_wp*pi)*(C/sqrt(kappa)),"Hz"
+  write(*,"(A10,ES18.9,A4)")    "OMG_c :", omega_c/(2._wp*pi)*(C/sqrt(kappa)),"Hz"
   write(*,"(A10,ES18.9,A4)")    "Mass  :", mass/MSUN,"M_o"
   write(*,"(A10,ES18.9,A4)")    "M_0   :", mass_0/MSUN,"M_o"
   write(*,"(A10,ES18.9)")       "J     :", ang_mom
@@ -345,9 +345,9 @@ subroutine print_iter_status(it, rho0, ee, er)
   write(*,"(A10,ES18.9)")       "T/W   :", T_kin/abs(mass_p - mass + T_kin)
   write(*,"(A10,ES18.9,A4)")    "R_is  :", r_e*sqrt(KAPPA)/1.e5_wp,"km"
   write(*,"(A10,ES18.9,A4)")    "R_cir :", r_circ/1.e5_wp,"km"
-  write(*,"(A10,ES18.9,A4)")    "r_e/M :", (r_circ/1.e5_wp)/(mass/MSUN*1.4769994423016508e0_wp)
+  write(*,"(A10,ES18.9,A4)")    "r_e/M :", (r_circ/1.e5_wp)/(mass/MSUN*1.4769994423016508_wp)
   if (.not. active_theory == THEORY_GR) then
-    write(*,"(A10,2ES18.9)")    "Om_K/e:", Omega_K/(2.e0_wp*pi), Omega_e/(2.e0_wp*pi)*(C/sqrt(kappa))
+    write(*,"(A10,2ES18.9)")    "Om_K/e:", Omega_K/(2._wp*pi), Omega_e/(2._wp*pi)*(C/sqrt(kappa))
   end if
   write(*,"(A10,3ES18.9)")      "er    :", er
   write(*,'(1X,A)') repeat('=', 36)

@@ -55,9 +55,9 @@ contains
     end if
 
     do s = 1, n_points
-      row_values = 0.d0
+      row_values = 0._wp
       nvals = 2
-      row_values(1) = (s_gp(s)/(1.d0 - s_gp(s)))**s_pwr
+      row_values(1) = (s_gp(s)/(1._wp - s_gp(s)))**s_pwr
       row_values(2) = column1(s)
       if (present(column2))  then; nvals=nvals+1; row_values(nvals)=column2(s);  end if
       if (present(column3))  then; nvals=nvals+1; row_values(nvals)=column3(s);  end if
@@ -129,10 +129,10 @@ contains
       write(out_unit,"(A18,ES18.9,A10)")        &
           "Central energy =", ee/(C*C*KSCALE), "g/cm^3"
       write(out_unit,"(A18,ES18.9)")            "   Axial ratio =", r_ratio
-      write(out_unit,"(A18,F18.9,A4)")          " Central Omega =", Omega_c/(2.d0*pi)*(C/sqrt(kappa)), "Hz"
-      write(out_unit,"(A18,F18.9,A4)")          " Equator Omega =", Omega_e/(2.d0*pi)*(C/sqrt(kappa)), "Hz"
+      write(out_unit,"(A18,F18.9,A4)")          " Central Omega =", Omega_c/(2._wp*pi)*(C/sqrt(kappa)), "Hz"
+      write(out_unit,"(A18,F18.9,A4)")          " Equator Omega =", Omega_e/(2._wp*pi)*(C/sqrt(kappa)), "Hz"
       if (.not. has_scalar) then
-        write(out_unit,"(A18,F18.9,A4)")        "   Kepler Omega =", Omega_K/(2.d0*pi), "Hz"
+        write(out_unit,"(A18,F18.9,A4)")        "   Kepler Omega =", Omega_K/(2._wp*pi), "Hz"
       end if
       write(out_unit,"(A18,F18.9,A4)")          "      ADM Mass =", mass/MSUN, "M_o"
       write(out_unit,"(A18,F18.9,A16,ES18.9,A2)") &
@@ -141,7 +141,7 @@ contains
           " Ang. Momentum =", ang_mom, " ( chi =", chi, ")"
       if (has_scalar) then
         write(out_unit,"(A18,ES18.9)")         "    Coupling B =", B_coup
-        write(out_unit,"(A18,ES18.9)")         "   Scalar mass =", sqrt(mphi_r*1.d10/KAPPA)*l_uni
+        write(out_unit,"(A18,ES18.9)")         "   Scalar mass =", sqrt(mphi_r*1.e10_wp/KAPPA)*l_uni
         write(out_unit,"(A18,ES18.9)")         "     varphi(0) =", sphi_c
         write(out_unit,"(A18,ES18.9)")         "    varphi_max =", sphi_m
         write(out_unit,"(A18,ES18.9)")         "  donutization =", donut
@@ -153,8 +153,8 @@ contains
 !      write(out_unit,"(A18,F18.9)")             "        S5/M^6 =", S5
 !      write(out_unit,"(A18,F18.9)")             "        M6/M^7 =", M6
       write(out_unit,"(A18,F18.9)")             "           T/W =", T_kin/abs(mass_p - mass + T_kin)
-      write(out_unit,"(A18,F18.9,A4)")          "       Coord R =", r_e*sqrt(KAPPA)/1.d5,"km"
-      write(out_unit,"(A18,F18.9,A4)")          "       Areal R =", r_circ/1.d5,"km"
+      write(out_unit,"(A18,F18.9,A4)")          "       Coord R =", r_e*sqrt(KAPPA)/1.e5_wp,"km"
+      write(out_unit,"(A18,F18.9,A4)")          "       Areal R =", r_circ/1.e5_wp,"km"
   end do
 
   write(*,*) " "
@@ -169,18 +169,18 @@ end subroutine print_converged_block
     integer :: i
     real(wp) :: min_Vrr
 
-    min_Vrr = 1.d10
+    min_Vrr = 1.e10_wp
     i_isco_m = 1
-    do i = res, int(5.d0 * dble(res) / 3.d0)
+    do i = res, int(5._wp * real(res, wp) / 3._wp)
       if (min_Vrr > abs(V_rr_m(i))) then
         i_isco_m = i
         min_Vrr = abs(V_rr_m(i))
       endif
     enddo
 
-    min_Vrr = 1.d10
+    min_Vrr = 1.e10_wp
     i_isco_p = 1
-    do i = res, int(5.d0 * dble(res) / 3.d0)
+    do i = res, int(5._wp * real(res, wp) / 3._wp)
       if (min_Vrr > abs(V_rr_p(i))) then
         i_isco_p = i
         min_Vrr = abs(V_rr_p(i))
@@ -188,18 +188,18 @@ end subroutine print_converged_block
     enddo
 
     open(771,file="./Cont/Kep_"//trim(adjustl(eos_file))//".log",position='append')
-    write(771,"(99es18.9)") omega_c / 2.d0 / pi * (C/sqrt(kappa)), &
+    write(771,"(99es18.9)") omega_c / 2._wp / pi * (C/sqrt(kappa)), &
                             chi, &
-                            s_gp(i_isco_m) / (1.d0-s_gp(i_isco_m)), &
-                            s_gp(i_isco_p) / (1.d0-s_gp(i_isco_p)), &
-                            r_e*sqrt(KAPPA) / 1.d5, &
+                            s_gp(i_isco_m) / (1._wp-s_gp(i_isco_m)), &
+                            s_gp(i_isco_p) / (1._wp-s_gp(i_isco_p)), &
+                            r_e*sqrt(KAPPA) / 1.e5_wp, &
                             mass / MSUN, &
                             (C/sqrt(kappa)) * v_minus(i_isco_m) / r_e, &
                             (C/sqrt(kappa)) * v_plus(i_isco_p) / r_e, &
                             ( Omega_e * (C/sqrt(kappa)) ) / Omega_K, Mb_goal, &
                             sphi_c
     close(771)
-    Mb_goal = Mb_goal + 0.05d0
+    Mb_goal = Mb_goal + 0.05_wp
   end subroutine log_kepler_sequence
 
   subroutine spectral_tail_fit(field, ell, r_e_current, coeff_leading, coeff_next, success)
@@ -227,8 +227,8 @@ end subroutine print_converged_block
     integer :: effective_points
     real(wp) :: sum_sign
 
-    coeff_leading = 0.d0
-    coeff_next    = 0.d0
+    coeff_leading = 0._wp
+    coeff_next    = 0._wp
     success       = .false.
 
     if (SDIV <= 2) return
@@ -244,10 +244,10 @@ end subroutine print_converged_block
 
     do idx = start_idx, end_idx
       ratio = s_gp(idx)
-      if (ratio <= 0.d0 .or. ratio >= 1.d0) cycle
-      radius_factor = ratio / (1.d0 - ratio)
+      if (ratio <= 0._wp .or. ratio >= 1._wp) cycle
+      radius_factor = ratio / (1._wp - ratio)
       radius_phys = r_e_current * sqrt_kappa * radius_factor**s_pwr
-      if (radius_phys <= 0.d0) cycle
+      if (radius_phys <= 0._wp) cycle
 
       value = field(idx)
       if (count < tail_points_max) then
@@ -261,22 +261,22 @@ end subroutine print_converged_block
 
     if (count < tail_points_min) return
 
-    sum_sign = 0.d0
+    sum_sign = 0._wp
     do idx = 1, count
       sum_sign = sum_sign + field_samples(idx)
     end do
-    if (sum_sign >= 0.d0) return
+    if (sum_sign >= 0._wp) return
 
     segment_valid(:) = .false.
-    segment_slope(:) = 0.d0
-    log_slope_sum = 0.d0
+    segment_slope(:) = 0._wp
+    log_slope_sum = 0._wp
     slope_count   = 0
     do idx = 2, count
       if (abs(field_samples(idx-1)) < epsilon(field_samples(idx-1)) .or. &
           abs(field_samples(idx)) < epsilon(field_samples(idx))) cycle
-      if (field_samples(idx-1) * field_samples(idx) > 0.d0) then
+      if (field_samples(idx-1) * field_samples(idx) > 0._wp) then
         denom_log = log(radii_samples(idx)) - log(radii_samples(idx-1))
-        if (abs(denom_log) <= tiny(1.d0)) cycle
+        if (abs(denom_log) <= tiny(1._wp)) cycle
         segment_slope(idx) = (log(abs(field_samples(idx))) - log(abs(field_samples(idx-1)))) / denom_log
         segment_valid(idx) = .true.
         log_slope_sum = log_slope_sum + segment_slope(idx)
@@ -284,48 +284,48 @@ end subroutine print_converged_block
       end if
     end do
     if (slope_count > 0) then
-      avg_slope = log_slope_sum / dble(slope_count)
-      if (abs(avg_slope + dble(ell + 1)) > 0.4d0) then
-        coeff_leading = 0.d0
-        coeff_next    = 0.d0
+      avg_slope = log_slope_sum / real(slope_count, wp)
+      if (abs(avg_slope + real(ell + 1, wp)) > 0.4_wp) then
+        coeff_leading = 0._wp
+        coeff_next    = 0._wp
         success = .false.
         return
       end if
     end if
 
-    weight_samples(:) = 1.d0
+    weight_samples(:) = 1._wp
     effective_points = 0
     do idx = 1, count
-      slope_sum = 0.d0
-      weight_sum = 0.d0
+      slope_sum = 0._wp
+      weight_sum = 0._wp
       if (idx > 1 .and. segment_valid(idx)) then
         slope_sum = slope_sum + segment_slope(idx)
-        weight_sum = weight_sum + 1.d0
+        weight_sum = weight_sum + 1._wp
       end if
       if (idx < count .and. segment_valid(idx + 1)) then
         slope_sum = slope_sum + segment_slope(idx + 1)
-        weight_sum = weight_sum + 1.d0
+        weight_sum = weight_sum + 1._wp
       end if
-      if (weight_sum > 0.d0) then
+      if (weight_sum > 0._wp) then
         fit_slope = slope_sum / weight_sum
-        slope_residual = fit_slope + dble(ell + 1)
-        weight_samples(idx) = 1.d0 / (1.d0 + (slope_residual / 0.2d0)**2)
+        slope_residual = fit_slope + real(ell + 1, wp)
+        weight_samples(idx) = 1._wp / (1._wp + (slope_residual / 0.2_wp)**2)
       else
-        weight_samples(idx) = 1.d0
+        weight_samples(idx) = 1._wp
       end if
-      if (abs(field_samples(idx)) <= tiny(1.d0)) weight_samples(idx) = 0.d0
-      if (weight_samples(idx) > 1.d-6) effective_points = effective_points + 1
+      if (abs(field_samples(idx)) <= tiny(1._wp)) weight_samples(idx) = 0._wp
+      if (weight_samples(idx) > 1.e-6_wp) effective_points = effective_points + 1
     end do
 
     if (effective_points < tail_points_min) return
 
-    sum_w   = 0.d0
-    sum_wr  = 0.d0
-    sum_wr2 = 0.d0
-    sum_wf  = 0.d0
-    sum_wrf = 0.d0
+    sum_w   = 0._wp
+    sum_wr  = 0._wp
+    sum_wr2 = 0._wp
+    sum_wf  = 0._wp
+    sum_wrf = 0._wp
     do idx = 1, count
-      if (weight_samples(idx) <= tiny(1.d0)) cycle
+      if (weight_samples(idx) <= tiny(1._wp)) cycle
       log_r = log(radii_samples(idx))
       log_f = log(abs(field_samples(idx)))
       weight = weight_samples(idx)
@@ -337,24 +337,24 @@ end subroutine print_converged_block
       sum_wrf = sum_wrf + weight * log_r * log_f
     end do
 
-    if (sum_w <= tiny(1.d0)) return
+    if (sum_w <= tiny(1._wp)) return
 
     denom_fit = sum_w * sum_wr2 - sum_wr * sum_wr
-    if (abs(denom_fit) <= tiny(1.d0)) return
+    if (abs(denom_fit) <= tiny(1._wp)) return
 
     fit_slope = (sum_w * sum_wrf - sum_wr * sum_wf) / denom_fit
-    slope_residual = fit_slope + dble(ell + 1)
-    if (abs(slope_residual) > 0.25d0) return
+    slope_residual = fit_slope + real(ell + 1, wp)
+    if (abs(slope_residual) > 0.25_wp) return
 
     fit_intercept = (sum_wf - fit_slope * sum_wr) / sum_w
 
     coeff_leading = -exp(fit_intercept)
-    if (abs(coeff_leading) <= tiny(1.d0)) return
+    if (abs(coeff_leading) <= tiny(1._wp)) return
 
-    sum_num = 0.d0
-    sum_den = 0.d0
+    sum_num = 0._wp
+    sum_den = 0._wp
     do idx = 1, count
-      if (weight_samples(idx) <= tiny(1.d0)) cycle
+      if (weight_samples(idx) <= tiny(1._wp)) cycle
       radius_phys = radii_samples(idx)
       value = field_samples(idx)
       weight0 = radius_phys**inv_exponent0
@@ -366,16 +366,16 @@ end subroutine print_converged_block
       sum_den = sum_den + weight * weight1 * weight1
     end do
 
-    if (sum_den > tiny(1.d0)) then
+    if (sum_den > tiny(1._wp)) then
       coeff_next = sum_num / sum_den
     else
-      coeff_next = 0.d0
+      coeff_next = 0._wp
     end if
 
-    residual_norm = 0.d0
-    field_norm    = 0.d0
+    residual_norm = 0._wp
+    field_norm    = 0._wp
     do idx = 1, count
-      if (weight_samples(idx) <= tiny(1.d0)) cycle
+      if (weight_samples(idx) <= tiny(1._wp)) cycle
       radius_phys = radii_samples(idx)
       value = field_samples(idx)
       weight0 = radius_phys**inv_exponent0
@@ -386,17 +386,17 @@ end subroutine print_converged_block
       field_norm    = field_norm    + weight * value * value
     end do
 
-    if (field_norm > tiny(1.d0)) then
+    if (field_norm > tiny(1._wp)) then
       sanity_ratio = residual_norm / field_norm
-      if (sanity_ratio > 0.1d0) then
-        coeff_leading = 0.d0
-        coeff_next    = 0.d0
+      if (sanity_ratio > 0.1_wp) then
+        coeff_leading = 0._wp
+        coeff_next    = 0._wp
         success = .false.
         return
       end if
     end if
 
-    success = coeff_leading < 0.d0
+    success = coeff_leading < 0._wp
   end subroutine spectral_tail_fit
 
   subroutine composite_richardson(field, ell, r_e_current, coeff_leading, coeff_next, success)
@@ -414,8 +414,8 @@ end subroutine print_converged_block
     real(wp) :: residual, g_value, x_value
     real(wp) :: radius_vals(sample_points), field_vals(sample_points), x_vals(sample_points)
 
-    coeff_leading = 0.d0
-    coeff_next    = 0.d0
+    coeff_leading = 0._wp
+    coeff_next    = 0._wp
     success       = .false.
 
     if (SDIV <= 2) return
@@ -424,21 +424,21 @@ end subroutine print_converged_block
     end_idx = max(1, SDIV - sample_points)
     start_idx = max(1, end_idx - sample_points + 1)
 
-    sum_x  = 0.d0
-    sum_xx = 0.d0
-    sum_y  = 0.d0
-    sum_xy = 0.d0
+    sum_x  = 0._wp
+    sum_xx = 0._wp
+    sum_y  = 0._wp
+    sum_xy = 0._wp
     count  = 0
 
     do idx = start_idx, end_idx
       ratio = s_gp(idx)
-      if (ratio <= 0.d0 .or. ratio >= 1.d0) cycle
-      radius_factor = ratio / (1.d0 - ratio)
+      if (ratio <= 0._wp .or. ratio >= 1._wp) cycle
+      radius_factor = ratio / (1._wp - ratio)
       radius_phys = r_e_current * sqrt_kappa * radius_factor**s_pwr
-      if (radius_phys <= 0.d0) cycle
+      if (radius_phys <= 0._wp) cycle
 
       g_value = field(idx) * radius_phys**(ell + 1)
-      x_value = 1.d0 / max(radius_phys*radius_phys, tiny(1.d0))
+      x_value = 1._wp / max(radius_phys*radius_phys, tiny(1._wp))
 
       count = count + 1
       if (count > sample_points) exit
@@ -456,25 +456,25 @@ end subroutine print_converged_block
     if (count < 3) return
 
     denom = count * sum_xx - sum_x * sum_x
-    if (abs(denom) < 1.d-20) return
+    if (abs(denom) < 1.e-20_wp) return
 
     coeff_leading = (sum_y * sum_xx - sum_x * sum_xy) / denom
-    if (coeff_leading >= 0.d0) then
-      coeff_leading = 0.d0
-      coeff_next    = 0.d0
+    if (coeff_leading >= 0._wp) then
+      coeff_leading = 0._wp
+      coeff_next    = 0._wp
       return
     end if
 
-    res_sum_x  = 0.d0
-    res_sum_xx = 0.d0
-    res_sum_y  = 0.d0
-    res_sum_xy = 0.d0
+    res_sum_x  = 0._wp
+    res_sum_xx = 0._wp
+    res_sum_y  = 0._wp
+    res_sum_xy = 0._wp
     res_count  = 0
 
     do idx = 1, count
       residual = field_vals(idx) - coeff_leading / radius_vals(idx)**(ell + 1)
       g_value  = residual * radius_vals(idx)**(ell + 3)
-      if (abs(g_value) <= tiny(1.d0)) cycle
+      if (abs(g_value) <= tiny(1._wp)) cycle
 
       res_count  = res_count + 1
       res_sum_x  = res_sum_x  + x_vals(idx)
@@ -485,7 +485,7 @@ end subroutine print_converged_block
 
     if (res_count >= 2) then
       res_denom = res_count * res_sum_xx - res_sum_x * res_sum_x
-      if (abs(res_denom) > 1.d-20) then
+      if (abs(res_denom) > 1.e-20_wp) then
         coeff_next = (res_sum_y * res_sum_xx - res_sum_x * res_sum_xy) / res_denom
       end if
     end if

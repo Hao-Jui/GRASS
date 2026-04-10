@@ -101,8 +101,8 @@ subroutine mass_radius()
     end block
   enddo
 
-  mass_weight = (s_gp(:)/(1.0_wp-s_gp(:)))**(3*s_pwr-1) / (1.0_wp-s_gp(:))**2 * dble(s_pwr)
-  ang_weight  = (s_gp(:)/(1.0_wp-s_gp(:)))**(4*s_pwr-1) / (1.0_wp-s_gp(:))**2 * dble(s_pwr)
+  mass_weight = (s_gp(:)/(1.0_wp-s_gp(:)))**(3*s_pwr-1) / (1.0_wp-s_gp(:))**2 * real(s_pwr, wp)
+  ang_weight  = (s_gp(:)/(1.0_wp-s_gp(:)))**(4*s_pwr-1) / (1.0_wp-s_gp(:))**2 * real(s_pwr, wp)
 
   integrand_buffer(:,1) = mass_weight * d_m(:)
   integrand_buffer(:,2) = mass_weight * d_m0(:)
@@ -129,7 +129,7 @@ contains
     integer :: s 
     real(wp) :: doe, dge, dre, vek
     real(wp) :: s_p, gama_pole, rho_pole, gama_equator, rho_equator, sphi_equator, wwe
-    s_p = r_ratio**(1.0_wp/dble(s_pwr)) / (1.0_wp + r_ratio**(1.0_wp/dble(s_pwr)))
+    s_p = r_ratio**(1.0_wp/real(s_pwr, wp)) / (1.0_wp + r_ratio**(1.0_wp/real(s_pwr, wp)))
     do s = 1, SDIV
       d_r_e(s) = deriv_s_1d(rho(:,1),s)
       d_g_e(s) = deriv_s_1d(gama(:,1),s)
@@ -291,7 +291,7 @@ subroutine solution_properties()
       + 4.0_wp * cc**3 * (13.0_wp - 11.0_wp * yy + cc * (3.0_wp * yy - 2.0_wp) + 2.0_wp * cc**2 * (1.0_wp + yy)) &
       + 3.0_wp * (1.0_wp - 2.0_wp * cc)**2 * (2.0_wp * cc * (yy - 1.0_wp) - yy + 2.0_wp) * log(1.0_wp - 2.0_wp * cc)
   Love2 = 8.0_wp / 5.0_wp * cc**5 * (1.0_wp - 2.0_wp * cc)**2 * (2.0_wp * cc * (yy - 1.0_wp) - yy + 2.0_wp) &
-        / dom * 2.0_wp / cc**(2*2+1) / dble(2*2-1)
+        / dom * 2.0_wp / cc**(2*2+1) / real(2*2-1, wp)
 contains
   subroutine radial_configuration()
     use para_mod, only: mass_0, eos_file
@@ -361,7 +361,7 @@ contains
 
   subroutine to_sizeng()
     real(wp), parameter :: RHO_TO_KM = 1.e12_wp * 6.67408e-20_wp / (2.99792458e5_wp)**2
-    real(wp), parameter :: K_KM = 218.04217865726338e0_wp
+    real(wp), parameter :: K_KM = 218.04217865726338_wp
     profile_file = "./Cont/sizeng.dat"
     call initial_data_for_spec( profile_file, rho_0 / (KSCALE*C**2) * rho_to_km * K_km, &
         alpha, rho, gama, ww * ( sqrt(K_km) / sqrt(KAPPA) ), sqrt(velocity_sq) )
@@ -513,7 +513,7 @@ subroutine deriv(t, y, yp)
   yp(2) = 8.0_wp / 3.0_wp * pi * y(1)**4 * (e+p) * ( 1.0_wp - 5.0_wp * y(2) / 2.0_wp / y(1)**3 + y(2)**2 / y(1)**6 ) * elm
   yp(3) = 4.0_wp * pi * y(1)**2 * e
 
-  QQ  = -dble((1+1)*(1+2)) * elm / y(1)**2 - dpdr**2 &
+  QQ  = -real((1+1)*(1+2), wp) * elm / y(1)**2 - dpdr**2 &
       + 4.0_wp * pi * elm * (5.0_wp * e + 9.0_wp * p + merge((e+p) / vs2, 0._wp, vs2 > 1.e-6_wp))
   yp(4) = -y(4)**2 / y(1) - y(4) * elm / y(1) * (1.0_wp + 4.0_wp * pi * y(1)**2 * (p-e)) - QQ * y(1)
 

@@ -36,7 +36,7 @@ program grass
   write(*,'(1X,A)') repeat('-', 36)
   select case (trim(adjustl(solver_type)))
   case ("const_j")
-    write(*,'(1X,A,F5.3,A)') "Rotation Law: Constant-J   (A^-1 = ", 1.d0 / A_diff, ")"
+    write(*,'(1X,A,F5.3,A)') "Rotation Law: Constant-J   (A^-1 = ", 1._wp / A_diff, ")"
   case ("uryu")
     write(*,'(1X,A,F5.3,A,F5.3,A)') "Rotation Law: Uryu   (lambda1 = ", lambda1, "  lambda2 = ", lambda2, ")"
   case default
@@ -47,7 +47,7 @@ program grass
   call make_grid
   call GridTrig
 
-  write(*,fmt="(A18,es18.9)",Advance='NO') " Outer boundary:", (s_gp(SDIV-1) / ( 1.d0 - s_gp(SDIV-1) ))**s_pwr
+  write(*,fmt="(A18,es18.9)",Advance='NO') " Outer boundary:", (s_gp(SDIV-1) / ( 1._wp - s_gp(SDIV-1) ))**s_pwr
   write(*,"(A18,i0,A,i0)") "Resolution: ", SDIV, " x ", MDIV
   write(*,"(A18,es18.9)") "Surface eps:", e_surface / (C*C*KSCALE)
   

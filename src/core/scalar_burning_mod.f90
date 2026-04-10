@@ -29,15 +29,15 @@ contains
     do while (current_mphi < target_mphi .and. burn_iter < scalar_burn_max_iter)
       call rotation_solver()
 
-      B_coup = merge(B_coup * 1.5e0_wp, B_coup * 1.1e0_wp, current_mphi > 30.e0_wp)
+      B_coup = merge(B_coup * 1.5_wp, B_coup * 1.1_wp, current_mphi > 30._wp)
 
-      if (sphi_m < 0.4e0_wp) then
-        mphi_r = mphi_r * 1.1e0_wp
+      if (sphi_m < 0.4_wp) then
+        mphi_r = mphi_r * 1.1_wp
       else
-        mphi_r = mphi_r * 1.5e0_wp
+        mphi_r = mphi_r * 1.5_wp
       end if
 
-      if (sphi_m < 0.5e0_wp) B_coup = B_coup * 1.3e0_wp
+      if (sphi_m < 0.5_wp) B_coup = B_coup * 1.3_wp
 
       current_mphi = sqrt(mphi_r*1.e10_wp/KAPPA) * l_uni
       if (mod(burn_iter, 10) == 0) then

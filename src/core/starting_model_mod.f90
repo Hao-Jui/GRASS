@@ -33,7 +33,7 @@ contains
       p_center = p_at_e(e_center)
       h_center = h_at_p(p_center)
     case default
-      r_ratio  = merge(0.9e0_wp, 1.e0_wp, trim(adjustl(solver_type)) == "uryu")
+      r_ratio  = merge(0.9_wp, 1._wp, trim(adjustl(solver_type)) == "uryu")
       e_center = .8e15_wp
       e_center = e_center * C * C * KSCALE
       p_center = p_at_e(e_center)
@@ -46,7 +46,7 @@ contains
       end if
     end select
 
-    if (shooting == SHOOT_2D .and. abs(r_ratio - 1.e0_wp) < epsilon(r_ratio)) r_ratio = min(r_ratio, 0.95e0_wp)
+    if (shooting == SHOOT_2D .and. abs(r_ratio - 1._wp) < epsilon(r_ratio)) r_ratio = min(r_ratio, 0.95_wp)
 
     if (active_theory /= THEORY_GR) then
       B_coup  = B_goal
