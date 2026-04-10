@@ -1,4 +1,4 @@
-module spin_integration
+module spin_integration_mod
   use para_mod, only: wp, SDIV, MDIV, LMAX, s_gp, mu, sin_theta, s_pwr, &
                       rho, gama, alpha, ww, omg, sphi, &
                       energy, pressure, enthalpy, velocity_sq, &
@@ -9,8 +9,8 @@ module spin_integration
                       A_diff, lambda1, lambda2, solver_type, output, timing, eos_file
   use eos_mod, only: n0_at_e
   use toolkit_mod, only: bessel_even_tables
-  use spin_derivatives, only: deriv_s_sub, deriv_m_sub
-  use spin_workspace
+  use spin_derivatives_mod, only: deriv_s_sub, deriv_m_sub
+  use spin_workspace_mod
   implicit none
   private
   public :: get_all_targets, update_alpha_potential, output_helper
@@ -702,4 +702,4 @@ contains
     close(unit)
   end subroutine write_output_file
 
-end module spin_integration
+end module spin_integration_mod

@@ -1,4 +1,4 @@
-module rotation_uniform
+module rotation_solver_mod
   use analysis_mod, only: mass_radius
   use precision_mod, only: wp
   use para_mod, only: active_theory, THEORY_GR, &
@@ -7,18 +7,18 @@ module rotation_uniform
                       B_coup, mphi_r, F_j, &
                       sphi_c, sphi_m, Omega_c, Omega_e, &
                       Fmax_h, n_of_relaxation_steps, timing, solver_type
-  use spin_workspace, only: dif, &
+  use spin_workspace_mod, only: dif, &
     target_rho, target_gama, target_ww, target_sphi, &
     metric_method, scalar_method, &
     dg_s_cache, dg_m_cache, dr_s_cache, dr_m_cache, &
     dww_s_cache, dww_m_cache, ds_s_cache, ds_m_cache, &
     d2g_ss_cache, d2g_mm_cache, e_rsm_cache, &
     sgp_term_2d_cache, sin_theta_2d_cache, sgp_2d_cache, &
-    D2_metric_rho, D2_metric_omega, &
+    D2_metric_rho, D2_metric_omega, D2_metric_gama, &
     allocate_workspace, deallocate_workspace
-  use spin_integration, only: get_all_targets, update_alpha_potential, output_helper
-  use spin_relaxation, only: relaxation
-  use spin_updates, only: reset_uryu_peak_cache, &
+  use spin_integration_mod, only: get_all_targets, update_alpha_potential, output_helper
+  use spin_relaxation_mod, only: relaxation
+  use spin_updates_mod, only: reset_uryu_peak_cache, &
     update_equatorial_radius, update_angular_velocity, update_eos_and_velocity
   implicit none
 contains
@@ -214,4 +214,4 @@ contains
   end subroutine impose_rigid_rotation
 
 end subroutine rotation_solver
-end module rotation_uniform
+end module rotation_solver_mod

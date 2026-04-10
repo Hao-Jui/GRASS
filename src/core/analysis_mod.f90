@@ -185,7 +185,8 @@ subroutine solution_properties()
                       pi, mphi_r, B_goal, mphi_goal, h_center, sphi_m, &
                       B_coup, KAPPA, C, n_sat, KSCALE, output
   use cheb_mod, only: cheb_diff_matrix, cheb_std_base, cheb_get_val_point
-  use miscellaneous_mod, only: write_eq_profile, initial_data_for_spec
+  use miscellaneous_mod, only: write_eq_profile
+  use exporter_mod, only: initial_data_for_spec
   use toolkit_mod, only: interp, interp_dual, deriv_s_1d, integrate_profiles
   use ad_mod, only: dual, dual_var
   implicit none

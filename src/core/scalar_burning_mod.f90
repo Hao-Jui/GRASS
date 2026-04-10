@@ -4,7 +4,7 @@ module scalar_burning_mod
                       B_coup, B_burn_init, n_of_relaxation_steps, &
                       mphi_r, mphi_burn_seed, l_uni, KAPPA, &
                       scalar_burn_max_iter, sphi_c, sphi_m, output
-  use rotation_uniform,  only: rotation_solver
+  use rotation_solver_mod,  only: rotation_solver
   implicit none
 contains
   subroutine perform_scalar_burn(target_mphi)

@@ -1,4 +1,4 @@
-module spin_workspace
+module spin_workspace_mod
   use para_mod, only: wp, SDIV, MDIV, LMAX, s_pwr, &
                       s_gp, mu, sin_theta, &
                       P_2n, P1_2n_1, sin_2n_1_theta, &
@@ -22,6 +22,7 @@ module spin_workspace
   real(wp), allocatable :: angular_quad_weights(:)
   real(wp), allocatable :: weighted_even_basis(:,:), weighted_gama_basis(:,:), weighted_omega_basis(:,:)
   real(wp), allocatable :: recon_even_massive_basis(:,:), recon_gama_basis(:,:), recon_omega_basis(:,:)
+  real(wp), allocatable :: proj_work(:,:)
   real(wp), allocatable, target :: S_metric_rho(:,:), S_metric_gama(:,:), S_metric_omega(:,:), S_metric_sphi(:,:)
   real(wp), allocatable, target :: D2_metric_rho(:,:), D2_metric_gama(:,:), D2_metric_omega(:,:), D2_metric_sphi(:,:)
   real(wp), allocatable, target :: target_rho(:,:), target_gama(:,:), target_ww(:,:), target_sphi(:,:)
@@ -43,13 +44,15 @@ contains
     allocate(rad_inv_s1(SDIV), rad_left_rho(SDIV), rad_right_gama(SDIV), rad_ratio_s(SDIV), rad_ratio_g(SDIV))
     allocate(sin_theta_inv(MDIV))
     allocate(sgp_term_2d_cache(SDIV,MDIV), sin_theta_2d_cache(SDIV,MDIV), sgp_2d_cache(SDIV,MDIV))
-    allocate(radial_quad_weights(SDIV), angular_quad_weights(MDIV))
+    if (.not. allocated(radial_quad_weights)) allocate(radial_quad_weights(SDIV))
+    if (.not. allocated(angular_quad_weights)) allocate(angular_quad_weights(MDIV))
     allocate(weighted_even_basis(MDIV,LMAX+1))
     allocate(weighted_gama_basis(MDIV,LMAX))
     allocate(weighted_omega_basis(MDIV,LMAX))
     allocate(recon_even_massive_basis(MDIV,LMAX+1))
     allocate(recon_gama_basis(MDIV,LMAX))
     allocate(recon_omega_basis(MDIV,LMAX))
+    allocate(proj_work(SDIV, max(1, LMAX+1)))
     allocate(target_rho(SDIV,MDIV), target_gama(SDIV,MDIV), target_ww(SDIV,MDIV), target_sphi(SDIV,MDIV))
     allocate(S_metric_rho(SDIV,MDIV), S_metric_gama(SDIV,MDIV), S_metric_omega(SDIV,MDIV), S_metric_sphi(SDIV,MDIV))
     allocate(D2_metric_rho(SDIV,LMAX+1), D2_metric_gama(SDIV,LMAX+1), D2_metric_omega(SDIV,LMAX+1), D2_metric_sphi(SDIV,LMAX+1))
@@ -113,11 +116,10 @@ contains
     deallocate(sgp_term_2d_cache, sin_theta_2d_cache, sgp_2d_cache)
     deallocate(weighted_even_basis, weighted_gama_basis, weighted_omega_basis)
     deallocate(recon_even_massive_basis, recon_gama_basis, recon_omega_basis)
+    deallocate(proj_work)
     deallocate(target_rho, target_gama, target_ww, target_sphi)
     deallocate(S_metric_rho, S_metric_gama, S_metric_omega, S_metric_sphi)
     deallocate(D2_metric_rho, D2_metric_gama, D2_metric_omega, D2_metric_sphi)
-    if (allocated(radial_quad_weights)) deallocate(radial_quad_weights)
-    if (allocated(angular_quad_weights)) deallocate(angular_quad_weights)
   end subroutine deallocate_workspace
 
   subroutine compute_effective_d01gaf_weights(x, w)
@@ -144,4 +146,4 @@ contains
     deallocate(basis)
   end subroutine compute_effective_d01gaf_weights
 
-end module spin_workspace
+end module spin_workspace_mod

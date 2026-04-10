@@ -18,7 +18,7 @@ subroutine shoot_v2
   use shoot_solver_1d_hc_mod, only: reset_newton_state_1d, solve_linear_1d, &
     line_search_1d, from_solver_coord_1d, to_solver_coord_1d, &
     clamp_step_1d, broyden_update_1d, commit_state_1d
-  use rotation_uniform,  only: rotation_solver
+  use rotation_solver_mod,  only: rotation_solver
   use starting_model_mod, only: initialize_starting_model
   use miscellaneous_mod, only: log_kepler_sequence, print_converged_block
   use shoot_solver_2d_helpers_mod, only: evaluate_solution, build_jacobian
