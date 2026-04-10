@@ -1,5 +1,5 @@
 module grid_mod
-  use spectral_hub, only: gauss_lobatto, chebyshev_lobatto_points, clenshaw_curtis_weights, barycentric_diff_matrices
+  use spectral_hub_mod, only: gauss_lobatto, chebyshev_lobatto_points, clenshaw_curtis_weights, barycentric_diff_matrices
   implicit none
 
 contains

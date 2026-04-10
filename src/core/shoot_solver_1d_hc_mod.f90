@@ -110,8 +110,8 @@ contains
     logical, intent(out), optional :: success
     
     integer, parameter :: max_iter = 15
-    real(8), parameter :: tau = 0.5d0
-    real(8), parameter :: c1 = 1.d-4
+    real(8), parameter :: TAU = 0.5d0
+    real(8), parameter :: C1 = 1.d-4
     real(8)             :: alpha, x_trial, F_trial, hc_trial, rho0_tmp, ee_tmp
     real(8)             :: hc_base
     real(8)             :: phi_old, phi_new, slope0
@@ -162,7 +162,7 @@ module shoot_solver_1d_hc_helpers_mod
   use para_mod, only: h_center, r_ratio, Mass, Mass_0, MSUN, M_goal, Mb_goal, FIX1
   use shoot_solver_1d_types_mod, only: newton_state_1d, evaluation_function_1d
   use shoot_solver_1d_hc_mod, only: from_solver_coord_1d
-  use rotation_uniform, only: rotation_solver
+  use rotation_solver_mod, only: rotation_solver
   implicit none
 contains  
   subroutine evaluate_solution_1d(hc, rep, F, rho0, ee)

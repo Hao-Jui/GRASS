@@ -1,10 +1,10 @@
-module spin_relaxation
+module spin_relaxation_mod
   use, intrinsic :: ieee_arithmetic, only: ieee_is_nan
   use para_mod, only: wp, SDIV, MDIV, s_gp, &
                       rho, gama, ww, sphi, &
                       has_scalar, mphi_r, timing
-  use spin_workspace, only: metric_method, scalar_method
-  use anderson_optimized, only: anderson_accel_optimized
+  use spin_workspace_mod, only: metric_method, scalar_method
+  use anderson_optimized_mod, only: anderson_accel_optimized
   use aitken_mod, only: aitken_delta2
   implicit none
 
@@ -332,4 +332,4 @@ contains
 
   end subroutine relaxation
 
-end module spin_relaxation
+end module spin_relaxation_mod

@@ -100,8 +100,8 @@ contains
                       r_ratio, Omega_c, pi, KAPPA, Omega_e, Omega_K, &
                       mass, mass_0, ang_mom, chi, B_coup, &
                       mphi_r, l_uni, sphi_c, sphi_m, &
-                      I_inertia, M2, S3, M4, T_kin, mass_p, &
-                      r_e, r_circ, Fmax_h, h_center
+                      I_inertia, M2, S3, M4, S5, M6, T_kin, mass_p, &
+                      r_e, r_circ, Fmax_h, h_center, donut
   implicit none
   real(8), intent(in) :: rho0, ee
   integer :: i, prop_unit, out_unit, ios
@@ -144,11 +144,14 @@ contains
         write(out_unit,"(A18,ES18.9)")         "   Scalar mass =", sqrt(mphi_r*1.d10/KAPPA)*l_uni
         write(out_unit,"(A18,ES18.9)")         "     varphi(0) =", sphi_c
         write(out_unit,"(A18,ES18.9)")         "    varphi_max =", sphi_m
+        write(out_unit,"(A18,ES18.9)")         "  donutization =", donut
       endif
       write(out_unit,"(A18,F18.9)")             "   Slow rot. I =", I_inertia
       write(out_unit,"(A18,F18.9)")             "        M2/M^3 =", M2
       write(out_unit,"(A18,F18.9)")             "        S3/M^4 =", S3
       write(out_unit,"(A18,F18.9)")             "        M4/M^5 =", M4
+!      write(out_unit,"(A18,F18.9)")             "        S5/M^6 =", S5
+!      write(out_unit,"(A18,F18.9)")             "        M6/M^7 =", M6
       write(out_unit,"(A18,F18.9)")             "           T/W =", T_kin/abs(mass_p - mass + T_kin)
       write(out_unit,"(A18,F18.9,A4)")          "       Coord R =", r_e*sqrt(KAPPA)/1.d5,"km"
       write(out_unit,"(A18,F18.9,A4)")          "       Areal R =", r_circ/1.d5,"km"
@@ -162,36 +165,6 @@ contains
   close(prop_unit)
 end subroutine print_converged_block
   
-  subroutine initial_data_for_spec(file_name, var1, var2, var3, var4, var5, var6)
-    use para_mod, only : s_gp, mu, SDIV,MDIV, l_uni, ang_mom, mass_0, mass
-    implicit none
-    character(*), intent(in) :: file_name
-    real(8), intent(in) :: var1(:,:), var2(:,:), var3(:,:), var4(:,:), var5(:,:), var6(:,:)
-    integer :: s, m, unit, ios
-    real(8), parameter :: K_km = 218.04217865726338d0
-    real(8) :: r_s 
-    open(newunit=unit, file=file_name, status="replace", action="write", iostat=ios)
-    if (ios /= 0) then
-      write(*,*) "write_eq_profile: failed to open file ", trim(file_name)
-      return
-    end if
-
-    write(unit,"(3(A,e10.4))") "BaryM = ", mass_0 / MSUN * l_uni / sqrt(K_km), &
-                            "  AngM = ", ang_mom * l_uni**2 / K_km,         &
-                            "   E = ", mass / MSUN * l_uni / sqrt(K_km)
-    write(unit,"(2i12)") SDIV, MDIV
-    write(unit,"(2es21.12)") r_e * sqrt(KAPPA) / 1.d5 / sqrt(K_km), 1.0d0, &
-                            omega_c * ( sqrt(K_km) / sqrt(kappa) ), 0.0d0
-    do s = 1, SDIV
-      r_s = r_e * sqrt(KAPPA) / 1.d5 / sqrt(K_km) * s_gp(s) / (1.d0 - s_gp(s))
-      do m = 1, MDIV
-        write(unit,"(4es22.12)") r_s, mu(m), var1(s,m), var2(s,m), &
-                                var3(s,m), var4(s,m), var5(s,m), var6(s,m)
-      enddo
-    enddo
-    close(unit)
-  end subroutine initial_data_for_spec
-
   subroutine log_kepler_sequence()
     integer :: i
     real(8) :: min_Vrr

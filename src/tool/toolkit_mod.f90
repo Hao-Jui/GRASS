@@ -10,12 +10,12 @@
 ! Cost: O(2N+1) per evaluation vs O((2N+1)^2) for naive Lagrange.
 module toolkit_mod
   use precision_mod, only: wp
-  use spectral_hub, only: legendre_sequence
+  use spectral_hub_mod, only: legendre_sequence
   implicit none
 
   integer, parameter :: n_order = 4
   integer, parameter :: pt_window = n_order + 1
-  real(wp), parameter :: bary_w(-n_order:n_order) = &
+  real(wp), parameter :: BARY_W(-n_order:n_order) = &
     [1.0_wp, -8.0_wp, 28.0_wp, -56.0_wp, 70.0_wp, -56.0_wp, 28.0_wp, -8.0_wp, 1.0_wp] / 40320.0_wp
 
   real(wp), allocatable, save :: bessel_down_workspace(:)
@@ -90,7 +90,7 @@ contains
 
   pure real(wp) function clip_bessel(val)
     real(wp), intent(in) :: val
-    real(wp), parameter :: limit = 1.e98_wp
+    real(wp), parameter :: LIMIT = 1.e98_wp
     clip_bessel = min(limit, max(-limit, val))
   end function clip_bessel
 
@@ -458,8 +458,8 @@ contains
     integer :: ell_idx, Lrec, l_idx
     real(wp) :: i_prev, i_curr, i_next, scale
     real(wp) :: sinh_x, cosh_x
-    real(wp), parameter :: eps_small = 1.e-3_wp
-    real(wp), parameter :: switch_downward = 20.0_wp
+    real(wp), parameter :: EPS_SMALL = 1.e-3_wp
+    real(wp), parameter :: SWITCH_DOWNWARD = 20.0_wp
 
     if (x < eps_small) then
       spherical_i_value = spherical_i_series(n, x); return
@@ -505,7 +505,7 @@ contains
     real(wp), intent(in) :: x
     integer :: ell
     real(wp) :: k_prev, k_curr, k_next, exp_neg
-    real(wp), parameter :: eps_small = 1.e-3_wp
+    real(wp), parameter :: EPS_SMALL = 1.e-3_wp
 
     if (x < epsilon(x)) then
       spherical_k_value = 0.0_wp; return
@@ -556,8 +556,8 @@ contains
     integer :: nord, ell, n, lrec, l_idx
     real(wp) :: xx, prev, curr, nxt, scale
     real(wp) :: sinh_x, cosh_x, exp_neg
-    real(wp), parameter :: eps_small = 1.e-3_wp
-    real(wp), parameter :: switch_downward = 20.0_wp
+    real(wp), parameter :: EPS_SMALL = 1.e-3_wp
+    real(wp), parameter :: SWITCH_DOWNWARD = 20.0_wp
 
     if (lmax < 0) return
     xx = abs(x)

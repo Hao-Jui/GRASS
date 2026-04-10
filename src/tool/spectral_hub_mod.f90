@@ -1,5 +1,5 @@
 ! Spectral quadrature and polynomial helpers on [0, 1]
-module spectral_hub
+module spectral_hub_mod
   use precision_mod, only: wp
   implicit none
   private
@@ -8,7 +8,7 @@ module spectral_hub
             integrate_tabulated, integrate_at_gauss_nodes
 
   integer, parameter :: max_newton_iter = 50
-  real(wp), parameter :: newton_tol = 64.0_wp * epsilon(1.0_wp)
+  real(wp), parameter :: NEWTON_TOL = 64.0_wp * epsilon(1.0_wp)
 contains
   pure subroutine legendre_sequence(n, z, pn, pnm1)
     integer, intent(in) :: n
@@ -246,4 +246,4 @@ contains
     end do
   end subroutine integrate_at_gauss_nodes
 
-end module spectral_hub
+end module spectral_hub_mod
