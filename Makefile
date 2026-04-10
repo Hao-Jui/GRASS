@@ -35,6 +35,7 @@ SOURCES := \
   $(SRC_TOOL)/ad_mod.f90 \
   $(SRC_TOOL)/nag_compat_mod.f90 \
   $(SRC_TOOL)/brent_mod.f90 \
+  $(SRC_TOOL)/lapack_interfaces_mod.f90 \
   $(SRC_TOOL)/cheb_mod.f90 \
   $(SRC_TOOL)/spline_mod.f90 \
   $(SRC_TOOL)/donutization_mod.f90 \

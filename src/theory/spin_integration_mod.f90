@@ -15,25 +15,10 @@ module spin_integration_mod
   use toolkit_mod, only: bessel_even_tables
   use spin_derivatives_mod, only: deriv_s_sub, deriv_m_sub
   use spin_workspace_mod
+  use lapack_interfaces_mod, only: dgemm, dpbsv
   implicit none
   private
   public :: get_all_targets, update_alpha_potential, output_helper
-
-  interface
-    subroutine dgemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc)
-      character(len=1), intent(in) :: transa, transb
-      integer, intent(in) :: m, n, k, lda, ldb, ldc
-      double precision, intent(in) :: alpha, beta
-      double precision, intent(in) :: a(lda,*), b(ldb,*)
-      double precision, intent(inout) :: c(ldc,*)
-    end subroutine dgemm
-    subroutine dpbsv(uplo, n, kd, nrhs, ab, ldab, b, ldb, info)
-      character(len=1), intent(in) :: uplo
-      integer, intent(in) :: n, kd, nrhs, ldab, ldb
-      double precision, intent(inout) :: ab(ldab,*), b(ldb,*)
-      integer, intent(out) :: info
-    end subroutine dpbsv
-  end interface
 
 contains
 

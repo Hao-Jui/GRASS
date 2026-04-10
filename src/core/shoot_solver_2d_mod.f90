@@ -4,15 +4,8 @@
 ! which is common when function evaluation is expensive.
 module shoot_solver_2d_mod
   use precision_mod, only: wp
+  use lapack_interfaces_mod, only: dgesv
   implicit none
-  interface
-    subroutine dgesv(n, nrhs, a, lda, ipiv, b, ldb, info)
-      import :: wp
-      integer, intent(in) :: n, nrhs, lda, ldb
-      integer, intent(out) :: ipiv(*), info
-      real(wp), intent(inout) :: a(lda, *), b(ldb, *)
-    end subroutine dgesv
-  end interface
   real(wp), parameter :: R_EPS = 1.e-8_wp
   real(wp), parameter :: R_MIN_RATIO = 0.35_wp
   real(wp), parameter :: MAX_STEP = 0.5_wp
