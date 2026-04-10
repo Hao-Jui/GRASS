@@ -1,4 +1,5 @@
 module spin_integration_mod
+  use precision_mod, only: wp
   use iso_fortran_env, only: int32
   use para_mod, only: wp, SDIV, MDIV, LMAX, s_gp, mu, sin_theta, s_pwr, &
                       rho, gama, alpha, ww, omg, sphi, &

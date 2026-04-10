@@ -1,5 +1,5 @@
 module spin_updates_mod
-  use, intrinsic :: iso_fortran_env, only: wp => real64
+  use precision_mod, only: wp
   implicit none
   private
   public :: update_equatorial_radius, update_angular_velocity, update_eos_and_velocity, reset_uryu_peak_cache

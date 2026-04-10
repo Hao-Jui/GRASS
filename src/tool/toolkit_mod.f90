@@ -10,6 +10,7 @@
 ! Cost: O(2N+1) per evaluation vs O((2N+1)^2) for naive Lagrange.
 module toolkit_mod
   use precision_mod, only: wp
+  use precision_mod, only: wp
   use spectral_hub_mod, only: legendre_sequence
   implicit none
 

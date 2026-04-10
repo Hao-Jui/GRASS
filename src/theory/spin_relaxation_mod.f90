@@ -1,4 +1,5 @@
 module spin_relaxation_mod
+  use precision_mod, only: wp
   use, intrinsic :: ieee_arithmetic, only: ieee_is_nan
   use para_mod, only: wp, SDIV, MDIV, s_gp, &
                       rho, gama, ww, sphi, &

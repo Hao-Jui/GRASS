@@ -2,16 +2,16 @@ subroutine set_disk(r_eq)
   use, intrinsic :: ieee_arithmetic, only: ieee_is_nan
   use eos_mod, only: p_at_h, e_at_h
   use toolkit_mod, only: interp
-  use para_mod, only: SDIV, MDIV, res, s_pwr, &
+  use para_mod, only: wp, SDIV, MDIV, res, s_pwr, &
                       s_gp, mu, s_inner, j_disk, &
                       rho, gama, ww, omg, &
                       enthalpy, enthalpy_min, pressure, energy, velocity_sq
   implicit none
-  real(8), intent(in) :: r_eq
-  real(8), dimension(SDIV) :: gama_mu_0, rho_mu_0, ww_mu_0
-  real(8) :: rho_in, gama_in, ww_in, w_0, ww2, hh, m1
-  real(8) :: tmp, u_phi
-  real(8) :: r_h, r_in
+  real(wp), intent(in) :: r_eq
+  real(wp), dimension(SDIV) :: gama_mu_0, rho_mu_0, ww_mu_0
+  real(wp) :: rho_in, gama_in, ww_in, w_0, ww2, hh, m1
+  real(wp) :: tmp, u_phi
+  real(wp) :: r_h, r_in
   integer :: s, m
   logical :: set = .false.
 

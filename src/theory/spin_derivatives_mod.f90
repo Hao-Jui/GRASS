@@ -1,5 +1,5 @@
 module spin_derivatives_mod
-  use, intrinsic :: iso_fortran_env, only: wp => real64
+  use precision_mod, only: wp
   use para_mod, only: r_ratio
   implicit none
   private

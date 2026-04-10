@@ -1,5 +1,5 @@
 module miscellaneous_mod
-  use para_mod, only: i_isco_m, i_isco_p, res, &
+  use para_mod, only: wp, i_isco_m, i_isco_p, res, &
                       V_rr_m, V_rr_p, v_minus, v_plus, &
                       eos_file, chi, pi, C, KAPPA, MSUN, &
                       Omega_c, Omega_e, Omega_K, &
@@ -15,13 +15,13 @@ contains
     implicit none
     character(*), intent(in) :: file_name
     integer, intent(in) :: s_max
-    real(8), intent(in) :: column1(:)
-    real(8), intent(in), optional :: column2(:), column3(:), column4(:), column5(:), &
+    real(wp), intent(in) :: column1(:)
+    real(wp), intent(in), optional :: column2(:), column3(:), column4(:), column5(:), &
                                     column6(:), column7(:), column8(:), column9(:), column10(:), &
                                     column11(:), column12(:), column13(:), column14(:), column15(:), &
                                     column16(:)
     integer :: s, unit, ios, nvals, n_points
-    real(8) :: row_values(99)
+    real(wp) :: row_values(99)
 
     if (s_max < 1) return
     if (s_max > SDIV) write(*,*) "write_eq_profile: s_max truncated for file ", trim(file_name)
@@ -81,7 +81,7 @@ contains
   contains
     logical function check_column(col, name, n_points)
       implicit none
-      real(8), intent(in), optional :: col(:)
+      real(wp), intent(in), optional :: col(:)
       character(*), intent(in)      :: name
       integer, intent(in)           :: n_points
       ! Default to OK
@@ -96,14 +96,14 @@ contains
   end subroutine write_eq_profile
 
   subroutine print_converged_block(rho0, ee)
-  use para_mod, only: has_scalar, rho_uni, MB, C, KSCALE, &
+  use para_mod, only: wp, has_scalar, rho_uni, MB, C, KSCALE, &
                       r_ratio, Omega_c, pi, KAPPA, Omega_e, Omega_K, &
                       mass, mass_0, ang_mom, chi, B_coup, &
                       mphi_r, l_uni, sphi_c, sphi_m, &
                       I_inertia, M2, S3, M4, S5, M6, T_kin, mass_p, &
                       r_e, r_circ, Fmax_h, h_center, donut
   implicit none
-  real(8), intent(in) :: rho0, ee
+  real(wp), intent(in) :: rho0, ee
   integer :: i, prop_unit, out_unit, ios
 
   if (has_scalar) then
@@ -167,7 +167,7 @@ end subroutine print_converged_block
   
   subroutine log_kepler_sequence()
     integer :: i
-    real(8) :: min_Vrr
+    real(wp) :: min_Vrr
 
     min_Vrr = 1.d10
     i_isco_m = 1
@@ -203,29 +203,29 @@ end subroutine print_converged_block
   end subroutine log_kepler_sequence
 
   subroutine spectral_tail_fit(field, ell, r_e_current, coeff_leading, coeff_next, success)
-    real(8), intent(in) :: field(SDIV)
+    real(wp), intent(in) :: field(SDIV)
     integer, intent(in) :: ell
-    real(8), intent(in) :: r_e_current
-    real(8), intent(out) :: coeff_leading, coeff_next
+    real(wp), intent(in) :: r_e_current
+    real(wp), intent(out) :: coeff_leading, coeff_next
     logical, intent(out) :: success
 
     integer, parameter :: tail_points_min = 6
     integer, parameter :: tail_points_max = 24
     integer :: start_idx, end_idx, idx, count, slope_count
-    real(8) :: ratio, radius_factor, radius_phys, sqrt_kappa
-    real(8) :: weight0, weight1, value
-    real(8) :: inv_exponent0, inv_exponent1
-    real(8) :: log_slope_sum, avg_slope, denom_log
-    real(8) :: radii_samples(tail_points_max), field_samples(tail_points_max)
-    real(8) :: weight_samples(tail_points_max), segment_slope(tail_points_max)
+    real(wp) :: ratio, radius_factor, radius_phys, sqrt_kappa
+    real(wp) :: weight0, weight1, value
+    real(wp) :: inv_exponent0, inv_exponent1
+    real(wp) :: log_slope_sum, avg_slope, denom_log
+    real(wp) :: radii_samples(tail_points_max), field_samples(tail_points_max)
+    real(wp) :: weight_samples(tail_points_max), segment_slope(tail_points_max)
     logical :: segment_valid(tail_points_max)
-    real(8) :: slope_sum, weight_sum
-    real(8) :: fit_slope, slope_residual, fit_intercept, weight
-    real(8) :: sum_w, sum_wr, sum_wr2, sum_wf, sum_wrf, denom_fit
-    real(8) :: residual, residual_norm, field_norm, sanity_ratio
-    real(8) :: sum_num, sum_den, log_r, log_f
+    real(wp) :: slope_sum, weight_sum
+    real(wp) :: fit_slope, slope_residual, fit_intercept, weight
+    real(wp) :: sum_w, sum_wr, sum_wr2, sum_wf, sum_wrf, denom_fit
+    real(wp) :: residual, residual_norm, field_norm, sanity_ratio
+    real(wp) :: sum_num, sum_den, log_r, log_f
     integer :: effective_points
-    real(8) :: sum_sign
+    real(wp) :: sum_sign
 
     coeff_leading = 0.d0
     coeff_next    = 0.d0
@@ -400,19 +400,19 @@ end subroutine print_converged_block
   end subroutine spectral_tail_fit
 
   subroutine composite_richardson(field, ell, r_e_current, coeff_leading, coeff_next, success)
-    real(8), intent(in) :: field(SDIV)
+    real(wp), intent(in) :: field(SDIV)
     integer, intent(in) :: ell
-    real(8), intent(in) :: r_e_current
-    real(8), intent(out) :: coeff_leading, coeff_next
+    real(wp), intent(in) :: r_e_current
+    real(wp), intent(out) :: coeff_leading, coeff_next
     logical, intent(out) :: success
 
     integer, parameter :: sample_points = 24
     integer :: start_idx, end_idx, idx, count, res_count
-    real(8) :: ratio, radius_factor, radius_phys, sqrt_kappa
-    real(8) :: sum_x, sum_xx, sum_y, sum_xy, denom
-    real(8) :: res_sum_x, res_sum_xx, res_sum_y, res_sum_xy, res_denom
-    real(8) :: residual, g_value, x_value
-    real(8) :: radius_vals(sample_points), field_vals(sample_points), x_vals(sample_points)
+    real(wp) :: ratio, radius_factor, radius_phys, sqrt_kappa
+    real(wp) :: sum_x, sum_xx, sum_y, sum_xy, denom
+    real(wp) :: res_sum_x, res_sum_xx, res_sum_y, res_sum_xy, res_denom
+    real(wp) :: residual, g_value, x_value
+    real(wp) :: radius_vals(sample_points), field_vals(sample_points), x_vals(sample_points)
 
     coeff_leading = 0.d0
     coeff_next    = 0.d0
