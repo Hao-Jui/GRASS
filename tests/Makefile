@@ -29,4 +29,6 @@ test_spline: unit/test_spline.f90 unit/test_utils.f90
 $(INTEG_TESTS): %: integration/%.f90
 	@mkdir -p $(BINDIR)
 	@$(FC) $(FFLAGS) -o $(BINDIR)/$@ $< $(LIBGRASS) $(LIBS)
-	@printf "  $@: " && cd .. && timeout 120 tests/$(BINDIR)/$@ > /dev/null 2>&1 && echo "PASS" || (echo "FAIL" && exit 1)
+	@cd .. && timeout 120 tests/$(BINDIR)/$@ > /dev/null 2>&1 \
+	  && bash tests/check_regression.sh Cont/properties.dat tests/reference/$@.ref \
+	  || (printf "  $@: FAIL\n" && exit 1)
