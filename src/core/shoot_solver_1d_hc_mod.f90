@@ -9,9 +9,9 @@ module shoot_solver_1d_types_mod
   type :: newton_state_1d
     logical :: has_jacobian = .false.
     logical :: has_prev     = .false.
-    real(wp) :: J            = 0.d0
-    real(wp) :: x_prev       = 0.d0
-    real(wp) :: F_prev       = 0.d0
+    real(wp) :: J            = 0._wp
+    real(wp) :: x_prev       = 0._wp
+    real(wp) :: F_prev       = 0._wp
   end type newton_state_1d
 
   abstract interface
@@ -35,22 +35,22 @@ module shoot_solver_1d_hc_mod
   !   er = 0.5  -->  cap = 1.1  -->  max h change = ±3.0×
   !   er = 0.1  -->  cap = 1.82 -->  max h change = ±6.2×
   !   er < 0.01 -->  cap ≈ 2.0  -->  max h change = ±7.4× (full Newton)
-  real(wp), parameter :: STEP_CAP_MIN = 0.2d0   ! tight cap when er ~ 1 (prevent catastrophe)
-  real(wp), parameter :: STEP_CAP_MAX = 2.0d0   ! loose cap near convergence (preserve Newton speed)
+  real(wp), parameter :: STEP_CAP_MIN = 0.2_wp   ! tight cap when er ~ 1 (prevent catastrophe)
+  real(wp), parameter :: STEP_CAP_MAX = 2.0_wp   ! loose cap near convergence (preserve Newton speed)
 
 contains
   subroutine reset_newton_state_1d(state)
     type(newton_state_1d), intent(inout) :: state
     state%has_jacobian = .false.
     state%has_prev     = .false.
-    state%J            = 0.d0
-    state%x_prev       = 0.d0
-    state%F_prev       = 0.d0
+    state%J            = 0._wp
+    state%x_prev       = 0._wp
+    state%F_prev       = 0._wp
   end subroutine reset_newton_state_1d
   subroutine to_solver_coord_1d(hc, x)
     real(wp), intent(in)  :: hc
     real(wp), intent(out) :: x
-    x = log(max(hc, 1.d-12))
+    x = log(max(hc, 1.e-12_wp))
   end subroutine to_solver_coord_1d
   subroutine from_solver_coord_1d(x, hc)
     real(wp), intent(in)  :: x
@@ -62,15 +62,15 @@ contains
     real(wp), intent(in)    :: er
     real(wp) :: cap
     ! Adaptive cap: tight when far from solution, loose when close
-    cap = STEP_CAP_MIN + (STEP_CAP_MAX - STEP_CAP_MIN) * max(0.d0, 1.d0 - er)
+    cap = STEP_CAP_MIN + (STEP_CAP_MAX - STEP_CAP_MIN) * max(0._wp, 1._wp - er)
     delta = max(-cap, min(delta, cap))
   end subroutine clamp_step_1d
 
   logical function solve_linear_1d(J, rhs, delta)
     real(wp), intent(in)  :: J, rhs
     real(wp), intent(out) :: delta
-    if (abs(J) < 1.d-12) then
-      delta = 0.d0
+    if (abs(J) < 1.e-12_wp) then
+      delta = 0._wp
       solve_linear_1d = .false.
     else
       delta = rhs / J
@@ -86,12 +86,12 @@ contains
     if (.not. state%has_jacobian) return
 
     dx      = x - state%x_prev
-    x_scale = max(1.d0, abs(x), abs(state%x_prev))
-    if (abs(dx) <= 1.d2 * epsilon(x_scale) * x_scale) return
+    x_scale = max(1._wp, abs(x), abs(state%x_prev))
+    if (abs(dx) <= 1.e2_wp * epsilon(x_scale) * x_scale) return
 
     dF = F - state%F_prev
-    f_scale = max(1.d0, abs(F), abs(state%F_prev))
-    if (abs(dF) <= 1.d2 * epsilon(f_scale) * f_scale) return
+    f_scale = max(1._wp, abs(F), abs(state%F_prev))
+    if (abs(dF) <= 1.e2_wp * epsilon(f_scale) * f_scale) return
 
     state%J = state%J + (dF - state%J * dx) / dx
   end subroutine broyden_update_1d
@@ -113,20 +113,20 @@ contains
     logical, intent(out), optional :: success
     
     integer, parameter :: max_iter = 15
-    real(wp), parameter :: TAU = 0.5d0
-    real(wp), parameter :: C1 = 1.d-4
+    real(wp), parameter :: TAU = 0.5_wp
+    real(wp), parameter :: C1 = 1.e-4
     real(wp)             :: alpha, x_trial, F_trial, hc_trial, rho0_tmp, ee_tmp
     real(wp)             :: hc_base
     real(wp)             :: phi_old, phi_new, slope0
     integer             :: i
     logical             :: ok
 
-    alpha = 1.d0
+    alpha = 1._wp
     final_delta = delta_x
-    phi_old = 0.5d0 * F_current**2
+    phi_old = 0.5_wp * F_current**2
     ok = .false.
     call from_solver_coord_1d(x_current, hc_base)
-    if (abs(delta_x) < 1.d-12) then
+    if (abs(delta_x) < 1.e-12_wp) then
       final_delta = delta_x
       if (present(success)) success = .true.
       return
@@ -136,14 +136,14 @@ contains
     else
       slope0 = -abs(F_current * delta_x)
     end if
-    if (slope0 >= 0.d0) slope0 = -abs(F_current * delta_x)
+    if (slope0 >= 0._wp) slope0 = -abs(F_current * delta_x)
 
     do i = 1, max_iter
       x_trial = x_current + alpha * delta_x
       call from_solver_coord_1d(x_trial, hc_trial)
       call evaluate_func(hc_trial, rep, F_trial, rho0_tmp, ee_tmp)
 
-      phi_new = 0.5d0 * F_trial**2
+      phi_new = 0.5_wp * F_trial**2
       if (phi_new <= phi_old + c1 * alpha * slope0) then
         ok = .true.
         exit
@@ -184,9 +184,9 @@ contains
     ee   = e_at_h (h_center)
 
     if ( trim(FIX1) == "M_goal" ) then
-      devi = Mass/MSUN/M_goal - 1.d0
+      devi = Mass/MSUN/M_goal - 1._wp
     elseif ( trim(FIX1) == "Mb_goal" ) then
-      devi = Mass_0/MSUN/Mb_goal - 1.d0
+      devi = Mass_0/MSUN/Mb_goal - 1._wp
     else
       stop "evaluate_solution: unknown FIX1"
     endif
@@ -207,7 +207,7 @@ contains
     real(wp) :: hc_p
 
     ! Use a larger FD step to avoid flat slopes from numerical noise near root
-    delta = max(abs(x), 1.d0) * 1.d-4
+    delta = max(abs(x), 1._wp) * 1.e-4
     xp = x + delta
     call from_solver_coord_1d(xp, hc_p)
     call evaluate_solution_1d(hc_p, rep, Fp, rho_tmp, ee_tmp)

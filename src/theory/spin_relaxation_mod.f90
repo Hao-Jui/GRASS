@@ -17,7 +17,7 @@ contains
     real(wp), intent(in) :: root_mphi_re, dif
     integer, intent(in) :: n_of_it
 
-    real(wp), parameter :: W_PICARD = 0.7e0_wp, W_MIX_MIN = 5.e-2_wp, W_MIX_DECAY = 7.5e-1_wp
+    real(wp), parameter :: W_PICARD = 0.7_wp, W_MIX_MIN = 5.e-2_wp, W_MIX_DECAY = 7.5e-1_wp
     real(wp), parameter :: PICARD_THRESH = 5.e-1_wp, CHEB_THRESH = 1.e-1_wp
     real(wp), parameter :: RHO_LOCK_TOL = 2.e-2_wp, CYCLE_TOL = 1.e-3_wp
     real(wp), parameter :: DIF_TAIL_THRESH = 1.e-5_wp, ANDERSON_TAIL_THRESH = 1.e-4_wp
@@ -28,7 +28,7 @@ contains
     integer,  parameter :: N_CYCLE_LAGS = 8, CYCLE_LAG_MAX = 200
     integer,  parameter :: CYCLE_LAGS(N_CYCLE_LAGS) = [6, 12, 18, 24, 50, 100, 150, 200]
 
-    real(wp), save :: cheb_w = 1.0_wp, rho_spec_est = 0.7e0_wp, rho_spec_prev = 0.7e0_wp
+    real(wp), save :: cheb_w = 1.0_wp, rho_spec_est = 0.7_wp, rho_spec_prev = 0.7_wp
     real(wp), save :: prev_dif_local = -1.0_wp, dif_prev = -1.0_wp
     real(wp), save :: picard_best_dif = huge(1.0_wp), w_mix = W_PICARD
     real(wp), save :: dif_min_seen = huge(1.0_wp), dif_ring(CYCLE_LAG_MAX) = -1.0_wp
@@ -151,7 +151,7 @@ contains
       allocate(hist_gama(SDIV,MDIV,M_HIST), source=0.0_wp)
       allocate(hist_ww(SDIV,MDIV,M_HIST),   source=0.0_wp)
       allocate(hist_sphi(SDIV,MDIV,M_HIST), source=0.0_wp)
-      cheb_w = 1.0_wp; rho_spec_est = 0.7e0_wp; rho_spec_prev = 0.7e0_wp
+      cheb_w = 1.0_wp; rho_spec_est = 0.7_wp; rho_spec_prev = 0.7_wp
       prev_dif_local = -1.0_wp; dif_prev = -1.0_wp
       n_consec_decrease = 0; n_picard_stall = 0; n_rho_locked = 0; n_cheb_hurt = 0
       n_anderson_hurt = 0; n_anderson_metric = 0; n_anderson_scalar = 0
@@ -164,7 +164,7 @@ contains
     subroutine reset_accel_state
       prev_rho = rho;  prev_gama = gama;  prev_ww = ww;  prev_sphi = sphi
       hist_rho = 0.0_wp; hist_gama = 0.0_wp; hist_ww = 0.0_wp; hist_sphi = 0.0_wp
-      cheb_w = 1.0_wp; rho_spec_est = 0.7e0_wp; rho_spec_prev = 0.7e0_wp
+      cheb_w = 1.0_wp; rho_spec_est = 0.7_wp; rho_spec_prev = 0.7_wp
       prev_dif_local = -1.0_wp; dif_prev = -1.0_wp
       n_consec_decrease = 0; n_picard_stall = 0; n_rho_locked = 0; n_cheb_hurt = 0
       n_anderson_hurt = 0; n_anderson_metric = 0; n_anderson_scalar = 0
@@ -196,7 +196,7 @@ contains
         end do
       end if
       if (cycle_hit) then
-        w_mix = max(W_MIX_MIN, 0.5e0_wp * w_mix)
+        w_mix = max(W_MIX_MIN, 0.5_wp * w_mix)
         n_anderson_cooldown = ANDERSON_COOLDOWN
         n_anderson_hurt = max(n_anderson_hurt, N_ANDERSON_FAIL)
         n_anderson_metric = 0; n_anderson_scalar = 0
@@ -267,7 +267,7 @@ contains
       real(wp) :: rho_obs
       if (use_picard) then
         metric_method = 'Picard'
-        call update_spectral_radius(0.6e0_wp, 0.4e0_wp, 1.e-1_wp, 9.9e-1_wp)
+        call update_spectral_radius(0.6_wp, 0.4_wp, 1.e-1_wp, 9.9e-1_wp)
         call adapt_picard_weight
         cheb_w = 1.0_wp
         rho  = (1.0_wp - w_mix) * rho  + w_mix * target_rho
@@ -279,7 +279,7 @@ contains
         metric_method = 'Chebys'
         call reset_picard_state
         if (n_consec_decrease >= N_CHEB) &
-          call update_spectral_radius(0.7e0_wp, 0.3e0_wp, 3.e-1_wp, 9.8e-1_wp)
+          call update_spectral_radius(0.7_wp, 0.3_wp, 3.e-1_wp, 9.8e-1_wp)
         prev_dif_local = dif
         cheb_w = 1.0_wp / (1.0_wp - (rho_spec_est**2 / 4.0_wp) * cheb_w)
         cheb_w = min(cheb_w, 2.0_wp - 2.0_wp*epsilon(cheb_w))

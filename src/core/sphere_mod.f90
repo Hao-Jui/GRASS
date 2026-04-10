@@ -35,39 +35,39 @@ subroutine sphere
     do s = 1, 3
       call TOV(s, r_is_gp, lambda_gp, nu_gp, e_d_gp, r_is_final, r_final, m_final)
       write(*,"(A5,i10,3f15.5)") "|", &
-          s, r_is_final*sqrt(KAPPA)/1.d5, r_final*sqrt(KAPPA)/1.d5, &
+          s, r_is_final*sqrt(KAPPA)/1.e5_wp, r_final*sqrt(KAPPA)/1.e5_wp, &
           m_final*sqrt(KAPPA)*C*C/G/MSUN
     enddo
 
   ! map the static NS to 2D data
   do s = 1, SDIV
-      r_is_s = r_is_final * ( s_gp(s) / (1.d0-s_gp(s)) )**s_pwr
+      r_is_s = r_is_final * ( s_gp(s) / (1._wp-s_gp(s)) )**s_pwr
       if (r_is_s <= r_is_final) then
           call interp(r_is_gp, lambda_gp, RDIV, r_is_s, lambda_s)
           call interp(r_is_gp,     nu_gp, RDIV, r_is_s,     nu_s)
           call interp(r_is_gp,    e_d_gp, RDIV, r_is_s,      e_s)
       else
-          e_s      = 1.d-3*(C*C*KSCALE)
-          lambda_s = 2.d0 * log( 1.d0 + m_final / (2.d0*r_is_s) )
-          nu_s     = log( (1.d0 - m_final / (2.d0*r_is_s)) / (1.d0 + m_final / (2.d0 * r_is_s) ) )
+          e_s      = 1.e-3_wp*(C*C*KSCALE)
+          lambda_s = 2._wp * log( 1._wp + m_final / (2._wp*r_is_s) )
+          nu_s     = log( (1._wp - m_final / (2._wp*r_is_s)) / (1._wp + m_final / (2._wp * r_is_s) ) )
       endif
-      sphi (s,:) = ( 1.d0 - exp(nu_s) ) /1.d2 * exp(-sqrt(mphi_r)*r_is_s) 
+      sphi (s,:) = ( 1._wp - exp(nu_s) ) /1.e2_wp * exp(-sqrt(mphi_r)*r_is_s) 
       rho  (s,:) = nu_s-lambda_s
       gama (s,:) = lambda_s+nu_s
-      alpha(s,:) = (lambda_s-nu_s) / 2.d0
+      alpha(s,:) = (lambda_s-nu_s) / 2._wp
       energy(s,:)= e_s
       rho_mu_0 (s) = nu_s-lambda_s
       gama_mu_0(s) = lambda_s+nu_s
   enddo
 
-  ww(:,:) = 0.d0
-  omg(:,:)= 0.d0
+  ww(:,:) = 0._wp
+  omg(:,:)= 0._wp
   
   call interp(s_gp, gama_mu_0, SDIV, s_e, gama_eq)
   call interp(s_gp,  rho_mu_0, SDIV, s_e,  rho_eq)
     
   ! r_e is roughly r_is_final
-  r_e = r_final * exp( (rho_eq-gama_eq) / 2.d0 )
+  r_e = r_final * exp( (rho_eq-gama_eq) / 2._wp )
 
     if ( disk_present ) then 
     call set_disk(r_e)
@@ -77,15 +77,15 @@ subroutine sphere
     do s = 1, SDIV
         do m = 1, MDIV
           if ( enthalpy(s,m) <= enthalpy_min ) then
-            pressure(s,m) = 0.d0
-            energy(s,m) = 0.d0
+            pressure(s,m) = 0._wp
+            energy(s,m) = 0._wp
           else
             pressure(s,m) = p_at_h(enthalpy(s,m))
             energy  (s,m) = e_at_h(enthalpy(s,m))
           endif
           ! no info on pressure, enthalpy, and rho_0 yet; only to check energy
           write(217,"(99es27.17)") s_gp(s), mu(m), alpha(s,m), gama(s,m), rho(s,m), ww(s,m) * (C/sqrt(kappa)), & ! 1-6
-            pressure(s,m)/KSCALE, energy(s,m)/(C*C*KSCALE), enthalpy(s,m), 0.d0, & ! 7-10
+            pressure(s,m)/KSCALE, energy(s,m)/(C*C*KSCALE), enthalpy(s,m), 0._wp, & ! 7-10
             velocity_sq(s,m), omg(s,m) * (C/sqrt(kappa)) ! 11-12
         enddo
       enddo
@@ -177,7 +177,7 @@ subroutine TOV(i_check, r_is_gp, lambda_gp, nu_gp, e_d_gp, &
       r_is = r_is+h
       !write(*,"(3es15.6)") r_is, m, p
     enddo
-    e_d_gp (rdiv) = 0.d0
+    e_d_gp (rdiv) = 0._wp
     r_is_gp(rdiv) = r_is_final
     r_gp   (rdiv) = r_final
     m_gp   (rdiv) = m_final
@@ -189,7 +189,7 @@ subroutine TOV(i_check, r_is_gp, lambda_gp, nu_gp, e_d_gp, &
           (1.0-m_final/r_final + sqrt(1.0-2.0*m_final/r_final) )
 
       r_is_final = r_is_final * k_rescale
-      nu_s = log( (1.d0-m_final/(2.d0*r_is_final))/ &
+      nu_s = log( (1._wp-m_final/(2._wp*r_is_final))/ &
           (1.0+m_final/(2.0*r_is_final)) )
           
       open(988,file="./Cont/checkTOV.dat")
@@ -203,17 +203,17 @@ subroutine TOV(i_check, r_is_gp, lambda_gp, nu_gp, e_d_gp, &
         endif
         
         if(e_d_gp(i) < e_surface) then
-          hh = 0.d0
+          hh = 0._wp
         else
           p = p_at_e(e_d_gp(i))
           hh = h_at_p(p)
           rho_0 = n0_at_e(e_d_gp(i))
         endif
         nu_gp(i) = nu_s - hh
-        if ( e_d_gp(i)/(C*C*KSCALE) > 1.d16 ) stop " bug, L177 Sphere"
-          write(988,"(99es18.9)") r_is_gp(i)*sqrt(KAPPA)/1.d5, &
-                      r_gp(i)*sqrt(KAPPA)/1.d5, &
-                      m_gp(i)*sqrt(KAPPA)/1.d5, &
+        if ( e_d_gp(i)/(C*C*KSCALE) > 1.e16_wp ) stop " bug, L177 Sphere"
+          write(988,"(99es18.9)") r_is_gp(i)*sqrt(KAPPA)/1.e5_wp, &
+                      r_gp(i)*sqrt(KAPPA)/1.e5_wp, &
+                      m_gp(i)*sqrt(KAPPA)/1.e5_wp, &
                       e_d_gp(i)/(C*C*KSCALE), &
                       p/KSCALE, &
                       rho_0*MB,  &
@@ -235,7 +235,7 @@ real(wp) function dm_dr_is(r_is,r,m,p)
   real(wp) :: e_d
   
   if(p < p_surface) then
-      e_d = 0.d0
+      e_d = 0._wp
   else
       e_d = e_at_p(p)
   endif
@@ -256,7 +256,7 @@ real(wp) function dp_dr_is(r_is,r,m,p)
   real(wp) :: e_d
 
   if(p<p_surface) then
-    e_d = 0.d0
+    e_d = 0._wp
   else
     e_d = e_at_p(p)
   endif
@@ -275,9 +275,9 @@ real(wp) function dr_dr_is(r_is,r,m)
   real(wp), intent(in) :: r_is, r, m
   
   if(r_is < tov_rmin) then
-    dr_dr_is = 1.d0
+    dr_dr_is = 1._wp
   else
-    dr_dr_is=( r / r_is ) * sqrt( 1.d0 - 2.d0 * m / r )
+    dr_dr_is=( r / r_is ) * sqrt( 1._wp - 2._wp * m / r )
   endif
 
 end function dr_dr_is

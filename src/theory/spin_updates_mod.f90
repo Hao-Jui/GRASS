@@ -31,7 +31,7 @@ contains
 
     if (r_ratio /= r_ratio_prev) then
       r_ratio_prev = r_ratio
-      s_p_cached = r_ratio**(1.0_wp/dble(s_pwr)) / (1.0_wp + r_ratio**(1.0_wp/dble(s_pwr)))
+      s_p_cached = r_ratio**(1.0_wp/real(s_pwr, wp)) / (1.0_wp + r_ratio**(1.0_wp/real(s_pwr, wp)))
     end if
 
     call interp(s_gp, sphi(:,MDIV), SDIV, s_p_cached, sphi_pole_h   )
@@ -272,14 +272,14 @@ contains
 
     if (abs(r_ratio - 1.0_wp) < epsilon(r_ratio)) then
       velocity_sq = 0.0_wp
-      enthalpy = enthalpy_min + 0.5e0_wp * re2 * &
+      enthalpy = enthalpy_min + 0.5_wp * re2 * &
                ( gama_pole_h + rho_pole_h - gama - rho + ( sphi**2 - sphi_pole_h**2 ) * B_coup / 2.0_wp )
     else
       velocity_sq = ((Omg - ww) * sgp_term_2d_cache_arg * sin_theta_2d_cache_arg * exp(-rho * re2))**2
       where (velocity_sq > 1.0_wp) velocity_sq = 0.0_wp
-      enthalpy = enthalpy_min + 0.5e0_wp * ( &
+      enthalpy = enthalpy_min + 0.5_wp * ( &
             re2 * ( gama_pole_h + rho_pole_h - gama - rho + ( sphi**2 - sphi_pole_h**2 ) * B_coup / 2.0_wp ) &
-            - log( max(1.e-300_wp, 1.0_wp-velocity_sq) )  )
+            - log( max(1.e-30_wp, 1.0_wp-velocity_sq) )  )
     end if
 
     if (timing) then
@@ -289,7 +289,7 @@ contains
     s_active_max = count(s_gp <= s_e)
 
     if ( trim(solver_type) == "const_j" ) then
-      enthalpy = enthalpy + 0.5e0_wp * A_diff**2 * (Omg - Omega_c)**2
+      enthalpy = enthalpy + 0.5_wp * A_diff**2 * (Omg - Omega_c)**2
     elseif ( trim(solver_type) == "uryu" ) then
       if (s_active_max < SDIV) F_j(s_active_max+1:SDIV,:) = 0.0_wp
       do m = 1, MDIV
