@@ -17,14 +17,16 @@ sanitizer: test_gr_uniform
 	@echo "Sanitizer build passed."
 
 $(filter-out test_spline,$(UNIT_TESTS)): %: unit/%.f90 unit/test_utils.f90
-	@$(FC) $(FFLAGS) -o $(BINDIR)/$@ $^ $(LIBGRASS) $(LIBS)
+	@mkdir -p $(BINDIR)
+	@$(FC) $(FFLAGS) -o $(BINDIR)/$@ unit/test_utils.f90 unit/$*.f90 $(LIBGRASS) $(LIBS)
 	@printf "  $@: " && cd .. && timeout 10 tests/$(BINDIR)/$@
 
 test_spline: unit/test_spline.f90 unit/test_utils.f90
-	@$(FC) $(FFLAGS) -o $(BINDIR)/$@ \
-	  ../src/tool/spline_mod.f90 $^ $(LIBGRASS) $(LIBS)
+	@mkdir -p $(BINDIR)
+	@$(FC) $(FFLAGS) -o $(BINDIR)/$@ unit/test_utils.f90 unit/test_spline.f90 $(LIBGRASS) $(LIBS)
 	@printf "  test_spline: " && cd .. && timeout 10 tests/$(BINDIR)/test_spline
 
 $(INTEG_TESTS): %: integration/%.f90
+	@mkdir -p $(BINDIR)
 	@$(FC) $(FFLAGS) -o $(BINDIR)/$@ $< $(LIBGRASS) $(LIBS)
 	@printf "  $@: " && cd .. && timeout 120 tests/$(BINDIR)/$@ > /dev/null 2>&1 && echo "PASS" || (echo "FAIL" && exit 1)
