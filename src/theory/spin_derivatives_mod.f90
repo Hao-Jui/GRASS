@@ -1,19 +1,10 @@
 module spin_derivatives_mod
   use precision_mod, only: wp
   use para_mod, only: r_ratio
+  use lapack_interfaces_mod, only: dgemm
   implicit none
   private
   public :: deriv_s_vec, deriv_m_vec, deriv_sm_vec, deriv_s_sub, deriv_m_sub
-
-  interface
-    subroutine dgemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc)
-      character(len=1), intent(in) :: transa, transb
-      integer, intent(in) :: m, n, k, lda, ldb, ldc
-      double precision, intent(in) :: alpha, beta
-      double precision, intent(in) :: a(lda,*), b(ldb,*)
-      double precision, intent(inout) :: c(ldc,*)
-    end subroutine dgemm
-  end interface
 
 contains
 

@@ -46,22 +46,13 @@ contains
   ! nodes in [a,b].  If the nodes are Chebyshev-Lobatto, use FFTW DCT-I.
   ! Otherwise fall back to a least-squares fit.
   subroutine cheb_std_base(n_deg, n_pts, x_nodes, h_nodes, a, b, coeffs, stats)
+    use lapack_interfaces_mod, only: dgels
     integer, intent(in)  :: n_deg, n_pts
     real(wp), intent(in)  :: x_nodes(n_pts), h_nodes(n_pts), a, b
     real(wp), intent(out) :: coeffs(0:n_deg)
     type(cheb_fit_stats), intent(out), optional :: stats
     real(wp), allocatable :: xi(:), T(:,:), rhs(:,:), work(:)
     integer :: k, info, lwork
-    interface
-      subroutine dgels(trans, m, n, nrhs, a, lda, b, ldb, work, lwork, info)
-        import :: wp
-        character(len=1), intent(in)    :: trans
-        integer, intent(in)             :: m, n, nrhs, lda, ldb, lwork
-        integer, intent(out)            :: info
-        real(wp), intent(inout)         :: a(lda,*), b(ldb,*)
-        real(wp), intent(inout)         :: work(*)
-      end subroutine dgels
-    end interface
 
     if (nodes_are_cheb_lobatto(n_deg, n_pts, x_nodes, a, b)) then
       call cheb_coeffs_dct1(n_deg, h_nodes, coeffs)
