@@ -86,7 +86,7 @@ contains
     use rotation_law_mod, only: diff_rotation_const_j, rotation_law_const_j, &
                                 diff_rotation_uryu, rotation_law_uryu, &
                                 cache_uryu_ab, ctx_exp2re2rho
-    use brent_mod, only : find_omege_e, zbrent_rot
+    use brent_mod, only : find_omega_e, zbrent_rot
     real(wp), intent(in) :: r_e_new, gama_pole_h, rho_pole_h, gama_equator_h, rho_equator_h
     real(wp), intent(in) :: sphi_pole_h, sphi_equator_h, ww_equator_h
     real(wp) :: metric_diff, term_in_Omega_h
@@ -133,7 +133,7 @@ contains
       real(wp) :: guess, term_omega_diff
 
       guess = Omega_e * GUESS_FACTOR
-      call find_omege_e(guess, r_e_new, rho_equator_h, gama_equator_h, &
+      call find_omega_e(guess, r_e_new, rho_equator_h, gama_equator_h, &
                       ww_equator_h, rho_pole_h, gama_pole_h, TOLERANCE_ROOT, Omega_e, diff_rotation_const_j)
 
       term_omega_diff = abs(Omega_e - ww_equator_h)
@@ -167,7 +167,7 @@ contains
       Fmax_h = FMAX_INITIAL
       do while(abs(diff_Fmax) > TOLERANCE_FMAX)
         guess = Omega_e
-        call find_omege_e(guess, r_e_new, rho_equator_h, gama_equator_h, ww_equator_h, &
+        call find_omega_e(guess, r_e_new, rho_equator_h, gama_equator_h, ww_equator_h, &
                         rho_pole_h, gama_pole_h, TOLERANCE_ROOT, Fa, diff_rotation_uryu)
         Omega_e = Fa
         F_equator_h = (Omega_e - ww_equator_h) / ( exp_term_eq - (Omega_e - ww_equator_h)**2 )

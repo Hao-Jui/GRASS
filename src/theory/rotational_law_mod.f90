@@ -123,7 +123,7 @@ contains
   subroutine shoot_Fmax(current_Fmax_h, diff_sq)
     use para_mod, only: wp, Fmax_h, Omega_e, Omega_c, r_e, rho, ww, F_equator_h, &
                         SDIV, s_gp, lambda1, lambda2
-    use brent_mod, only: find_omege_e, zbrent_rot
+    use brent_mod, only: find_omega_e, zbrent_rot
     real(wp), intent(in)  :: current_Fmax_h
     real(wp), intent(out) :: diff_sq
     real(wp) :: guess, Fa, rsm, wwsm, sgp, mum, omg_max_h, diff_Fmax
@@ -134,7 +134,7 @@ contains
     Fmax_h = current_Fmax_h
 
     guess = Omega_e
-    call find_omege_e(guess, r_e, ctx_rho_equator_h, ctx_gama_equator_h, ctx_ww_equator_h, &
+    call find_omega_e(guess, r_e, ctx_rho_equator_h, ctx_gama_equator_h, ctx_ww_equator_h, &
                     ctx_rho_pole_h, ctx_gama_pole_h, tolerance, Fa, diff_rotation_uryu)
     Omega_e = Fa
     F_equator_h = (Omega_e - ww(1,1)) / (exp(2._wp*r_e**2*rho(1,1)) - (Omega_e-ww(1,1))**2)
