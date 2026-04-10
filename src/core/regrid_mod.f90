@@ -7,7 +7,7 @@ module regrid_mod
   public :: regrid_read
 
   character(len=*), parameter :: restart_binary_path = "./Res/res.rst"
-  character(len=8), parameter :: restart_magic = "GRASSRST01"
+  character(len=*), parameter :: restart_magic = "GRASSRST01"
   integer(int32), parameter :: restart_format_version = 1_int32
 
   integer, parameter :: NFIELDS = 10
@@ -39,8 +39,9 @@ contains
     status = 0; message = ""
 
     if (new_sdiv < 2 .or. new_mdiv < 2) then
-      status = 1; message = "regrid_read: target resolution must be >= 2"
-      goto 99
+      if (.not. present(ierr)) error stop "regrid_read: target resolution must be >= 2"
+      ierr = 1; if (present(errmsg)) errmsg = "regrid_read: target resolution must be >= 2"
+      return
     end if
 
     interp_order = 1
@@ -49,11 +50,16 @@ contains
     call cpu_time(t0)
 
     call read_binary_restart(restart_binary_path, meta, old_s, old_m, old_data, status, message)
-    if (status /= 0) goto 99
+    if (status /= 0) then
+      if (.not. present(ierr)) error stop trim(message)
+      ierr = status; if (present(errmsg)) errmsg = trim(message)
+      return
+    end if
 
     if (meta%spwr /= s_pwr) then
-      status = 2; message = "regrid_read: s-grid power doesn't match."
-      goto 99
+      if (.not. present(ierr)) error stop "regrid_read: s-grid power doesn't match."
+      ierr = 2; if (present(errmsg)) errmsg = "regrid_read: s-grid power doesn't match."
+      return
     end if
 
     call ensure_runtime_grid(new_sdiv, new_mdiv)
@@ -88,9 +94,7 @@ contains
     write(output_unit, '(A)') " "
     write(output_unit, '(A,f12.6,A)') "Regrid-read ---", t1 - t0, " [s]"
 
-    99 continue
-    if (present(ierr)) ierr = status
-    if (present(errmsg)) errmsg = trim(message)
+    if (present(ierr)) ierr = 0
   end subroutine regrid_read
 
   subroutine read_binary_restart(path, meta, old_s, old_m, old_data, ierr, errmsg)
@@ -112,28 +116,31 @@ contains
       ierr = 1; errmsg = "regrid_read: failed to open " // trim(path); return
     end if
 
-    read(unit, iostat=ios) magic
-    if (ios /= 0 .or. magic /= restart_magic) goto 90
-    read(unit, iostat=ios) hi
-    if (ios /= 0) goto 90
-    if (hi(1) /= restart_format_version .or. hi(2) /= int(storage_size(1.0_wp), int32) .or. &
-        hi(3) /= int(NFIELDS, int32) .or. hi(4) < 2 .or. hi(5) < 2) goto 90
-    read(unit, iostat=ios) hm
-    if (ios /= 0) goto 90
+    read_block: block
+      read(unit, iostat=ios) magic
+      if (ios /= 0 .or. magic /= restart_magic) exit read_block
+      read(unit, iostat=ios) hi
+      if (ios /= 0) exit read_block
+      if (hi(1) /= restart_format_version .or. hi(2) /= int(storage_size(1.0_wp), int32) .or. &
+          hi(3) /= int(NFIELDS, int32) .or. hi(4) < 2 .or. hi(5) < 2) exit read_block
+      read(unit, iostat=ios) hm
+      if (ios /= 0) exit read_block
 
-    meta = restart_meta_t(sdiv=hi(4), mdiv=hi(5), spwr=hi(6), &
-                          r_e=hm(1), e_center=hm(2) / (C * C * KSCALE), r_ratio=hm(3), &
-                          omega_e=hm(4) * hm(1), omega_c=hm(5) * hm(1))
-    allocate(old_s(meta%sdiv), old_m(meta%mdiv), old_data(NFIELDS, meta%sdiv, meta%mdiv))
+      meta = restart_meta_t(sdiv=hi(4), mdiv=hi(5), spwr=hi(6), &
+                            r_e=hm(1), e_center=hm(2) / (C * C * KSCALE), r_ratio=hm(3), &
+                            omega_e=hm(4) * hm(1), omega_c=hm(5) * hm(1))
+      allocate(old_s(meta%sdiv), old_m(meta%mdiv), old_data(NFIELDS, meta%sdiv, meta%mdiv))
 
-    read(unit, iostat=ios) old_s
-    if (ios == 0) read(unit, iostat=ios) old_m
-    if (ios == 0) read(unit, iostat=ios) old_data
-    if (ios /= 0) goto 90
+      read(unit, iostat=ios) old_s
+      if (ios == 0) read(unit, iostat=ios) old_m
+      if (ios == 0) read(unit, iostat=ios) old_data
+      if (ios /= 0) exit read_block
 
-    close(unit); return
+      close(unit); return
+    end block read_block
 
-    90 ierr = 3; errmsg = "regrid_read: invalid binary restart file"; close(unit)
+    close(unit)
+    ierr = 3; errmsg = "regrid_read: invalid binary restart file"
   end subroutine read_binary_restart
 
   subroutine ensure_runtime_grid(new_sdiv, new_mdiv)
