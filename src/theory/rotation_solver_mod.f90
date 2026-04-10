@@ -169,7 +169,7 @@ subroutine rotation_solver
   end if
   call mass_radius()
 
-  call output_helper(D2_metric_rho, D2_metric_omega)
+  call output_helper(D2_metric_rho, D2_metric_omega, D2_metric_gama)
   
   call deallocate_workspace
 
