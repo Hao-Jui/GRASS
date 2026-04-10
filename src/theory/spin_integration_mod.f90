@@ -18,7 +18,7 @@ module spin_integration_mod
   use lapack_interfaces_mod, only: dgemm, dpbsv
   implicit none
   private
-  public :: get_all_targets, update_alpha_potential, output_helper
+  public :: get_all_targets, update_alpha_potential, output_helper, write_restart_file
 
 contains
 
@@ -713,7 +713,7 @@ contains
     integer(int32) :: header_ints(6)
     real(wp) :: header_meta(5)
     real(wp), allocatable :: restart_data(:,:,:)
-    character(len=8), parameter :: restart_magic = "GRASSRST01"
+    character(len=*), parameter :: restart_magic = "GRASSRST01"
     integer(int32), parameter :: restart_format_version = 1_int32
     integer(int32), parameter :: restart_field_count = 10_int32
 
