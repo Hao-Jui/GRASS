@@ -1,7 +1,7 @@
 module brent_mod
   use precision_mod, only: wp
   implicit none
-  public :: find_omege_e, zbrent_rot
+  public :: find_omega_e, zbrent_rot
 
   abstract interface
     subroutine brent_func(x, fx)
@@ -174,7 +174,7 @@ contains
 
 end subroutine brent_core
 
-subroutine find_omege_e(x_guess, re, rho_h, g_h, w_h, rho_p, g_p, tol, return_value, f)
+subroutine find_omega_e(x_guess, re, rho_h, g_h, w_h, rho_p, g_p, tol, return_value, f)
   implicit none
   real(wp), intent(in)  :: x_guess, re, rho_h, g_h, w_h, rho_p, g_p, tol
   real(wp), intent(out) :: return_value
@@ -196,7 +196,7 @@ contains
     call f(x, fx, re, rho_h, g_h, w_h, rho_p, g_p)
   end subroutine wrapped
 
-end subroutine find_omege_e
+end subroutine find_omega_e
 
 subroutine zbrent_rot(x_guess, re, rho_p, ww_p, sgp, mugp, tol, return_value, f)
   implicit none
