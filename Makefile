@@ -116,10 +116,10 @@ $(OBJDIR)/src/main.o: $(OBJDIR)/$(SRC_TOOL)/toolkit_mod.o $(OBJDIR)/src/para_pan
 all: $(TARGET)
 
 release:
-  $(MAKE) MODE=Release
+	$(MAKE) MODE=Release
 
 debug:
-  $(MAKE) MODE=Debug
+	$(MAKE) MODE=Debug
 
 $(TARGET): $(OBJECTS)
 	@mkdir -p $(BINDIR)
