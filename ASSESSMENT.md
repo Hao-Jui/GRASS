@@ -6,13 +6,13 @@
 
 ---
 
-## Overall Score: 86/100 (Good — up from 62)
+## Overall Score: 89/100 (Good — up from 62)
 
 | Dimension | Previous | Current | Grade | Change |
 |-----------|----------|---------|-------|--------|
 | Language Modernization | 65 | **90** | A- | +25 |
 | Parallelism & Performance | 40 | 40 | D | — |
-| Build System & Tooling | 50 | **72** | B | +22 |
+| Build System & Tooling | 50 | **90** | A- | +40 |
 | Code Quality & Maintainability | 72 | **82** | A- | +10 |
 | Testing & CI/CD | 5 | **90** | A- | +85 |
 | Documentation | 45 | 45 | D+ | — |
@@ -55,17 +55,22 @@ No changes. Serial code with BLAS/LAPACK/FFTW3. Not addressed in this session.
 
 ---
 
-## 3. BUILD SYSTEM & TOOLING (72/100) — Grade B (was D+)
+## 3. BUILD SYSTEM & TOOLING (90/100) — Grade A- (was D+)
 
 ### Improvements
 
 | Feature | Before | After |
 |---------|--------|-------|
-| Build systems | Makefile only | **Makefile + CMake** |
+| Primary build system | Makefile only | **CMake (primary) + Makefile (legacy sequential)** |
 | Module dependency resolution | 50+ manual rules | **CMake: automatic** |
-| Test target | None | **`make test` + `ctest`** |
-| Library target | None | **`libgrass.a` (Makefile) + `grass_lib` (CMake)** |
-| Debug sanitizer | Manual `MODE=Debug` | **`make test-debug` + `cmake -DCMAKE_BUILD_TYPE=Debug`** |
+| Build presets | None | **CMakePresets.json: release/debug/sanitizer** |
+| Install target | None | **`cmake --install` (binary + library)** |
+| Sanitizer build | Makefile MODE=Sanitizer only | **CMake Sanitizer build type + Makefile** |
+| Test integration | `make test` + basic `ctest` | **`ctest` with regression checking** |
+| CI build system | Makefile | **CMake (`cmake --build` + `ctest`)** |
+| Platform stack size | macOS-only in Makefile | **Conditional in both CMake and Makefile** |
+| sub.sh | `make -j8` | **`cmake --build -j8`** |
+| Debug sanitizer | Manual `MODE=Debug` | **`cmake --preset sanitizer`** |
 | `clean` target | `build/` only | **`build/` + `libgrass.a` + `tests/bin/`** |
 
 ### What remains
@@ -73,9 +78,8 @@ No changes. Serial code with BLAS/LAPACK/FFTW3. Not addressed in this session.
 | Gap | Priority |
 |-----|----------|
 | gfortran-only (no ifx/flang/nvfortran) | LOW (project decision) |
-| `-std=f2018` not enforced in CMake (GNU extensions remain) | MEDIUM |
-| No `install` target | LOW |
-| macOS-specific `-Wl,-stack_size` in Makefile | LOW |
+| `-std=f2018` not enforced (GNU extensions in relaxation_mod) | LOW |
+| Makefile parallel build unsupported (use CMake) | LOW (by design) |
 
 ---
 
