@@ -3,7 +3,7 @@ PROG    := a.out
 FC      = gfortran
 
 MODE    ?= Release
-BASE_FFLAGS := -I.
+BASE_FFLAGS := -I. -ffree-line-length-none
 RELEASE_FFLAGS := -O3 -march=native
 DEBUG_FFLAGS := -O0 -g -fbacktrace -Wall -Wextra -Wimplicit-interface -fcheck=all -Wuninitialized -Wconversion -Wuse-without-only -finit-real=nan
 SANITIZER_FFLAGS := -O0 -g -fbacktrace -Wall -Wextra -Wimplicit-interface -fcheck=all -finit-real=nan -fsanitize=address,undefined
