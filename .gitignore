@@ -53,5 +53,7 @@ tests/bin/
 build-test/
 build.log
 build-cmake/
+build-debug/
+build-sanitizer/
 !CMakeLists.txt
 !tests/CMakeLists.txt

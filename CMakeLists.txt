@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.21)
 project(GRASS Fortran)
 
 # Compiler flags
@@ -6,6 +6,11 @@ set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -ffree-line-length-none")
 set(CMAKE_Fortran_FLAGS_RELEASE "-O3 -march=native")
 set(CMAKE_Fortran_FLAGS_DEBUG
   "-O0 -g -fbacktrace -Wall -Wextra -Wimplicit-interface -fcheck=all -Wconversion -finit-real=nan")
+
+# Sanitizer build type (ASan + UBSan)
+set(CMAKE_Fortran_FLAGS_SANITIZER
+  "-O0 -g -fbacktrace -Wall -Wextra -Wimplicit-interface -fcheck=all -finit-real=nan -fsanitize=address,undefined")
+set(CMAKE_EXE_LINKER_FLAGS_SANITIZER "-fsanitize=address,undefined")
 
 # External dependencies
 find_package(LAPACK REQUIRED)
@@ -35,6 +40,16 @@ target_link_libraries(grass_lib PUBLIC
 # Main executable
 add_executable(grass src/main.f90)
 target_link_libraries(grass grass_lib)
+
+# Platform-conditional stack size
+if(APPLE)
+  target_link_options(grass PRIVATE "-Wl,-stack_size,0x4000000")
+endif()
+
+# Install targets
+include(GNUInstallDirs)
+install(TARGETS grass RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS grass_lib ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
 # Tests
 enable_testing()

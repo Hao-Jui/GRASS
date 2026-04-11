@@ -17,41 +17,29 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gfortran liblapack-dev libblas-dev libfftw3-dev pkg-config
 
-      - name: Build library
-        run: make libgrass.a
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
-      - name: Run unit tests
-        run: make test-unit
+      - name: Build
+        run: cmake --build build -j$(nproc)
 
       - name: Create output directories
         run: mkdir -p Cont Res
 
-      - name: Run GR integration tests
-        run: |
-          make -C tests test_gr_uniform test_gr_constj test_gr_uryu \
-            FC=gfortran \
-            FFLAGS="-I$(pwd) -I$(pwd)/build/mod -J$(pwd)/build/mod -ffree-line-length-none -O3 -march=native" \
-            LIBGRASS=$(pwd)/libgrass.a \
-            LIBS="$(pkg-config --libs fftw3) -llapack -lblas"
+      - name: Run unit tests
+        run: ctest --test-dir build -R "test_(ad|spline|spectral|brent|eos)" --output-on-failure
 
-      - name: Build and run restart test
-        run: |
-          FFLAGS="-I. -I./build/mod -J./build/mod -ffree-line-length-none -O3 -march=native"
-          LIBS="$(pkg-config --libs fftw3) -llapack -lblas"
-          mkdir -p tests/bin Res
-          gfortran $FFLAGS -o tests/bin/test_restart tests/integration/test_restart.f90 libgrass.a $LIBS
-          printf "  test_restart: " && timeout 120 tests/bin/test_restart > /dev/null 2>&1 \
-            && echo "PASS (convergence)" || (echo "FAIL" && exit 1)
+      - name: Run GR integration tests
+        run: ctest --test-dir build -R "test_gr_|create_output" --output-on-failure
+
+      - name: Run restart test
+        run: ctest --test-dir build -R "test_restart" --output-on-failure
 
       - name: Run ST integration tests (platform-sensitive)
         continue-on-error: true
         run: |
-          make -C tests test_st_uniform test_st_uniform_r07 \
-            FC=gfortran \
-            FFLAGS="-I$(pwd) -I$(pwd)/build/mod -J$(pwd)/build/mod -ffree-line-length-none -O3 -march=native" \
-            LIBGRASS=$(pwd)/libgrass.a \
-            LIBS="$(pkg-config --libs fftw3) -llapack -lblas" \
-          || echo "::warning::ST tests failed — expected on Linux (LAPACK sensitivity in SHOOT_2D solver)"
+          ctest --test-dir build -R "test_st_" --output-on-failure \
+            || echo "::warning::ST tests failed — expected on Linux (LAPACK sensitivity)"
 
   sanitizer:
     runs-on: ubuntu-latest
@@ -64,5 +52,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gfortran liblapack-dev libblas-dev libfftw3-dev pkg-config
 
-      - name: Run sanitizer tests
-        run: make test-sanitizer
+      - name: Configure (Sanitizer)
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Sanitizer
+
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+      - name: Run unit tests with sanitizer
+        run: ctest --test-dir build -R "test_(ad|spline|spectral|brent|eos)" --output-on-failure
