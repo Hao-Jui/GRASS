@@ -30,7 +30,7 @@ test_spline: unit/test_spline.f90 unit/test_utils.f90
 $(INTEG_TESTS): %: integration/%.f90
 	@mkdir -p $(BINDIR)
 	@$(FC) $(FFLAGS) -o $(BINDIR)/$@ $< $(LIBGRASS) $(LIBS)
-	@cd .. && timeout 120 tests/$(BINDIR)/$@ > /dev/null 2>&1 \
+	@cd .. && mkdir -p Cont Res && timeout 120 tests/$(BINDIR)/$@ > /dev/null 2>&1 \
 	  && bash tests/check_regression.sh Cont/properties.dat tests/reference/$@.ref \
 	  || (printf "  $@: FAIL\n" && exit 1)
 
@@ -39,6 +39,6 @@ $(INTEG_TESTS): %: integration/%.f90
 $(RESTART_TEST): $(INTEG_TESTS) integration/test_restart.f90
 	@mkdir -p $(BINDIR)
 	@$(FC) $(FFLAGS) -o $(BINDIR)/test_restart integration/test_restart.f90 $(LIBGRASS) $(LIBS)
-	@printf "  test_restart: " && cd .. && mkdir -p Res \
+	@printf "  test_restart: " && cd .. && mkdir -p Cont Res \
 	  && timeout 120 tests/$(BINDIR)/test_restart > /dev/null 2>&1 \
 	  && echo "PASS (convergence)" || (echo "FAIL" && exit 1)

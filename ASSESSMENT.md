@@ -6,7 +6,7 @@
 
 ---
 
-## Overall Score: 83/100 (Good — up from 62)
+## Overall Score: 86/100 (Good — up from 62)
 
 | Dimension | Previous | Current | Grade | Change |
 |-----------|----------|---------|-------|--------|
@@ -14,7 +14,7 @@
 | Parallelism & Performance | 40 | 40 | D | — |
 | Build System & Tooling | 50 | **72** | B | +22 |
 | Code Quality & Maintainability | 72 | **82** | A- | +10 |
-| Testing & CI/CD | 5 | **75** | B+ | +70 |
+| Testing & CI/CD | 5 | **90** | A- | +85 |
 | Documentation | 45 | 45 | D+ | — |
 
 ---
@@ -99,18 +99,18 @@ No changes. Serial code with BLAS/LAPACK/FFTW3. Not addressed in this session.
 
 ---
 
-## 5. TESTING & CI/CD (75/100) — Grade B+ (was F)
+## 5. TESTING & CI/CD (90/100) — Grade A- (was F)
 
 ### What was built
 
 | Component | Details |
 |-----------|---------|
-| **Unit tests** | 6 test programs, 58 assertions |
+| **Unit tests** | 6 test programs, 73 assertions |
 | test_ad | 22 assertions — dual operators, exp/log, chain rule |
 | test_spline | 24 assertions — cubic reproduction, linear, knots |
 | test_spectral | 5 assertions — GL/Lobatto weights, exactness |
 | test_brent | 4 assertions — root finding convergence |
-| test_eos | 3 assertions — loadEos, p_at_e finite+positive |
+| test_eos | 18 assertions — loadEos, round-trips (p/e/h), dual-number AD, number density, pressure derivatives, table edges |
 | **Integration tests** | 5 test programs, full solver convergence |
 | test_gr_uniform | GR + uniform rotation |
 | test_gr_constj | GR + const_j rotation |
@@ -125,14 +125,20 @@ No changes. Serial code with BLAS/LAPACK/FFTW3. Not addressed in this session.
 | **Test runners** | `make test` (Makefile) + `ctest` (CMake) |
 | **Total test time** | ~2-5 seconds |
 | **3 test layers** | Unit (numerical correctness) → Integration (convergence) → Regression (physics values) |
+| **CI/CD pipeline** | GitHub Actions: Release build + test, Sanitizer build + test on push/PR |
+| **Sanitizer** | `MODE=Sanitizer` with `-fsanitize=address,undefined` runs unit tests in CI |
+| **CI badge** | README shows build status |
+| **CTest parity** | All 12 tests in both Makefile and CMake, with directory fixtures |
+| **EOS coverage** | 11/11 public routines tested (was 2/11) |
+| **Cross-platform** | Platform-conditional LDFLAGS; `mkdir -p Cont Res` in test recipes |
 
 ### What remains
 
 | Gap | Priority |
 |-----|----------|
-| No CI/CD pipeline (GitHub Actions) | MEDIUM |
-| No debug-mode sanitizer test in CI | MEDIUM |
-| No EOS interpolation accuracy tests | LOW |
+| Multi-compiler CI matrix (ifx/flang) | LOW (project decision) |
+| Code coverage reporting | LOW |
+| Git LFS for EOS data if repo grows | LOW |
 
 ---
 

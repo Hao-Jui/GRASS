@@ -1,4 +1,7 @@
 # GRASS
+
+![CI](https://github.com/Hao-Jui/GRASS/actions/workflows/ci.yml/badge.svg?branch=dev)
+
 ## General Relativistic Axisymmetric Spacetime Solver
 
 GRASS computes rotating neutron-star equilibria in either General Relativity (GR)

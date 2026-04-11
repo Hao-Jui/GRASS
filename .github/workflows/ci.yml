@@ -1,0 +1,44 @@
+name: CI
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gfortran liblapack-dev libblas-dev libfftw3-dev pkg-config
+
+      - name: Build library
+        run: make libgrass.a
+
+      - name: Run unit tests
+        run: make test-unit
+
+      - name: Create output directories
+        run: mkdir -p Cont Res
+
+      - name: Run integration tests
+        run: make test-integration
+
+  sanitizer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gfortran liblapack-dev libblas-dev libfftw3-dev pkg-config
+
+      - name: Run sanitizer tests
+        run: make test-sanitizer
