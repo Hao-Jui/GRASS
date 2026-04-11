@@ -17,3 +17,17 @@ foreach(test ${INTEG_TESTS})
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
   set_tests_properties(${test} PROPERTIES TIMEOUT 120)
 endforeach()
+
+# Ensure output directories exist for integration/restart tests
+add_test(NAME create_output_dirs
+  COMMAND ${CMAKE_COMMAND} -E make_directory
+    ${CMAKE_SOURCE_DIR}/Cont ${CMAKE_SOURCE_DIR}/Res)
+set_tests_properties(create_output_dirs PROPERTIES FIXTURES_SETUP OutputDirs)
+set_tests_properties(${INTEG_TESTS} PROPERTIES FIXTURES_REQUIRED OutputDirs)
+
+# Restart test
+add_executable(test_restart integration/test_restart.f90)
+target_link_libraries(test_restart grass_lib)
+add_test(NAME test_restart COMMAND test_restart
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(test_restart PROPERTIES TIMEOUT 120 FIXTURES_REQUIRED OutputDirs)

@@ -6,16 +6,24 @@ MODE    ?= Release
 BASE_FFLAGS := -I.
 RELEASE_FFLAGS := -O3 -march=native
 DEBUG_FFLAGS := -O0 -g -fbacktrace -Wall -Wextra -Wimplicit-interface -fcheck=all -Wuninitialized -Wconversion -Wuse-without-only -finit-real=nan
+SANITIZER_FFLAGS := -O0 -g -fbacktrace -Wall -Wextra -Wimplicit-interface -fcheck=all -finit-real=nan -fsanitize=address,undefined
 ifeq ($(MODE),Release)
   MODE_FFLAGS := $(RELEASE_FFLAGS)
 else ifeq ($(MODE),Debug)
   MODE_FFLAGS := $(DEBUG_FFLAGS)
+else ifeq ($(MODE),Sanitizer)
+  MODE_FFLAGS := $(SANITIZER_FFLAGS)
 else
-  $(error Unsupported MODE='$(MODE)'. Use MODE=Release or MODE=Debug)
+  $(error Unsupported MODE='$(MODE)'. Use MODE=Release, MODE=Debug, or MODE=Sanitizer)
 endif
 FFLAGS  ?= $(BASE_FFLAGS) $(MODE_FFLAGS)
 
-LDFLAGS ?= -Wl,-stack_size,0x4000000
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+  LDFLAGS ?= -Wl,-stack_size,0x4000000
+else
+  LDFLAGS ?=
+endif
 FFTW_LIBS ?= $(shell pkg-config --libs fftw3 2>/dev/null || echo -lfftw3)
 LIBS    ?= -llapack -lblas $(FFTW_LIBS)
 BUILDDIR := build
@@ -131,7 +139,7 @@ LIB_OBJECTS := $(filter-out $(OBJDIR)/src/main.o,$(OBJECTS))
 $(LIBGRASS): $(LIB_OBJECTS)
 	ar rcs $@ $^
 
-.PHONY: test test-unit test-integration test-debug
+.PHONY: test test-unit test-integration test-debug test-sanitizer
 
 test: test-unit test-integration
 	@echo "All tests passed."
@@ -148,3 +156,7 @@ test-integration: $(LIBGRASS)
 test-debug:
 	@$(MAKE) MODE=Debug $(LIBGRASS)
 	@$(MAKE) -C tests sanitizer FC=$(FC) FFLAGS="$(ABSFFLAGS)" LIBGRASS=$(CURDIR)/$(LIBGRASS) LIBS="$(LIBS)"
+
+test-sanitizer:
+	@$(MAKE) MODE=Sanitizer $(LIBGRASS)
+	@$(MAKE) -C tests unit FC=$(FC) FFLAGS="$(ABSFFLAGS)" LIBGRASS=$(CURDIR)/$(LIBGRASS) LIBS="$(LIBS) -fsanitize=address,undefined"
