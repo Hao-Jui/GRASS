@@ -59,4 +59,6 @@ jobs:
         run: cmake --build build -j$(nproc)
 
       - name: Run unit tests with sanitizer
-        run: ctest --test-dir build -R "test_(ad|spline|spectral|brent|eos)" --output-on-failure
+        run: |
+          ulimit -s unlimited
+          ctest --test-dir build -R "test_(ad|spline|spectral|brent|eos)" --output-on-failure
