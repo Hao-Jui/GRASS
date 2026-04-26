@@ -98,7 +98,6 @@ contains
   end subroutine regrid_read
 
   subroutine read_binary_restart(path, meta, old_s, old_m, old_data, ierr, errmsg)
-    use para_mod, only: C, KSCALE
     character(len=*), intent(in) :: path
     type(restart_meta_t), intent(out) :: meta
     real(wp), allocatable, intent(out) :: old_s(:), old_m(:), old_data(:,:,:)
@@ -127,8 +126,8 @@ contains
       if (ios /= 0) exit read_block
 
       meta = restart_meta_t(sdiv=hi(4), mdiv=hi(5), spwr=hi(6), &
-                            r_e=hm(1), e_center=hm(2) / (C * C * KSCALE), r_ratio=hm(3), &
-                            omega_e=hm(4) * hm(1), omega_c=hm(5) * hm(1))
+                            r_e=hm(1), e_center=hm(2), r_ratio=hm(3), &
+                            omega_e=hm(4), omega_c=hm(5))
       allocate(old_s(meta%sdiv), old_m(meta%mdiv), old_data(NFIELDS, meta%sdiv, meta%mdiv))
 
       read(unit, iostat=ios) old_s
