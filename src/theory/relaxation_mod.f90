@@ -478,12 +478,24 @@ contains
     real(wp) :: denom, step_n, x_k, hist1_prev, candidate
     real(wp), parameter :: MAX_AITKEN_JUMP = 10._wp
     logical :: apply_aitken
+    logical :: needs_allocation
     integer  :: s, m
 
     ! Allocate on first call or grid change
-    if (.not. allocated(aitk1_rho) .or. size(aitk1_rho,1) /= SDIV .or. size(aitk1_rho,2) /= MDIV) then
-      if (allocated(aitk1_rho)) deallocate(aitk1_rho, aitk1_gama, aitk1_ww, aitk1_sphi)
-      if (allocated(aitk2_rho)) deallocate(aitk2_rho, aitk2_gama, aitk2_ww, aitk2_sphi)
+    if (allocated(aitk1_rho)) then
+      needs_allocation = grid_changed()
+    else
+      needs_allocation = .true.
+    end if
+    if (needs_allocation) then
+      if (allocated(aitk1_rho))  deallocate(aitk1_rho)
+      if (allocated(aitk1_gama)) deallocate(aitk1_gama)
+      if (allocated(aitk1_ww))   deallocate(aitk1_ww)
+      if (allocated(aitk1_sphi)) deallocate(aitk1_sphi)
+      if (allocated(aitk2_rho))  deallocate(aitk2_rho)
+      if (allocated(aitk2_gama)) deallocate(aitk2_gama)
+      if (allocated(aitk2_ww))   deallocate(aitk2_ww)
+      if (allocated(aitk2_sphi)) deallocate(aitk2_sphi)
       allocate(aitk1_rho(SDIV,MDIV),  source=rho)
       allocate(aitk1_gama(SDIV,MDIV), source=gama)
       allocate(aitk1_ww(SDIV,MDIV),   source=ww)
@@ -566,5 +578,9 @@ contains
     end if
 
   end subroutine aitken_delta2
+
+  logical function grid_changed()
+    grid_changed = size(aitk1_rho, 1) /= SDIV .or. size(aitk1_rho, 2) /= MDIV
+  end function grid_changed
 
 end module aitken_mod

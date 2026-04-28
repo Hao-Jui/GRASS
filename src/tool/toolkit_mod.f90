@@ -407,10 +407,10 @@ contains
     integer, intent(in) :: needed_size
     real(wp), allocatable :: tmp(:)
     if (.not. allocated(bessel_down_workspace)) then
-      allocate(bessel_down_workspace(needed_size))
+      allocate(bessel_down_workspace(0:needed_size-1))
       bessel_down_size = needed_size
     else if (bessel_down_size < needed_size) then
-      allocate(tmp(needed_size))
+      allocate(tmp(0:needed_size-1))
       deallocate(bessel_down_workspace)
       call move_alloc(tmp, bessel_down_workspace)
       bessel_down_size = needed_size
