@@ -15,8 +15,8 @@ and outputs diagnostic profiles that characterise the equilibrium model.
 - v2: `8a7b201`
 - v1: `6139a9f`
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and
-[TESTING.md](TESTING.md) for the full test/regression matrix.
+See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for the development workflow and
+[docs/TESTING.md](docs/TESTING.md) for the full test/regression matrix.
 
 ---
 
@@ -263,7 +263,7 @@ Anderson, 30–75 Aitken at ρ ≈ 0.85).
   ST-uniform configurations with `1e-4` reference-tolerance gates.
 - Restart round-trip (`test_restart`) validates writer / reader unit consistency.
 
-See [TESTING.md](TESTING.md) for the full harness inventory.
+See [docs/TESTING.md](docs/TESTING.md) for the full harness inventory.
 
 ---
 
@@ -296,4 +296,4 @@ Open an issue with:
 - a `Cont/properties.dat` excerpt or console log,
 - the EOS file used (or its first 5 rows).
 
-Pull requests welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+Pull requests welcome — see [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).
