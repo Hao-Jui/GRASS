@@ -10,11 +10,7 @@ module para_mod
   ! -- Running option --------------------------------------------------------
   integer, parameter :: MODE_REGRID  = 1, MODE_DEFAULT = 2
 
-  integer :: run_mode = MODE_REGRID
-
-  ! -- Running mode ----------------------------------------------------------
-  integer, parameter :: shoot = 1, MRbuild = 2, OneModel = 3
-  integer :: run_task = shoot
+  integer :: run_mode = MODE_DEFAULT
 
   ! -- Running mode ----------------------------------------------------------
   integer, parameter :: shoot = 1, MRbuild = 2, OneModel = 3

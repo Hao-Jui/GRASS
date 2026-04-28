@@ -51,7 +51,7 @@ module core_parameters
   public :: rho_match, K1, K2, K3
   public :: aa, aaa, dd
   
-  character(len=128) :: eos_name = "Zdunik"
+  character(len=128) :: eos_name = "PSt"
   integer, parameter :: num_points = 5931
   
   ! Core density divisions (log10 scale)
@@ -158,7 +158,7 @@ contains
       case ('125H')
         Gamma1 = 3.000d0; Gamma2 = 3.000d0; Gamma3 = 3.000d0; log_p1 = 34.60364d0
       case ('Zdunik')
-        Gamma1 = 3.000d0; Gamma2 = 1.050d0; Gamma3 = 5.100d0; log_p1 = 34.384d0
+        Gamma1 = 2.000d0; Gamma2 = 1.500d0; Gamma3 = 3.851d0; log_p1 = 34.384d0
       case ('PSt')
         Gamma1 = 2.216d0; Gamma2 = 1.300d0; Gamma3 = 4.000d0; log_p1 = 34.671d0
       case default
