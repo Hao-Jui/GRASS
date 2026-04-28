@@ -1,314 +1,298 @@
 # GRASS
 
-![CI](https://github.com/Hao-Jui/GRASS/actions/workflows/ci.yml/badge.svg?branch=dev)
+**General Relativistic Axisymmetric Spacetime Solver**
 
-## General Relativistic Axisymmetric Spacetime Solver
+[![CI](https://github.com/Hao-Jui/GRASS/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/Hao-Jui/GRASS/actions/workflows/ci.yml)
+[![Fortran](https://img.shields.io/badge/Fortran-2003-734F96)](https://wg5-fortran.org/)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 GRASS computes rotating neutron-star equilibria in either General Relativity (GR)
 or Scalar–Tensor (ST) gravity. The code integrates the field equations on a
 compactified meridional grid, reads tabulated equations of state (EOS),
 and outputs diagnostic profiles that characterise the equilibrium model.
 
-The v1 release: 6139a9f
-The lastest official release: 8a7b201
+- Latest release: `8a7b201`
+- v1: `6139a9f`
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and
+[TESTING.md](TESTING.md) for the full test/regression matrix.
+
+---
+
+## Quickstart
+
+```bash
+git clone https://github.com/Hao-Jui/GRASS.git
+cd GRASS
+
+# Build (CMake is the primary build system)
+cmake --preset release
+cmake --build build -j
+
+# Run a single equilibrium model
+./build/grass
+
+# Run the full test suite
+ctest --test-dir build --output-on-failure
+```
+
+Outputs land in `Cont/` (diagnostics) and `Res/res.rst` (restart binary).
 
 ---
 
 ## Features
 
-- Uniformly rotating, axisymmetric neutron-star configurations.
-- Tabulated EOS support (pressure, energy density, enthalpy tables).
-- Compactified grid in meridional coordinates with spectral-type
-  interpolation.
-- Batch integration helper (`integrate_profiles`) to reduce repeated NAG
-  calls.
-- Newton shooting solvers (1D and 2D) to match target bulk properties
-  such as gravitational mass, baryon mass, spin parameter, and axis ratio.
+- Uniformly and differentially rotating, axisymmetric neutron-star equilibria.
+- Tabulated EOS support (`p`, `e`, `h`, `n0` columns), monotone PCHIP
+  interpolation in log-space with phase-transition handling.
+- Compactified meridional grid with spectral-type interpolation.
+- Newton 1D / 2D shooting solvers to match target bulk properties (M, M_b, J, χ, axis ratio).
+- Adaptive 4-stage relaxation: Picard → Chebyshev → Anderson → Aitken δ².
+- Restart binary (`Res/res.rst`, magic `GRASSRST01`) for warm starts.
+- M–R sequence builder, scalar-burning helper for ST gravity.
 
 ---
 
-## 4-Stage Relaxation Strategy
+## Requirements
 
-The rotation solver employs an adaptive four-stage relaxation method to efficiently converge the coupled metric and scalar-field equations. Each stage activates at different convergence regimes, balancing stability and speed.
+| Component | Version | Notes |
+|---|---|---|
+| Fortran compiler | gfortran ≥ 11 (or any F2003) | tested gfortran 13 / 14 on macOS + Linux |
+| CMake | ≥ 3.21 | primary build; presets need 3.21 |
+| BLAS / LAPACK | OpenBLAS, Accelerate, MKL | linked dynamically |
+| FFTW3 | optional | only if FFT-based diagnostics are enabled |
 
-### Stage 1: Picard Damping (dif ≥ 0.1)
+The legacy GNU Make build is preserved in `Makefile`; CMake is recommended.
 
-**Regime:** Early nonlinear phase, large residuals
-**Update rule:** `x_new = (1 - w) * x + w * target`, with w = 0.7
-**Purpose:** Conservative damping prevents overshoot during the initial drift phase when the solution is far from equilibrium. The fixed weight w=0.7 ensures stable convergence regardless of field coupling strength.
+---
 
-### Stage 2: Chebyshev Acceleration (0.01 ≤ dif < 0.1)
+## Build
 
-**Regime:** Transition zone, metrics and scalar field approaching equilibrium
-**Update rule:** Chebyshev 3-term recurrence `cheb_w = 1 / (1 - (ρ²/4) * cheb_w)`
-**Spectral radius:** Estimated via EMA-smoothed dif ratio: `ρ_obs = dif_n / dif_{n-1}`
-**Purpose:** Adaptive acceleration using the estimated spectral radius of the linearized system. As dif contracts monotonically, `ρ_obs` becomes stable, and `cheb_w` grows toward its fixed point, giving up to 2× speedup over Picard.
+### CMake (recommended)
 
-**Key parameter:** `PICARD_THRESH = 1.0E-1`, `CHEB_THRESH = 1.0E-3`
+Three presets defined in `CMakePresets.json`:
 
-### Stage 3: Anderson Acceleration (dif < 0.01, non-exponential)
+```bash
+cmake --preset release      # -O3, native arch, no debug
+cmake --preset debug        # -O0 -g
+cmake --preset sanitizer    # -fsanitize=address,undefined
 
-**Regime:** Near-convergence, rapid residual reduction
-**Method:** Rank-M Anderson (M_HIST = 3), applied per-field (rho, gama, ww, sphi)
-**Purpose:** Nonlinear acceleration exploiting M=3 previous iterates. Works best when the iteration map is nearly linear and ρ is not yet stable. Provides 0.37–0.77 spectral ratio during the Anderson phase.
-
-### Stage 4: Aitken δ² Extrapolation (Exponential regime)
-
-**Activates when:** ρ has been constant (< 1% variance) for K ≥ 5 consecutive iterations and `dif < CHEB_THRESH`
-**Method:** Quadratic extrapolation on dif monitor
+cmake --build build -j
 ```
-dif_aitken = dif - (dif - dif_prev)² / (dif - 2*dif_prev + dif_prev2)
+
+Custom flags:
+
+```bash
+cmake -B build -S . \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_Fortran_FLAGS="-O3 -march=native"
+cmake --build build -j
 ```
-**Purpose:** Once linear exponential convergence is confirmed (ρ ≈ 0.84–0.87), Aitken δ² estimates the dif limit and modulates acceleration to jump toward it. Reduces exponential-phase iterations by ~20%.
 
-**Safety bounds:**
-- Aitken prediction must be 0 < dif_aitken < dif (toward zero, monotone)
-- Fallback to standard Chebyshev if Aitken fails (non-monotone behavior)
+### Make (legacy)
 
-### Convergence Monitoring
+```bash
+mkdir -p Cont Res
+make
+```
 
-The solver tracks three key metrics:
+Binary lands at `build/bin/a.out`.
 
-1. **dif = |r_e_new / r_e_old - 1|** — equatorial-radius-based observable (outer loop convergence)
-2. **Spectral radius estimate ρ_spec_est** — EMA-smoothed ratio of consecutive dif values
-3. **Monotone-contraction counter n_consec_decrease** — consecutive dif reductions, gates late-phase accelerators
+### Reproducibility
 
-**Early termination criterion** (optional, looser than hard `dif < 1E-8`):
+Builds are reproducible given identical compiler, BLAS implementation, and
+flags. CI runs in three configurations (release, debug, sanitizer); see
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+
+---
+
+## Run
+
+```bash
+./build/grass
+```
+
+The binary reads its run configuration from compile-time defaults in
+`src/para_panel.f90` (theory, EOS file, rotation law, grid resolution,
+shooting target). Edit and rebuild to change the active configuration.
+
+Diagnostics:
+
+| File | Contents |
+|---|---|
+| `Cont/properties.dat` | bulk quantities (M, M_b, J, χ, Ω_c, Ω_e, R, …) |
+| `Cont/Omega.dat` | equatorial profile: r, Ω, h, c_s², F_j |
+| `Cont/velocity.dat` | orbital velocity diagnostics (GR) |
+| `Cont/hamiltonian.dat` | Hamiltonian-constraint field |
+| `Cont/moment_tail.dat` | far-field multipoles |
+| `Res/res.rst` | restart binary |
+
+---
+
+## Configuration
+
+All compile-time knobs live in `src/para_panel.f90`. Common edits:
+
 ```fortran
-if (dif < 1.E-5_wp .and. &
-    maxval(abs(sphi - sphi_prev)) < eps .and. &
-    maxval(abs(rho - prev_rho)) < eps) exit
-```
-Stops the Aitken tail early (~iter 35) when all fields have converged to machine precision, saving 40–50 iterations per solve.
-
-### Typical Performance
-
-- **Total iterations:** 40–90 (depending on warm-start state and EOS)
-- **Picard phase:** 5–7 iterations
-- **Chebyshev phase:** 2–3 iterations
-- **Anderson phase:** 3–5 iterations
-- **Aitken phase:** 30–75 iterations (scales logarithmically with target tolerance)
-
-**Example run:**
-```
-iter=0-5:   Picard,    dif: 1.7E-2 → 4.5E-3
-iter=6-7:   Chebyshev, dif: 4.5E-3 → 4.3E-3
-iter=8-10:  Anderson,  dif: 4.3E-3 → 9.7E-4
-iter=11-78: Aitken,    dif: 7.6E-4 → 9.6E-9 (67 iters at ρ ≈ 0.847)
+integer :: active_theory  = THEORY_GR        ! or THEORY_ST
+integer :: run_task       = shoot            ! shoot | OneModel | MRbuild
+character(len=128) :: eos_file = "MPA1"      ! file under eos/<name>.dat
+integer :: SDIV = 2 * res + 1                ! radial grid; res ~ 200
+integer :: MDIV = 41                         ! angular grid
 ```
 
-### Tuning Guide
-
-| Parameter | Default | Purpose | Adjust if… |
-|-----------|---------|---------|-----------|
-| `PICARD_THRESH` | 1.0E-1 | Picard→Chebyshev threshold | Divergence in dif ≥ 0.1 regime |
-| `CHEB_THRESH` | 1.0E-3 | Chebyshev→Anderson threshold | Oscillation in 0.01–0.1 range |
-| `w_picard` | 0.7 | Picard damping weight | Reduce to 0.5 for tighter coupling |
-| `rho_spec_est` init | 0.7 | Initial spectral radius guess | Set from previous solve ρ_final |
-| `N_MONOTONE` | 5 | Aitken activation gate | Reduce to 3 for earlier Aitken |
-
----
-
-## Grid & Coordinates
-
-The code uses a compactified meridional grid:
-- **Radial**: `s ∈ [0, SMAX]` mapped to physical radius `r = r_e * s / (1 - s)` raised to power `s_pwr`
-- **Angular**: `μ ∈ [0, 1]` (cosine of polar angle) on uniform, Legendre, or Chebyshev collocation points
-- **Default resolution**: SDIV = 801, MDIV = 41 (configurable in `para_mod.f90`)
-- **Interpolation**: barycentric Lagrange (4th-order stencil) for spectral-type accuracy
-
----
-
-## Field Variables
-
-**Metric** (all allocated in `para_mod.f90`):
-- `gama(SDIV, MDIV)` — log conformal factor
-- `rho(SDIV, MDIV)` — log metric deviation (oblate/prolate)
-- `ww(SDIV, MDIV)` — angular velocity frame-dragging
-- `alpha(SDIV, MDIV)` — lapse function
-- `sphi(SDIV, MDIV)` — scalar field (ST theory only)
-
-**Fluid & Thermodynamic**:
-- `pressure`, `energy`, `enthalpy` — from EOS table lookup
-- `velocity_sq` — fluid 3-velocity squared (must be < 1)
-- `F_j` — angular-momentum flux
-
-**Bulk Properties** (computed during each solve):
-- `mass`, `ang_mom`, `chi` — ADM mass, angular momentum, spin parameter
-- `r_e`, `r_ratio` — equatorial radius, polar-to-equatorial ratio
-- `Omega_c`, `Omega_e` — angular velocity (center, equator)
-- `I_inertia`, `Love2` — moment of inertia, tidal Love number
+See `src/para_panel.f90` for the full list (rotation law, shooting target,
+relaxation thresholds, output verbosity).
 
 ---
 
 ## Repository Layout
 
-**src/core/** — central solver components
-- `para_mod.f90` — global parameters, grid, field allocations, EOS/theory/rotation-law configuration
-- `eos.f90` — EOS table loading and interpolation (log-space, supports phase transitions)
-- `grid.f90` — compactified meridional grid construction
-- `shoot_v2.f90` — Newton shooting driver; calls 1D/2D solvers in `shoot_solver_*_mod.f90`
-- `analysis_v2.f90` — ADM mass, baryon mass, angular momentum, moment of inertia, Love number
-- `constraint_eq.f90` — Hamiltonian constraint evaluation
-- `starting_model.f90`, `sphere.f90` — static and initial-condition setup
+```
+src/
+  main.f90                     program entry point
+  para_panel.f90               global parameters, grid arrays, field allocations
+  core/                        EOS, grid, shoot, analysis, constraint, restart
+    eos_mod.f90                PCHIP-interpolated tabulated EOS
+    grid_mod.f90               compactified meridional grid
+    shoot_mod.f90              Newton driver
+    shoot_solver_*_mod.f90     1D / 2D / r_ratio shooters
+    analysis_mod.f90           ADM mass, M_b, J, I, Love number
+    constraint_mod.f90         Hamiltonian constraint
+    starting_model_mod.f90     initial guess + single-model driver
+    MRcurve_mod.f90            M–R sequence builder
+    regrid_mod.f90             restart binary I/O
+    sphere_mod.f90             spherical pre-iteration
+    miscellaneous_mod.f90      converged-block printer
+    scalar_burning_mod.f90     ST scalar-mass annealer
+  theory/                      rotation solver + relaxation
+    rotation_solver_mod.f90    outer loop on equatorial radius
+    spin_integration_mod.f90   Green's-function targets, multipole projection
+    spin_relaxation_mod.f90    4-stage relaxation orchestrator
+    relaxation_mod.f90         Picard / Chebyshev / Anderson / Aitken kernels
+    spin_workspace_mod.f90     geometry + workspace caching
+    spin_updates_mod.f90       metric / scalar field updates
+    spin_derivatives_mod.f90   grid derivatives (DGEMM-based when collocated)
+    rotational_law_mod.f90     uniform / const-J / Uryu rotation laws
+  tool/                        numerical utilities
+    toolkit_mod.f90            interp, derivatives, integral accumulation
+    ad_mod.f90                 forward-mode AD (dual numbers)
+    cheb_mod.f90               Chebyshev / Legendre bases
+    spectral_hub_mod.f90       spectral basis dispatcher
+    brent_mod.f90              1D root finding
+    nag_compat_mod.f90         adaptive quadrature (NAG-D01 drop-in)
+    spline_mod.f90             1D spline (utility)
+    lapack_interfaces_mod.f90  explicit BLAS / LAPACK interfaces
 
-**src/theory/** — rotation solver and relaxation
-- `rotation_solver.f90` — outer loop iterating on equatorial radius
-- `spin_integration.f90` — Green's function integrals (metric/scalar targets) via multipole expansion
-- `spin_relaxation.f90`, `relaxation_mod.f90` — 4-stage adaptive relaxation (Picard → Chebyshev → Anderson → Aitken δ²)
-- `spin_workspace.f90` — workspace allocation and geometry caching
-- `spin_updates.f90`, `spin_derivatives.f90` — field updates and grid derivatives
-- `rotational_law_mod.f90` — rotation law implementations (uniform, const-J, Uryu)
-
-**src/tool/** — numerical utilities
-- `toolkit_mod.f90` — barycentric Lagrange interpolation, spectral derivatives, integral accumulation
-- `ad_mod.f90` — automatic differentiation (dual numbers) for dP/dE
-- `cheb_mod.f90`, `spectral_hub.f90` — Chebyshev/Legendre spectral bases
-- `brent.f90` — root finding for rotation laws
-- `nag_compat_mod.f90` — adaptive quadrature integration
-
-**eos/** — tabulated equation-of-state files (user-supplied)
-
-**Cont/** — output directory: Omega.dat, velocity.dat, hamiltonian.dat
+eos/                           EOS table files (user-supplied)
+tests/                         unit + integration + regression + harness scripts
+docs/                          supplementary notes
+.omc/research/                 perf audit reports + microbenchmarks
+```
 
 ---
 
-## Equation of State (EOS) Format
+## EOS Format
 
-EOS tables are text files with format:
+Plain-text table:
+
 ```
 num_tab
-log_e(1) log_p(1) log_h(1) log_n0(1)
-...
-log_e(num_tab) log_p(num_tab) log_h(num_tab) log_n0(num_tab)
+e(1)   p(1)   h(1)   n0(1)
+…
+e(N)   p(N)   h(N)   n0(N)
 ```
-where quantities are in **log-space** (e.g., `log_e = ln(e)`, energy density in CGS).
-- `h = 1 + e/p + p/e` (relativistic enthalpy, dimensionless)
-- `n0` is baryon number density
-- Interpolation uses barycentric Lagrange in log-space with phase-transition detection
 
-Default file: `eos/PS_G3.dat` (configurable in `para_mod.f90`).
+Columns are physical quantities (CGS energy density and pressure;
+dimensionless relativistic enthalpy `h = 1 + (e + p) / (ρ_0 c²)`; baryon
+number density). The loader (`eos_mod::loadEos`) converts to log-space
+and detects phase-transition rows automatically. PCHIP slopes are
+precomputed once per EOS load for every direction the public API uses.
 
 ---
 
 ## Solver Data Flow
 
-The main computational loop (in `main.f90`):
-1. **Initialize theory & grid** — set GR/ST, allocate grids in meridional coordinates
-2. **Load EOS** — read tabulated table file
-3. **Select task** — one of: `shoot_v2` (Newton shooting), `MRcurve` (M–R sequences), or `initialize_starting_model` (single model)
-4. **Rotation solver** (in `rotation_solver.f90`):
-   - Outer loop: iterate on equatorial radius `r_e`
-   - Compute Green's function targets for metric and scalar field (via `spin_integration.f90`)
-   - Inner loop: apply 4-stage relaxation to converge metric/scalar toward targets
-   - Check convergence: `|r_e_new / r_e_old - 1| < 1e-7`
-5. **Compute diagnostics** — ADM mass, baryon mass, angular momentum, Love number (in `analysis_v2.f90`)
-6. **Evaluate constraint** — Hamiltonian constraint field written to `Cont/hamiltonian.dat`
+1. `initialize_theory()` — set GR / ST and compile-time constants.
+2. `loadEos` — read EOS, build PCHIP slopes.
+3. `make_grid` + `GridTrig` — compactified `s ∈ [0, SMAX]`, `μ ∈ [0, 1]`.
+4. Task dispatch:
+   - `OneModel` → single equilibrium via `initialize_starting_model`.
+   - `shoot` → 1D / 2D Newton on bulk targets.
+   - `MRbuild` → mass-radius sequence sweep.
+5. `rotation_solver` outer loop on equatorial radius `r_e`:
+   - Compute Green's-function targets (`spin_integration_mod`).
+   - Apply 4-stage relaxation to drive metric + scalar to targets.
+   - Convergence: `|r_e_new / r_e_old − 1| < 1e-7` (configurable).
+6. `solution_properties` — global diagnostics.
+7. `hamiltonian` — constraint check (Ham L2 ≲ 1e-10 at convergence).
 
 ---
 
-## Build Instructions
+## 4-Stage Relaxation Strategy
 
-### Prerequisites
+Implemented in `src/theory/relaxation_mod.f90` and orchestrated by
+`spin_relaxation_mod.f90`.
 
-- Fortran 2003+ compiler (tested with `gfortran`).
-- BLAS and LAPACK libraries.
-- The NAG D01 integration routine (`d01gaf`) or a drop-in replacement.
-- EOS tables providing `log_e`, `log_p`, and `log_h` columns.
+| Stage | Regime | Method | Threshold |
+|---|---|---|---|
+| 1. Picard damping | `dif ≥ 0.1` | `x ← (1 − w) · x + w · target`, `w = 0.7` | `PICARD_THRESH` |
+| 2. Chebyshev | `0.01 ≤ dif < 0.1` | 3-term recurrence on EMA-smoothed spectral radius | `CHEB_THRESH` |
+| 3. Anderson | `dif < 0.01` | rank-3 Anderson, per-field | `N_ANDERSON` |
+| 4. Aitken δ² | exponential tail | quadratic extrapolation when `ρ_obs` is locked | `N_MONOTONE` |
 
-### Example Build
+Typical run: 40–90 iterations total (5–7 Picard, 2–3 Chebyshev, 3–5
+Anderson, 30–75 Aitken at ρ ≈ 0.85).
 
-```bash
-mkdir -p Cont
-make
-```
+| Parameter | Default | Effect |
+|---|---|---|
+| `PICARD_THRESH` | 1.0e-1 | Picard → Chebyshev cutover |
+| `CHEB_THRESH` | 1.0e-3 | Chebyshev → Anderson cutover |
+| `w_picard` | 0.7 | Picard damping; lower for tighter coupling |
+| `N_MONOTONE` | 5 | Aitken activation gate |
+| `MAX_AITKEN_JUMP` | 10 | per-element Aitken safety bound |
 
-The Makefile compiles all sources in dependency order and places the
-binary at `build/bin/a.out`. Override flags as needed:
+---
 
-```bash
-make FFLAGS="-O3 -march=native" LIBS="-lopenblas -llapack"
-```
+## Validation
 
-Clean all build artefacts with:
+- Hamiltonian constraint norm `O(1e-10)` at convergence.
+- M–R sequences cross-checked against published references (MPA1, APR4, …).
+- `tests/integration/test_*` exercise GR-uniform, GR-constJ, GR-Uryu, and
+  ST-uniform configurations with `1e-4` reference-tolerance gates.
+- Restart round-trip (`test_restart`) validates writer / reader unit consistency.
 
-```bash
-make clean
+See [TESTING.md](TESTING.md) for the full harness inventory.
+
+---
+
+## Citing GRASS
+
+If you use GRASS in published work, please cite:
+
+```bibtex
+@software{grass,
+  author = {Wang, Hao-Jui},
+  title  = {GRASS: General Relativistic Axisymmetric Spacetime Solver},
+  url    = {https://github.com/Hao-Jui/GRASS},
+  year   = {2026}
+}
 ```
 
 ---
 
-## Usage
+## License
 
-```
-./build/bin/a.out
-```
-
-Theory (GR or ST) and other options are configured via parameters in
-`src/core/para_mod.f90`. The program prints the active theory, loads the
-EOS tables, assembles the grid, and iterates to a self-consistent
-solution. Diagnostic files are
-written to `./Cont`.
-
-### Key Outputs
-
-- `Cont/Omega.dat` — columns: circumferential radius, physical angular
-  velocity, enthalpy, sound-speed squared, angular-momentum flux along
-  the equatorial (`m=1`) grid line.
-- `Cont/velocity.dat` — orbital velocity diagnostics (GR branch).
-- Console log — convergence information, mass/radius, angular momentum.
-
----
-
-## Extending GRASS
-
-- **New diagnostics**: augment `src/core/analysis_v2.f90`; re-use
-  `integrate_profiles` to accumulate multiple integrals efficiently.
-- **Alternative rotation laws**: modify `para_mod.f90` defaults or add
-  new parameters.
-- **EOS handling**: adapt `loadEos` in `src/core/eos.f90` to support
-  additional table formats.
-- **Relaxation tuning**: The 4-stage relaxation strategy (Picard → Chebyshev
-  → Anderson → Aitken) is implemented in `src/theory/spin_helper.f90`
-  (`relaxation` subroutine, ~lines 988–1158) and `src/theory/relaxation_mod.f90`
-  (Anderson and Aitken modules). Key thresholds and weights are defined as
-  parameters near the start of `relaxation()`:
-  - `PICARD_THRESH`, `CHEB_THRESH`: control stage transitions
-  - `w_picard = 0.7`: Picard damping weight (reduce for tighter coupling)
-  - `N_CHEB = 3`, `N_ANDERSON = 5`: gate activation of Chebyshev and Anderson
-  - `N_RHO_LOCK = 3`, `N_AITKEN = 2`: Aitken history and ρ-lock requirements
-
-  To modify convergence behavior: adjust thresholds, damping weights, or
-  disable stages via logical guards (e.g., `if (.not. use_anderson)`).
-  The Aitken δ² element-wise correction is guarded by `MAX_AITKEN_JUMP = 10`
-  to prevent per-element amplification > 0.91× convergence rate.
-
-Please keep changes Fortran 2003 compliant and document new options in
-this README.
-
----
-
-## Validation Tips
-
-1. Compare global quantities (mass, radius, angular velocity) against
-   published sequences or previous GRASS runs.
-2. Inspect `Omega.dat` for smooth profiles and physical sound-speed
-   bounds (`0 ≤ c_s^2 ≤ 1` in relativistic units).
-3. Monitor Newton iteration logs for steady residual reduction.
+MIT. See [LICENSE](LICENSE).
 
 ---
 
 ## Support
 
-If you encounter issues:
+Open an issue with:
 
-- Confirm your EOS tables match the expected format.
-- Provide compiler version, OS, and build flags when reporting problems.
-- Share console logs and generated `Cont/*.dat` excerpts for diagnosis.
+- compiler version + OS + build flags,
+- a `Cont/properties.dat` excerpt or console log,
+- the EOS file used (or its first 5 rows).
 
-Contributions (bug fixes, new physics modules, documentation) are
-welcome—please open a pull request or issue describing the proposed
-change.
-
-Happy modelling!
-
+Pull requests welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
