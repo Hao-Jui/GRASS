@@ -3,7 +3,8 @@ add_library(test_utils OBJECT unit/test_utils.f90)
 target_link_libraries(test_utils grass_lib)
 
 # Unit tests
-set(UNIT_TESTS test_ad test_spline test_spectral test_brent test_eos)
+set(UNIT_TESTS test_ad test_spline test_spectral test_brent test_eos
+  test_bh_toroid_params test_bh_toroid_radial_map test_bh_toroid_green)
 foreach(test ${UNIT_TESTS})
   add_executable(${test} unit/${test}.f90)
   target_link_libraries(${test} test_utils grass_lib)
@@ -26,7 +27,10 @@ foreach(test ${INTEG_TESTS})
   add_test(NAME ${test}
     COMMAND bash -c "$<TARGET_FILE:${test}> > /dev/null 2>&1 && bash ${CMAKE_SOURCE_DIR}/tests/check_regression.sh ${CMAKE_SOURCE_DIR}/Cont/properties.dat ${CMAKE_SOURCE_DIR}/tests/reference/${test}.ref"
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-  set_tests_properties(${test} PROPERTIES TIMEOUT 120 FIXTURES_REQUIRED OutputDirs)
+  set_tests_properties(${test} PROPERTIES
+    TIMEOUT 120
+    FIXTURES_REQUIRED OutputDirs
+    ENVIRONMENT "GRASS_TIMING=0;GRASS_E_CENTER=0.8e15")
 endforeach()
 
 # Restart test (convergence check only, no regression)
@@ -34,4 +38,7 @@ add_executable(test_restart integration/test_restart.f90)
 target_link_libraries(test_restart grass_lib)
 add_test(NAME test_restart COMMAND test_restart
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-set_tests_properties(test_restart PROPERTIES TIMEOUT 120 FIXTURES_REQUIRED OutputDirs)
+set_tests_properties(test_restart PROPERTIES
+  TIMEOUT 120
+  FIXTURES_REQUIRED OutputDirs
+  ENVIRONMENT "GRASS_TIMING=0;GRASS_E_CENTER=0.8e15")
