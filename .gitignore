@@ -57,3 +57,6 @@ build-debug/
 build-sanitizer/
 !CMakeLists.txt
 !tests/CMakeLists.txt
+
+# academic papers (local reference only)
+papers/
