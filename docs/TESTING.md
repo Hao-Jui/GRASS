@@ -22,7 +22,7 @@ ctest --test-dir build -R test_eos --output-on-failure
 
 CI runs the full suite on every push to `dev` / `main` in three
 configurations (release, debug, sanitizer); see
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml).
 
 ---
 
