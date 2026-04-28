@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-make clean
-make -j8 #> build.log 2>&1
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j8
 
-./build/bin/a.out
+./build/grass

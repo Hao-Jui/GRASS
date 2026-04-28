@@ -1,5 +1,6 @@
 module spin_updates_mod
-  use, intrinsic :: iso_fortran_env, only: wp => real64
+  use precision_mod, only: wp
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_nan
   implicit none
   private
   public :: update_equatorial_radius, update_angular_velocity, update_eos_and_velocity, reset_uryu_peak_cache
@@ -31,7 +32,7 @@ contains
 
     if (r_ratio /= r_ratio_prev) then
       r_ratio_prev = r_ratio
-      s_p_cached = r_ratio**(1.0_wp/dble(s_pwr)) / (1.0_wp + r_ratio**(1.0_wp/dble(s_pwr)))
+      s_p_cached = r_ratio**(1.0_wp/real(s_pwr, wp)) / (1.0_wp + r_ratio**(1.0_wp/real(s_pwr, wp)))
     end if
 
     call interp(s_gp, sphi(:,MDIV), SDIV, s_p_cached, sphi_pole_h   )
@@ -54,7 +55,7 @@ contains
     r_e_new = sqrt( r_e_new_sq )
     dif = abs(r_e_old - r_e_new) / r_e_new
 
-    if (r_e_new / r_e_old > 2 .or. isnan(r_e_new) ) then
+    if (r_e_new / r_e_old > 2 .or. ieee_is_nan(r_e_new) ) then
       write(*,"(a,es22.14)") " r_e_old        :", r_e_old
       write(*,"(a,es22.14)") " r_e_new        :", r_e_new
       write(*,"(a,es22.14)") " grgr           :", grgr
@@ -73,7 +74,7 @@ contains
       write(*,"(a,es22.14)") " s_p_cached     :", s_p_cached
       write(*,"(a,es22.14)") " r_ratio        :", r_ratio
       if (has_scalar) write(*,"(a,es22.14)") " B_coup         :", B_coup
-      stop 'r_e cannot be found.'
+      error stop 'r_e cannot be found.'
     endif
   end subroutine update_equatorial_radius
 
@@ -85,7 +86,7 @@ contains
     use rotation_law_mod, only: diff_rotation_const_j, rotation_law_const_j, &
                                 diff_rotation_uryu, rotation_law_uryu, &
                                 cache_uryu_ab, ctx_exp2re2rho
-    use brent_mod, only : find_omege_e, zbrent_rot
+    use brent_mod, only : find_omega_e, zbrent_rot
     real(wp), intent(in) :: r_e_new, gama_pole_h, rho_pole_h, gama_equator_h, rho_equator_h
     real(wp), intent(in) :: sphi_pole_h, sphi_equator_h, ww_equator_h
     real(wp) :: metric_diff, term_in_Omega_h
@@ -112,7 +113,7 @@ contains
         write(*,"('Solving for axis ratio: ', f12.5)") r_ratio
         write(*,"(10A15)") "gama_pole", "rho_pole", "gama_equator", "rho_equator", "sphi_pole", "sphi_equator"
         write(*,"(10es15.3)") gama_pole_h, rho_pole_h, gama_equator_h, rho_equator_h, sphi_pole_h, sphi_equator_h
-        stop "Omega can't be found; Line 99 of spin helper"
+        error stop "Omega can't be found; Line 99 of spin helper"
       endif
 
       select case(trim(solver_type))
@@ -123,7 +124,7 @@ contains
       case("uryu")
         call uryu_rotation(re2_val)
       case default
-        stop "Unknown solver type"
+        error stop "Unknown solver type"
       end select
     end associate
   contains
@@ -132,7 +133,7 @@ contains
       real(wp) :: guess, term_omega_diff
 
       guess = Omega_e * GUESS_FACTOR
-      call find_omege_e(guess, r_e_new, rho_equator_h, gama_equator_h, &
+      call find_omega_e(guess, r_e_new, rho_equator_h, gama_equator_h, &
                       ww_equator_h, rho_pole_h, gama_pole_h, TOLERANCE_ROOT, Omega_e, diff_rotation_const_j)
 
       term_omega_diff = abs(Omega_e - ww_equator_h)
@@ -166,7 +167,7 @@ contains
       Fmax_h = FMAX_INITIAL
       do while(abs(diff_Fmax) > TOLERANCE_FMAX)
         guess = Omega_e
-        call find_omege_e(guess, r_e_new, rho_equator_h, gama_equator_h, ww_equator_h, &
+        call find_omega_e(guess, r_e_new, rho_equator_h, gama_equator_h, ww_equator_h, &
                         rho_pole_h, gama_pole_h, TOLERANCE_ROOT, Fa, diff_rotation_uryu)
         Omega_e = Fa
         F_equator_h = (Omega_e - ww_equator_h) / ( exp_term_eq - (Omega_e - ww_equator_h)**2 )
@@ -272,14 +273,14 @@ contains
 
     if (abs(r_ratio - 1.0_wp) < epsilon(r_ratio)) then
       velocity_sq = 0.0_wp
-      enthalpy = enthalpy_min + 0.5e0_wp * re2 * &
+      enthalpy = enthalpy_min + 0.5_wp * re2 * &
                ( gama_pole_h + rho_pole_h - gama - rho + ( sphi**2 - sphi_pole_h**2 ) * B_coup / 2.0_wp )
     else
       velocity_sq = ((Omg - ww) * sgp_term_2d_cache_arg * sin_theta_2d_cache_arg * exp(-rho * re2))**2
       where (velocity_sq > 1.0_wp) velocity_sq = 0.0_wp
-      enthalpy = enthalpy_min + 0.5e0_wp * ( &
+      enthalpy = enthalpy_min + 0.5_wp * ( &
             re2 * ( gama_pole_h + rho_pole_h - gama - rho + ( sphi**2 - sphi_pole_h**2 ) * B_coup / 2.0_wp ) &
-            - log( max(1.e-300_wp, 1.0_wp-velocity_sq) )  )
+            - log( max(1.e-30_wp, 1.0_wp-velocity_sq) )  )
     end if
 
     if (timing) then
@@ -289,7 +290,7 @@ contains
     s_active_max = count(s_gp <= s_e)
 
     if ( trim(solver_type) == "const_j" ) then
-      enthalpy = enthalpy + 0.5e0_wp * A_diff**2 * (Omg - Omega_c)**2
+      enthalpy = enthalpy + 0.5_wp * A_diff**2 * (Omg - Omega_c)**2
     elseif ( trim(solver_type) == "uryu" ) then
       if (s_active_max < SDIV) F_j(s_active_max+1:SDIV,:) = 0.0_wp
       do m = 1, MDIV

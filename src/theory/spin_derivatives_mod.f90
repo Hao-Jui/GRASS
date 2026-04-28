@@ -1,19 +1,10 @@
 module spin_derivatives_mod
-  use, intrinsic :: iso_fortran_env, only: wp => real64
+  use precision_mod, only: wp
   use para_mod, only: r_ratio
+  use lapack_interfaces_mod, only: dgemm
   implicit none
   private
   public :: deriv_s_vec, deriv_m_vec, deriv_sm_vec, deriv_s_sub, deriv_m_sub
-
-  interface
-    subroutine dgemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc)
-      character(len=1), intent(in) :: transa, transb
-      integer, intent(in) :: m, n, k, lda, ldb, ldc
-      double precision, intent(in) :: alpha, beta
-      double precision, intent(in) :: a(lda,*), b(ldb,*)
-      double precision, intent(inout) :: c(ldc,*)
-    end subroutine dgemm
-  end interface
 
 contains
 
@@ -63,8 +54,8 @@ contains
     use para_mod, only : SDIV, MDIV, DM, angular_collocation, COLLOCATION_UNI, D_mu_t
     real(wp), dimension(SDIV,MDIV), intent(in)  :: f
     real(wp), dimension(SDIV,MDIV), intent(out) :: df_dm
-    if (abs(r_ratio - 1.e0_wp) < epsilon(r_ratio)) then
-      df_dm = 0.e0_wp
+    if (abs(r_ratio - 1._wp) < epsilon(r_ratio)) then
+      df_dm = 0._wp
       return
     end if
     if (angular_collocation /= COLLOCATION_UNI) then
@@ -73,16 +64,16 @@ contains
     end if
     if (MDIV < 5) then
       df_dm(:,1) = (f(:,2) - f(:,1)) / DM
-      if (MDIV > 2) df_dm(:,2:MDIV-1) = (f(:,3:MDIV) - f(:,1:MDIV-2)) / (2.e0_wp * DM)
+      if (MDIV > 2) df_dm(:,2:MDIV-1) = (f(:,3:MDIV) - f(:,1:MDIV-2)) / (2._wp * DM)
       df_dm(:,MDIV) = (f(:,MDIV) - f(:,MDIV-1)) / DM
       return
     end if
 
-    df_dm(:,1) = (-25.e0_wp*f(:,1)+48.e0_wp*f(:,2)-36.e0_wp*f(:,3)+16.e0_wp*f(:,4)-3.e0_wp*f(:,5)) / (12.e0_wp*DM)
-    df_dm(:,2) = ( -3.e0_wp*f(:,1)-10.e0_wp*f(:,2)+18.e0_wp*f(:,3)-6.e0_wp*f(:,4)+f(:,5)) / (12.e0_wp*DM)
-    df_dm(:,MDIV-1) = (3.e0_wp*f(:,MDIV)+10.e0_wp*f(:,MDIV-1)-18.e0_wp*f(:,MDIV-2)+6.e0_wp*f(:,MDIV-3)-f(:,MDIV-4)) / (12.e0_wp*DM)
-    df_dm(:,MDIV) = (25.e0_wp*f(:,MDIV)-48.e0_wp*f(:,MDIV-1)+36.e0_wp*f(:,MDIV-2)-16.e0_wp*f(:,MDIV-3)+3.e0_wp*f(:,MDIV-4)) / (12.e0_wp*DM)
-    df_dm(:,3:MDIV-2) = (-f(:,5:MDIV)+8.e0_wp*f(:,4:MDIV-1)-8.e0_wp*f(:,2:MDIV-3)+f(:,1:MDIV-4)) / (12.e0_wp*DM)
+    df_dm(:,1) = (-25._wp*f(:,1)+48._wp*f(:,2)-36._wp*f(:,3)+16._wp*f(:,4)-3._wp*f(:,5)) / (12._wp*DM)
+    df_dm(:,2) = ( -3._wp*f(:,1)-10._wp*f(:,2)+18._wp*f(:,3)-6._wp*f(:,4)+f(:,5)) / (12._wp*DM)
+    df_dm(:,MDIV-1) = (3._wp*f(:,MDIV)+10._wp*f(:,MDIV-1)-18._wp*f(:,MDIV-2)+6._wp*f(:,MDIV-3)-f(:,MDIV-4)) / (12._wp*DM)
+    df_dm(:,MDIV) = (25._wp*f(:,MDIV)-48._wp*f(:,MDIV-1)+36._wp*f(:,MDIV-2)-16._wp*f(:,MDIV-3)+3._wp*f(:,MDIV-4)) / (12._wp*DM)
+    df_dm(:,3:MDIV-2) = (-f(:,5:MDIV)+8._wp*f(:,4:MDIV-1)-8._wp*f(:,2:MDIV-3)+f(:,1:MDIV-4)) / (12._wp*DM)
   end subroutine deriv_m_sub
 
   function deriv_sm_vec(f) result(df_dsm)

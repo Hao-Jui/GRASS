@@ -22,7 +22,7 @@ subroutine MRcurve
   call initialize_starting_model()
   
   rho0 = n0_at_h(h_center); mass_prev = mass
-  r_ratio  = 1.e0_wp
+  r_ratio  = 1._wp
 
   it = 0; output = .true.; if (ascending) h_center = h_center / 1.005_wp
   write(*,"(A5,7A15)") "Iter", "mass density", "ADM mass", "MoI", "Love", "Q bar", "varphi", "Donut"
@@ -85,7 +85,7 @@ contains
     open(newunit=unit, file=trim(filename), access='append', action='write', iostat=ios)
     if (ios /= 0) then
       write(*,'(A,I0,3X,A)') 'ERROR: Cannot open output file. IOSTAT = ', ios, trim(filename)
-      stop 1829
+      error stop 1829
     end if
     write(unit,"(99es18.9e3)") &
             ee/(C * C * KSCALE), rho0*MB/n_sat,    & ! 1-2

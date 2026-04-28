@@ -42,21 +42,21 @@ contains
     grad_sphi    = op%grad(sphi)
     grad_alp     = op%grad(alpha)
 
-    ricci_lap = op%lap2(alpha) + 0.5e0_wp * op%laplacian(logPsi4) !op%laplacian(alpha + 0.5e0_wp * logPsi4)
-    ricci_scal = 0.25e0_wp * op%scal(grad_logPsi4, grad_logPsi4) + 0.5e0_wp * op%divr(grad_logPsi4%r)
+    ricci_lap = op%lap2(alpha) + 0.5_wp * op%laplacian(logPsi4) !op%laplacian(alpha + 0.5_wp * logPsi4)
+    ricci_scal = 0.25_wp * op%scal(grad_logPsi4, grad_logPsi4) + 0.5_wp * op%divr(grad_logPsi4%r)
     ricci = -2.0_wp * gurr * (ricci_lap + ricci_scal )
 
     if (has_scalar .and. abs(B_coup) > 1.e-30_wp) then
       dphidphi = op%scal(grad_sphi, grad_sphi) * gurr
-      Vphi     = 0.5e0_wp * mphi_r * sphi**2 !/ B_coup
+      Vphi     = 0.5_wp * mphi_r * sphi**2 !/ B_coup
     else
       dphidphi = 0.0_wp
       Vphi     = 0.0_wp
     end if
 
-    !KK = 0.5e0_wp * gurr / psi4 / max(lapsesq, 1.e-30_wp) * op%scal(grad_ww, grad_ww) &
+    !KK = 0.5_wp * gurr / psi4 / max(lapsesq, 1.e-30_wp) * op%scal(grad_ww, grad_ww) &
     !   / max(r2_2d, 1.e-30_wp) / max(m1_2d, 1.e-30_wp)
-    KK = 0.5e0_wp * gurr * exp(-2.0_wp * rho) * r2_2d * m1_2d * op%scal(grad_ww, grad_ww)
+    KK = 0.5_wp * gurr * exp(-2.0_wp * rho) * r2_2d * m1_2d * op%scal(grad_ww, grad_ww)
     ham = ricci + KK - 16.0_wp * pi * rhoH * acoup4 - 2.0_wp * (dphidphi + 2.0_wp * Vphi)
 
     if (angular_collocation /= COLLOCATION_UNI) then

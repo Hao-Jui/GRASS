@@ -20,7 +20,7 @@ module cheb_mod
     real(wp) :: coeff_tail_max_ratio = 0.0_wp
   end type cheb_fit_stats
   
-  real(wp), parameter, private :: PI = acos(-1.e0_wp)
+  real(wp), parameter, private :: PI = acos(-1._wp)
   integer(c_int), parameter, private :: fftw_redft00 = 3_c_int
   interface
     function fftw_plan_r2r_1d(n, in, out, kind, flags) bind(C, name="fftw_plan_r2r_1d") result(plan)
@@ -46,22 +46,13 @@ contains
   ! nodes in [a,b].  If the nodes are Chebyshev-Lobatto, use FFTW DCT-I.
   ! Otherwise fall back to a least-squares fit.
   subroutine cheb_std_base(n_deg, n_pts, x_nodes, h_nodes, a, b, coeffs, stats)
+    use lapack_interfaces_mod, only: dgels
     integer, intent(in)  :: n_deg, n_pts
     real(wp), intent(in)  :: x_nodes(n_pts), h_nodes(n_pts), a, b
     real(wp), intent(out) :: coeffs(0:n_deg)
     type(cheb_fit_stats), intent(out), optional :: stats
     real(wp), allocatable :: xi(:), T(:,:), rhs(:,:), work(:)
     integer :: k, info, lwork
-    interface
-      subroutine dgels(trans, m, n, nrhs, a, lda, b, ldb, work, lwork, info)
-        import :: wp
-        character(len=1), intent(in)    :: trans
-        integer, intent(in)             :: m, n, nrhs, lda, ldb, lwork
-        integer, intent(out)            :: info
-        real(wp), intent(inout)         :: a(lda,*), b(ldb,*)
-        real(wp), intent(inout)         :: work(*)
-      end subroutine dgels
-    end interface
 
     if (nodes_are_cheb_lobatto(n_deg, n_pts, x_nodes, a, b)) then
       call cheb_coeffs_dct1(n_deg, h_nodes, coeffs)
@@ -71,12 +62,12 @@ contains
 
     allocate(xi(n_pts), T(n_pts, 0:n_deg), rhs(n_pts, 1))
 
-    xi = 2.e0_wp*(x_nodes - a)/(b - a) - 1.e0_wp
+    xi = 2._wp*(x_nodes - a)/(b - a) - 1._wp
 
-    T(:,0) = 1.e0_wp
+    T(:,0) = 1._wp
     if (n_deg >= 1) T(:,1) = xi
     do k = 2, n_deg
-      T(:,k) = 2.e0_wp*xi*T(:,k-1) - T(:,k-2)
+      T(:,k) = 2._wp*xi*T(:,k-1) - T(:,k-2)
     end do
 
     ! Workspace query
@@ -92,7 +83,7 @@ contains
     call dgels('N', n_pts, n_deg+1, 1, T, n_pts, rhs, n_pts, work, lwork, info)
     if (info /= 0) then
       write(*,*) 'cheb_std_base: dgels failed, info =', info
-      coeffs = 0.e0_wp
+      coeffs = 0._wp
     else
       coeffs = rhs(1:n_deg+1, 1)
     end if
@@ -113,9 +104,9 @@ contains
       return
     end if
 
-    half_width = 0.5e0_wp * (b - a)
-    center = 0.5e0_wp * (a + b)
-    tol = 100.e0_wp * epsilon(1.e0_wp) * max(1.e0_wp, abs(a), abs(b))
+    half_width = 0.5_wp * (b - a)
+    center = 0.5_wp * (a + b)
+    tol = 100._wp * epsilon(1._wp) * max(1._wp, abs(a), abs(b))
 
     do j = 0, n_deg
       x_expected = center + half_width * cos(pi * real(j, wp) / real(n_deg, wp))
@@ -144,8 +135,8 @@ contains
     call fftw_destroy_plan(plan)
 
     coeffs = work_out / real(n_deg, wp)
-    coeffs(0) = 0.5e0_wp * coeffs(0)
-    coeffs(n_deg) = 0.5e0_wp * coeffs(n_deg)
+    coeffs(0) = 0.5_wp * coeffs(0)
+    coeffs(n_deg) = 0.5_wp * coeffs(n_deg)
 
     deallocate(work_in, work_out)
   end subroutine cheb_coeffs_dct1
@@ -158,11 +149,11 @@ contains
     integer :: i, j
 
     do i = 0, N
-      x(i) = cos( pi * dble(i) / dble(N) )
+      x(i) = cos( pi * real(i, wp) / real(N, wp) )
       if (i == 0 .or. i == N) then
-        c(i) = 2.e0_wp
+        c(i) = 2._wp
       else
-        c(i) = 1.e0_wp
+        c(i) = 1._wp
       end if
     end do
 
@@ -170,14 +161,14 @@ contains
       do j = 0, N
         if (i == j) then
           if (i == 0) then
-            D(i,j) = ( 2.e0_wp * N**2 + 1.e0_wp ) / 6.e0_wp
+            D(i,j) = ( 2._wp * N**2 + 1._wp ) / 6._wp
           else if (i == N) then
-            D(i,j) = -( 2.e0_wp * N**2 + 1.e0_wp ) / 6.e0_wp
+            D(i,j) = -( 2._wp * N**2 + 1._wp ) / 6._wp
           else
-            D(i,j) = -x(i) / ( 2.e0_wp * ( 1.e0_wp - x(i)**2 ) )
+            D(i,j) = -x(i) / ( 2._wp * ( 1._wp - x(i)**2 ) )
           end if
         else
-          factor = (c(i)/c(j)) * (-1.e0_wp)**(i+j)
+          factor = (c(i)/c(j)) * (-1._wp)**(i+j)
           D(i,j) = factor / (x(i) - x(j))
         end if
       end do
@@ -193,11 +184,11 @@ contains
     real(wp) :: xi, bk, bk1, bk2
     integer  :: k
 
-    xi  = 2.e0_wp*(x - a)/(b - a) - 1.e0_wp
-    bk1 = 0.e0_wp
-    bk2 = 0.e0_wp
+    xi  = 2._wp*(x - a)/(b - a) - 1._wp
+    bk1 = 0._wp
+    bk2 = 0._wp
     do k = n, 1, -1
-      bk  = coeffs(k) + 2.e0_wp*xi*bk1 - bk2
+      bk  = coeffs(k) + 2._wp*xi*bk1 - bk2
       bk2 = bk1
       bk1 = bk
     end do

@@ -1,4 +1,5 @@
 module spin_integration_mod
+  use precision_mod, only: wp
   use iso_fortran_env, only: int32
   use para_mod, only: wp, SDIV, MDIV, LMAX, s_gp, mu, sin_theta, s_pwr, &
                       rho, gama, alpha, ww, omg, sphi, &
@@ -14,25 +15,10 @@ module spin_integration_mod
   use toolkit_mod, only: bessel_even_tables
   use spin_derivatives_mod, only: deriv_s_sub, deriv_m_sub
   use spin_workspace_mod
+  use lapack_interfaces_mod, only: dgemm, dpbsv
   implicit none
   private
-  public :: get_all_targets, update_alpha_potential, output_helper
-
-  interface
-    subroutine dgemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc)
-      character(len=1), intent(in) :: transa, transb
-      integer, intent(in) :: m, n, k, lda, ldb, ldc
-      double precision, intent(in) :: alpha, beta
-      double precision, intent(in) :: a(lda,*), b(ldb,*)
-      double precision, intent(inout) :: c(ldc,*)
-    end subroutine dgemm
-    subroutine dpbsv(uplo, n, kd, nrhs, ab, ldab, b, ldb, info)
-      character(len=1), intent(in) :: uplo
-      integer, intent(in) :: n, kd, nrhs, ldab, ldb
-      double precision, intent(inout) :: ab(ldab,*), b(ldb,*)
-      integer, intent(out) :: info
-    end subroutine dpbsv
-  end interface
+  public :: get_all_targets, update_alpha_potential, output_helper, write_restart_file
 
 contains
 
@@ -154,7 +140,7 @@ contains
 
       esm = energy(:,m) * Ac4
       psm = pressure(:,m) * Ac4
-      vphi = sphi_col**2 * mphi_r * 0.5e0_wp * e2ar2
+      vphi = sphi_col**2 * mphi_r * 0.5_wp * e2ar2
       scal_p = sphi_col * egsm
       vsq = velocity_sq(:,m)
       one_plus_vsq = 1.0_wp + vsq
@@ -168,28 +154,28 @@ contains
       dg_m_sc = m1 * gm
 
       rho_bracket = src_common &
-        - dg_s_sc * (0.5e0_wp * dg_s_sc + 1.0_wp) &
-        - gm * (0.5e0_wp * dg_m_sc - mum)
+        - dg_s_sc * (0.5_wp * dg_s_sc + 1.0_wp) &
+        - gm * (0.5_wp * dg_m_sc - mum)
 
       S_metric_rho(:,m) = egsm * ( &
           8.0_wp * pi * e2alpha_s2 * matter_sum * one_plus_vsq * vel_fac &
         + s2_geom * m1 * e_rsm2 * (s1_sq_geom * wws**2 + m1 * wwm**2) &
         + dg_s_sc - mum * gm &
-        + rho_col * 0.5e0_wp * rho_bracket )
+        + rho_col * 0.5_wp * rho_bracket )
 
       S_metric_gama(:,m) = egsm * (src_common &
-        + gama_col * 0.5e0_wp * (src_common - 0.5e0_wp * dg_s_sc**2 &
-        - 0.5e0_wp * dg_m_sc * gm) )
+        + gama_col * 0.5_wp * (src_common - 0.5_wp * dg_s_sc**2 &
+        - 0.5_wp * dg_m_sc * gm) )
 
       if (is_spherical()) then
         S_metric_omega(:,m) = 0.0_wp
       else
         omega_matter = (one_plus_vsq * esm + 2.0_wp * vsq * psm) * vel_fac
         omega_bracket = -8.0_wp * pi * e2alpha_s2 * omega_matter &
-          - s1_geom * (2.0_wp * rs + 0.5e0_wp * gs) &
-          + mum * (2.0_wp * rm + 0.5e0_wp * gm) &
-          + 0.25e0_wp * s1_sq_geom * (4.0_wp * rs**2 - gs**2) &
-          + 0.25e0_wp * m1 * (4.0_wp * rm**2 - gm**2) &
+          - s1_geom * (2.0_wp * rs + 0.5_wp * gs) &
+          + mum * (2.0_wp * rm + 0.5_wp * gm) &
+          + 0.25_wp * s1_sq_geom * (4.0_wp * rs**2 - gs**2) &
+          + 0.25_wp * m1 * (4.0_wp * rm**2 - gm**2) &
           - m1 * e_rsm2 * (sgp4_geom * wws**2 + s2_geom * m1 * wwm**2) &
           - 2.0_wp * vphi * s2_geom
 
@@ -202,8 +188,8 @@ contains
         sphi_src = -2.0_wp * pi * B_coup * matter_trace + mphi_r
         S_metric_sphi(:,m) = -r_e_new**2 * s2_geom * scal_p * mphi_r &
           + e2alpha_s2 * scal_p * sphi_src &
-          + scal_p * (s1_one_minus_s_geom * gs + s1_sq_geom * (0.5e0_wp * gss + 0.25e0_wp * gs**2) &
-          + m1 * (0.5e0_wp * gmm + 0.25e0_wp * gm**2) - mum * gm)
+          + scal_p * (s1_one_minus_s_geom * gs + s1_sq_geom * (0.5_wp * gss + 0.25_wp * gs**2) &
+          + m1 * (0.5_wp * gmm + 0.25_wp * gm**2) - mum * gm)
       else
         sphi_src = -2.0_wp * pi * B_coup * matter_trace
         S_metric_sphi(:,m) = -s1_sq_geom * gs * ss - dg_m_sc * sm &
@@ -506,7 +492,7 @@ contains
     alpha(:,:) = 0.0_wp
     if (is_spherical()) return
 
-    da_dm(1,:) = 0.0e0_wp
+    da_dm(1,:) = 0.0_wp
     call deriv_m_sub(dg_s_cache, d_gama_sm)
     if (timing) then; call cpu_time(t1); dt(1) = t1 - t0; call cpu_time(t0); end if
 
@@ -555,7 +541,7 @@ contains
     if (timing) then; call cpu_time(t1); dt(2) = t1 - t0; call cpu_time(t0); end if
 
     do m = 1, MDIV-1
-      alpha(:,m+1) = alpha(:,m) + (mu(m+1) - mu(m)) * ( da_dm(:,m+1) + da_dm(:,m) ) * 0.5e0_wp
+      alpha(:,m+1) = alpha(:,m) + (mu(m+1) - mu(m)) * ( da_dm(:,m+1) + da_dm(:,m) ) * 0.5_wp
     enddo
     if (timing) then; call cpu_time(t1); dt(3) = t1 - t0; call cpu_time(t0); end if
 
@@ -578,7 +564,7 @@ contains
     end if
     if (any(alpha .ge. 300.0)) then
       write(*,*) "Error: Alpha fails in at least one row."
-      stop "alpha fails"
+      error stop "alpha fails"
     end if
   end subroutine update_alpha_potential
 
@@ -633,10 +619,10 @@ contains
     real(wp) :: r_inf, nu_monopole(SDIV)
     nu_monopole = -0.5_wp * D2_rho(:,1) - (1.0_wp / pi) * D2_gama(:,2)
 
-    r_inf = r_e * sqrt(KAPPA) * (s_gp(SDIV - 1) / ( 1.e0_wp - s_gp(SDIV - 1) ))**s_pwr
-    M2 = - D2_metric_rho  (SDIV-1,1+1 ) / 2.e0_wp * r_inf**3 * ( C**2 / G / Mass )**3
-    S3 = - D2_metric_omega(SDIV-1,2+1 ) / 2.e0_wp * r_inf**5 * ( C**2 / G / Mass )**4 / sqrt(KAPPA)
-    M4 =   D2_metric_rho  (SDIV-1,2+1 ) / 2.e0_wp * r_inf**5 * ( C**2 / G / Mass )**5
+    r_inf = r_e * sqrt(KAPPA) * (s_gp(SDIV - 1) / ( 1._wp - s_gp(SDIV - 1) ))**s_pwr
+    M2 = - D2_metric_rho  (SDIV-1,1+1 ) / 2._wp * r_inf**3 * ( C**2 / G / Mass )**3
+    S3 = - D2_metric_omega(SDIV-1,2+1 ) / 2._wp * r_inf**5 * ( C**2 / G / Mass )**4 / sqrt(KAPPA)
+    M4 =   D2_metric_rho  (SDIV-1,2+1 ) / 2._wp * r_inf**5 * ( C**2 / G / Mass )**5
     
     ! alternative method 
     !M2 = - cheb_r_coeff(D2_rho  (:,1+1), 3) / 2.0_wp * ( C**2 / G / Mass )**3
@@ -663,7 +649,7 @@ contains
     use para_mod, only: run_task, MRbuild, donut
     use donu_mod, only: donutization_number
     real(wp), intent(in) :: D2_rho(SDIV,LMAX+1), D2_omega(SDIV,LMAX+1), D2_gama(SDIV,LMAX+1)
-    real(wp) :: radial_geom(SDIV), volume_density(SDIV,MDIV)
+    real(wp) :: radial_geom(SDIV), volume_density(SDIV,MDIV), baryon_dens(SDIV,MDIV)
     real(wp) :: rho_0, t0, t1
     character(512) :: fname
     character(len=*), parameter :: restart_binary_path = "./Res/res.rst"
@@ -675,9 +661,27 @@ contains
 
     call write_moment_tail(D2_rho, D2_omega, D2_gama)
 
-    radial_geom = radial_quad_weights * dble(s_pwr) * (s_gp / (1.0_wp - s_gp))**(3*s_pwr - 1) / (1.0_wp - s_gp)**2
+    radial_geom = radial_quad_weights * real(s_pwr, wp) * (s_gp / (1.0_wp - s_gp))**(3*s_pwr - 1) / (1.0_wp - s_gp)**2
     volume_density = exp(2.0_wp * alpha + 0.5_wp * (gama - rho))
-    donut = donutization_number(sphi * sqrt(B_coup), volume_density, radial_geom, angular_quad_weights)
+    block
+      integer :: s_, m_
+      real(wp) :: n0_val, vel_safe
+      do s_ = 1, SDIV
+        do m_ = 1, MDIV
+          n0_val = n0_at_e(energy(s_, m_))
+          vel_safe = min(max(velocity_sq(s_, m_), 0.0_wp), 1.0_wp - 1.0e-12_wp)
+          if (n0_val > 0.0_wp) then
+            baryon_dens(s_, m_) = n0_val * MB * KSCALE * C**2 &
+                                * exp(-0.75_wp * sphi(s_, m_)**2 * B_coup) &
+                                / sqrt(1.0_wp - vel_safe)
+          else
+            baryon_dens(s_, m_) = 0.0_wp
+          end if
+        end do
+      end do
+    end block
+    donut = donutization_number(sphi * sqrt(B_coup), volume_density, baryon_dens, &
+                                radial_geom, angular_quad_weights)
 
     rho_0 = n0_at_e(energy(1,1)) * MB
     write(fname,"(A, A, A, f0.2, A, f0.3, A, es0.2e2, A,es0.2e2, A, es0.3e2, A, f0.3)") &
@@ -709,7 +713,7 @@ contains
     integer(int32) :: header_ints(6)
     real(wp) :: header_meta(5)
     real(wp), allocatable :: restart_data(:,:,:)
-    character(len=8), parameter :: restart_magic = "GRASSRST01"
+    character(len=*), parameter :: restart_magic = "GRASSRST01"
     integer(int32), parameter :: restart_format_version = 1_int32
     integer(int32), parameter :: restart_field_count = 10_int32
 

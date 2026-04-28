@@ -7,6 +7,7 @@ build/
 # Data / EOS
 data/
 *.dat
+!eos/*.dat
 logs/
 !eos/**/*.f90
 !eos/**/*.F90
@@ -45,3 +46,14 @@ venv/
 ENV/
 .ipynb_checkpoints
 .mypy_cache/
+libgrass.a
+tests/bin/
+.omc/
+.codesight/
+build-test/
+build.log
+build-cmake/
+build-debug/
+build-sanitizer/
+!CMakeLists.txt
+!tests/CMakeLists.txt

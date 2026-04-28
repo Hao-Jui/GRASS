@@ -1,4 +1,5 @@
 module rotation_solver_mod
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_nan
   use analysis_mod, only: mass_radius
   use precision_mod, only: wp
   use para_mod, only: active_theory, THEORY_GR, &
@@ -39,14 +40,14 @@ subroutine rotation_solver
   call reset_uryu_peak_cache()
   zero_scalar_mode = merge(.true., .false., active_theory == THEORY_GR)
   sqrt_B_coup = sqrt(B_coup)
-  dif = 1.e0_wp
+  dif = 1._wp
   n_of_it = 0
   r_e_new = r_e
   r_e_new_sq = r_e_new**2
 
-  if ( maxval(sphi*sqrt_B_coup) < 1.e-3_wp ) sphi = sphi * 10.e0_wp
-  if (zero_scalar_mode) sphi = 0.e0_wp
-  if ( any(isnan(sphi)) ) stop "NaN found in sphi"
+  if ( maxval(sphi*sqrt_B_coup) < 1.e-3_wp ) sphi = sphi * 10._wp
+  if (zero_scalar_mode) sphi = 0._wp
+  if ( any(ieee_is_nan(sphi)) ) stop "NaN found in sphi"
 
   call allocate_workspace
   if (trim(solver_type) == "uryu") call reset_uryu_peak_cache()
@@ -63,11 +64,11 @@ subroutine rotation_solver
     allocate(gama_prev_iter(SDIV,MDIV), source=gama)
     allocate(ww_prev_iter(SDIV,MDIV), source=ww)
     allocate(sphi_prev_iter(SDIV,MDIV), source=sphi)
-    drho_prev = -1.e0_wp; dgama_prev = -1.e0_wp; dww_prev = -1.e0_wp
-    dsphi_prev = -1.e0_wp; dre_prev = -1.e0_wp
+    drho_prev = -1._wp; dgama_prev = -1._wp; dww_prev = -1._wp
+    dsphi_prev = -1._wp; dre_prev = -1._wp
 
     do while( dif > 1.e-7_wp .or. n_of_it < 2 )
-      if (zero_scalar_mode) sphi = 0.e0_wp
+      if (zero_scalar_mode) sphi = 0._wp
       sphi_m = maxval( sphi(:,1) * sqrt_B_coup )
       call rescale_metric(r_e_new_sq)
 
@@ -96,7 +97,7 @@ subroutine rotation_solver
       call relaxation(target_rho, target_gama, target_ww, target_sphi, root_mphi_re, n_of_it, dif)
 
       ! --- Update metric potential (alpha) ---
-      if (abs(r_ratio - 1.e0_wp) < epsilon(r_ratio)) then
+      if (abs(r_ratio - 1._wp) < epsilon(r_ratio)) then
         call impose_rigid_rotation()
       else
         call update_alpha_potential(r_e_new)
@@ -160,9 +161,9 @@ subroutine rotation_solver
   r_e      = r_e_new
   Fmax_h   = maxval(F_j(:,1))
   if (zero_scalar_mode) then
-    sphi = 0.e0_wp
-    sphi_c = 0.e0_wp
-    sphi_m = 0.e0_wp
+    sphi = 0._wp
+    sphi_c = 0._wp
+    sphi_m = 0._wp
   else
     sphi_c = sphi(1,1) * sqrt_B_coup
     sphi_m = maxval( sphi(:,1) * sqrt_B_coup )
@@ -182,10 +183,10 @@ contains
 
   pure real(wp) function contraction_ratio(curr, prev) result(val)
     real(wp), intent(in) :: curr, prev
-    if (prev > 0.e0_wp) then
+    if (prev > 0._wp) then
       val = curr / prev
     else
-      val = -1.e0_wp
+      val = -1._wp
     end if
   end function contraction_ratio
 
@@ -193,7 +194,7 @@ contains
     implicit none
     real(wp), intent(in) :: factor
     real(wp) :: inv_factor, sqrt_factor
-    inv_factor = 1.e0_wp / factor
+    inv_factor = 1._wp / factor
     sqrt_factor = sqrt(factor)
 
     rho   = rho   * inv_factor
@@ -210,7 +211,7 @@ contains
     gama = spread(gama(:,1), dim=2, ncopies=MDIV)
     ww   = spread(ww(:,1),   dim=2, ncopies=MDIV)
     omg  = spread(omg(:,1),  dim=2, ncopies=MDIV)
-    alpha= spread( (gama(:,1) - rho(:,1)) * 0.5e0_wp, dim=2, ncopies=MDIV )
+    alpha= spread( (gama(:,1) - rho(:,1)) * 0.5_wp, dim=2, ncopies=MDIV )
   end subroutine impose_rigid_rotation
 
 end subroutine rotation_solver

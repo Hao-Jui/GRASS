@@ -2,16 +2,16 @@ subroutine set_disk(r_eq)
   use, intrinsic :: ieee_arithmetic, only: ieee_is_nan
   use eos_mod, only: p_at_h, e_at_h
   use toolkit_mod, only: interp
-  use para_mod, only: SDIV, MDIV, res, s_pwr, &
+  use para_mod, only: wp, SDIV, MDIV, res, s_pwr, &
                       s_gp, mu, s_inner, j_disk, &
                       rho, gama, ww, omg, &
                       enthalpy, enthalpy_min, pressure, energy, velocity_sq
   implicit none
-  real(8), intent(in) :: r_eq
-  real(8), dimension(SDIV) :: gama_mu_0, rho_mu_0, ww_mu_0
-  real(8) :: rho_in, gama_in, ww_in, w_0, ww2, hh, m1
-  real(8) :: tmp, u_phi
-  real(8) :: r_h, r_in
+  real(wp), intent(in) :: r_eq
+  real(wp), dimension(SDIV) :: gama_mu_0, rho_mu_0, ww_mu_0
+  real(wp) :: rho_in, gama_in, ww_in, w_0, ww2, hh, m1
+  real(wp) :: tmp, u_phi
+  real(wp) :: r_h, r_in
   integer :: s, m
   logical :: set = .false.
 
@@ -24,35 +24,35 @@ subroutine set_disk(r_eq)
   call interp(s_gp,   ww_mu_0, SDIV, s_inner,   ww_in)
 
   ! > equating u_phi at s_inner with j-disk
-  r_in = ( s_inner/(1.d0-s_inner) )**s_pwr
-  ww2  = (r_eq / j_disk)**2 * exp(rho_in+gama_in) + exp(2.d0*rho_in) / r_in**2
+  r_in = ( s_inner/(1._wp-s_inner) )**s_pwr
+  ww2  = (r_eq / j_disk)**2 * exp(rho_in+gama_in) + exp(2._wp*rho_in) / r_in**2
   w_0  = ww_in - sqrt( ww2 ) ! hat; minus sign may be changed to plus
 
   do s = res+1, SDIV
     if ( s_gp(s) > s_inner ) then
-      r_h = ( s_gp(s)/(1.d0-s_gp(s)) )**s_pwr
+      r_h = ( s_gp(s)/(1._wp-s_gp(s)) )**s_pwr
       do m = 1, MDIV
-          m1 = 1.d0 - mu(m)**2
+          m1 = 1._wp - mu(m)**2
           ! u_phi here is actually u_phi / r_e
           tmp = (ww(s,m)-w_0)**2 / exp(rho(s,m)+gama(s,m)) - exp(rho(s,m)-gama(s,m)) / m1 / r_h**2
           hh  = tmp / ( (ww_in-w_0)**2 / exp(rho_in+gama_in) - exp(rho_in-gama_in) / r_in**2 )
           enthalpy (s,m) = log( sqrt(hh) )
 
-          if ( (enthalpy(s,m) < 0.d0) .or. ieee_is_nan(enthalpy(s,m)) ) then
+          if ( (enthalpy(s,m) < 0._wp) .or. ieee_is_nan(enthalpy(s,m)) ) then
             enthalpy(s,m) = enthalpy_min
           endif
 
           if ( enthalpy(s,m) <= enthalpy_min ) then
-            pressure(s,m) = 0.d0
-            energy  (s,m) = 0.d0
-            velocity_sq(s,m) = 0.d0
-            omg(s,m) = 0.d0
+            pressure(s,m) = 0._wp
+            energy  (s,m) = 0._wp
+            velocity_sq(s,m) = 0._wp
+            omg(s,m) = 0._wp
           else
-            u_phi = 1.d0 / sqrt( tmp )
+            u_phi = 1._wp / sqrt( tmp )
             tmp   = exp(gama(s,m)-rho(s,m)) * r_h**2 * m1
             velocity_sq(s,m) = u_phi**2 / ( tmp + u_phi**2 )
             
-            if ( velocity_sq(s,m) > 1.d0 .or. velocity_sq(s,m) < 0.d0 ) velocity_sq(s,m) = 0.d0
+            if ( velocity_sq(s,m) > 1._wp .or. velocity_sq(s,m) < 0._wp ) velocity_sq(s,m) = 0._wp
 
             omg(s,m) = ww(s,m) + exp(rho(s,m)) * sqrt( velocity_sq(s,m) / m1 ) / r_h
             pressure(s,m) = p_at_h( enthalpy(s,m) )

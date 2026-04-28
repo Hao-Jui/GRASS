@@ -1,0 +1,44 @@
+FC ?= gfortran
+FFLAGS ?=
+LIBGRASS ?= ../libgrass.a
+LIBS ?= -llapack -lblas -lfftw3
+BINDIR := bin
+
+UNIT_TESTS := test_ad test_spline test_spectral test_brent test_eos
+INTEG_TESTS := test_gr_uniform test_gr_constj test_gr_uryu test_st_uniform test_st_uniform_r07
+RESTART_TEST := test_restart
+
+.PHONY: unit integration sanitizer
+
+unit: $(UNIT_TESTS)
+
+integration: $(INTEG_TESTS) $(RESTART_TEST)
+
+sanitizer: test_gr_uniform
+	@echo "Sanitizer build passed."
+
+$(filter-out test_spline,$(UNIT_TESTS)): %: unit/%.f90 unit/test_utils.f90
+	@mkdir -p $(BINDIR)
+	@$(FC) $(FFLAGS) -o $(BINDIR)/$@ unit/test_utils.f90 unit/$*.f90 $(LIBGRASS) $(LIBS)
+	@printf "  $@: " && cd .. && timeout 10 tests/$(BINDIR)/$@
+
+test_spline: unit/test_spline.f90 unit/test_utils.f90
+	@mkdir -p $(BINDIR)
+	@$(FC) $(FFLAGS) -o $(BINDIR)/$@ unit/test_utils.f90 unit/test_spline.f90 $(LIBGRASS) $(LIBS)
+	@printf "  test_spline: " && cd .. && timeout 10 tests/$(BINDIR)/test_spline
+
+$(INTEG_TESTS): %: integration/%.f90
+	@mkdir -p $(BINDIR)
+	@$(FC) $(FFLAGS) -o $(BINDIR)/$@ $< $(LIBGRASS) $(LIBS)
+	@cd .. && mkdir -p Cont Res && timeout 120 tests/$(BINDIR)/$@ > /dev/null 2>&1 \
+	  && bash tests/check_regression.sh Cont/properties.dat tests/reference/$@.ref \
+	  || (printf "  $@: FAIL\n" && exit 1)
+
+# Restart test: runs after all integration tests, reads whatever Res/res.rst exists.
+# Only checks convergence (exit code 0), not reference values — the restart source varies.
+$(RESTART_TEST): $(INTEG_TESTS) integration/test_restart.f90
+	@mkdir -p $(BINDIR)
+	@$(FC) $(FFLAGS) -o $(BINDIR)/test_restart integration/test_restart.f90 $(LIBGRASS) $(LIBS)
+	@printf "  test_restart: " && cd .. && mkdir -p Cont Res \
+	  && timeout 120 tests/$(BINDIR)/test_restart > /dev/null 2>&1 \
+	  && echo "PASS (convergence)" || (echo "FAIL" && exit 1)
