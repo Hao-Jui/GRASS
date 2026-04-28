@@ -273,7 +273,7 @@ If you use GRASS in published work, please cite:
 
 ```bibtex
 @software{grass,
-  author = {Wang, Hao-Jui},
+  author = {Kuan, Hao-Jui},
   title  = {GRASS: General Relativistic Axisymmetric Spacetime Solver},
   url    = {https://github.com/Hao-Jui/GRASS},
   year   = {2026}
