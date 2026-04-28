@@ -11,7 +11,8 @@ or Scalar–Tensor (ST) gravity. The code integrates the field equations on a
 compactified meridional grid, reads tabulated equations of state (EOS),
 and outputs diagnostic profiles that characterise the equilibrium model.
 
-- Latest release: `8a7b201`
+- Latest release: `66dfd4e`
+- v2: `8a7b201`
 - v1: `6139a9f`
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and
