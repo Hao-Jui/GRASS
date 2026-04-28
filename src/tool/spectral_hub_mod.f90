@@ -64,7 +64,7 @@ contains
     m = (n + 1) / 2
 
     do i = 1, m
-      z = cos(pi * (i - 0.25e0_wp) / (n + 0.5e0_wp))
+      z = cos(pi * (i - 0.25_wp) / (n + 0.5_wp))
       do iter = 1, max_newton_iter
         call legendre_sequence(n, z, pn, pnm1)
         call legendre_derivatives(n, z, pn, pnm1, dp, ddp)

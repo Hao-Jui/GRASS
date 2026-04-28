@@ -8,8 +8,9 @@ module exporter_mod
 contains
 
   subroutine initial_data_for_spec(file_name, var1, var2, var3, var4, var5, var6)
-    use para_mod, only : s_gp, mu, SDIV, MDIV, l_uni, ang_mom, mass_0, mass, &
-                         r_e, KAPPA, Omega_c, MSUN
+    use para_mod, only: s_gp, mu, SDIV, MDIV
+    use para_mod, only: KAPPA, MSUN, L_UNI
+    use para_mod, only: ang_mom, mass_0, mass, r_e, Omega_c
     implicit none
     character(*), intent(in) :: file_name
     real(wp), intent(in) :: var1(:,:), var2(:,:), var3(:,:), var4(:,:), var5(:,:), var6(:,:)
@@ -27,10 +28,10 @@ contains
                             "  AngM = ", ang_mom * l_uni**2 / K_km,         &
                             "   E = ", mass / MSUN * l_uni / sqrt(K_km)
     write(unit,"(2i12)") SDIV, MDIV
-    write(unit,"(2es21.12)") r_e * sqrt(KAPPA) / 1.d5 / sqrt(K_km), 1.0d0, &
-                            Omega_c * ( sqrt(K_km) / sqrt(KAPPA) ), 0.0d0
+    write(unit,"(2es21.12)") r_e * sqrt(KAPPA) / 1.e5_wp / sqrt(K_km), 1.0_wp, &
+                            Omega_c * ( sqrt(K_km) / sqrt(KAPPA) ), 0.0_wp
     do s = 1, SDIV
-      r_s = r_e * sqrt(KAPPA) / 1.d5 / sqrt(K_km) * s_gp(s) / (1.d0 - s_gp(s))
+      r_s = r_e * sqrt(KAPPA) / 1.e5_wp / sqrt(K_km) * s_gp(s) / (1._wp - s_gp(s))
       do m = 1, MDIV
         write(unit,"(4es22.12)") r_s, mu(m), var1(s,m), var2(s,m), &
                                 var3(s,m), var4(s,m), var5(s,m), var6(s,m)
@@ -40,9 +41,11 @@ contains
   end subroutine initial_data_for_spec
 
   subroutine initial_data_for_sacra_aei(filename)
-    use para_mod, only: SDIV, MDIV, s_pwr, r_e, KAPPA, energy, r_ratio, Omega_e, Omega_c, &
-                        C, alpha, gama, rho, ww, pressure, KSCALE, enthalpy, enthalpy_min, &
-                        velocity_sq, omg, sphi, B_coup, s_gp, mu, MB
+    use para_mod, only: SDIV, MDIV, s_pwr, s_gp, mu
+    use para_mod, only: KAPPA, C, KSCALE, MB
+    use para_mod, only: r_e, energy, r_ratio, Omega_e, Omega_c, &
+                          alpha, gama, rho, ww, pressure, enthalpy, &
+                          enthalpy_min, velocity_sq, omg, sphi, B_coup
     use eos_mod, only: n0_at_e
     implicit none
     character(len=*), intent(in) :: filename

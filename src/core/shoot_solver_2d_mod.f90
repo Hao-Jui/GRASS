@@ -4,19 +4,12 @@
 ! which is common when function evaluation is expensive.
 module shoot_solver_2d_mod
   use precision_mod, only: wp
+  use lapack_interfaces_mod, only: dgesv
   implicit none
-  interface
-    subroutine dgesv(n, nrhs, a, lda, ipiv, b, ldb, info)
-      import :: wp
-      integer, intent(in) :: n, nrhs, lda, ldb
-      integer, intent(out) :: ipiv(*), info
-      real(wp), intent(inout) :: a(lda, *), b(ldb, *)
-    end subroutine dgesv
-  end interface
   real(wp), parameter :: R_EPS = 1.e-8_wp
-  real(wp), parameter :: R_MIN_RATIO = 0.35e0_wp
-  real(wp), parameter :: MAX_STEP = 0.5e0_wp
-  real(wp), parameter :: REP_MAP_SCALE = 6.e0_wp
+  real(wp), parameter :: R_MIN_RATIO = 0.35_wp
+  real(wp), parameter :: MAX_STEP = 0.5_wp
+  real(wp), parameter :: REP_MAP_SCALE = 6._wp
 
   type, public :: newton_state
     logical :: has_jacobian = .false.
@@ -48,9 +41,9 @@ contains
     if (.not. allocated(state%J)) return
     state%has_jacobian = .false.
     state%has_prev     = .false.
-    state%J            = 0.e0_wp
-    state%x_prev       = 0.e0_wp
-    state%F_prev       = 0.e0_wp
+    state%J            = 0._wp
+    state%x_prev       = 0._wp
+    state%F_prev       = 0._wp
   end subroutine reset_newton_state
 
   subroutine to_solver_coords(hc, rep, x)
@@ -58,9 +51,9 @@ contains
     real(wp), intent(out) :: x(2)
     real(wp) :: rep_clip
 
-    rep_clip = min(max(rep, r_eps), 1.e0_wp - r_eps)
+    rep_clip = min(max(rep, r_eps), 1._wp - r_eps)
     x(1) = log(max(hc, 1.e-12_wp))
-    x(2) = log( (1.e0_wp - rep_clip) / ( rep_clip - r_min_ratio ) ) / rep_map_scale
+    x(2) = log( (1._wp - rep_clip) / ( rep_clip - r_min_ratio ) ) / rep_map_scale
   end subroutine to_solver_coords
 
   subroutine from_solver_coords(x, hc, rep)
@@ -70,7 +63,7 @@ contains
 
     hc = exp(x(1))
     exp_arg = exp( rep_map_scale * x(2) )
-    rep = ( exp_arg * r_min_ratio + 1.e0_wp ) / ( exp_arg + 1.e0_wp )
+    rep = ( exp_arg * r_min_ratio + 1._wp ) / ( exp_arg + 1._wp )
   end subroutine from_solver_coords
 
   subroutine clamp_step(delta)
@@ -150,7 +143,7 @@ contains
     logical, intent(out), optional :: success
     
     integer, parameter :: max_iter = 10
-    real(wp), parameter :: TAU = 0.5e0_wp
+    real(wp), parameter :: TAU = 0.5_wp
     real(wp), parameter :: C1 = 1.e-4_wp
     real(wp)             :: alpha
     real(wp)             :: x_trial(2), F_trial(2), hc_trial, rep_trial
@@ -159,24 +152,24 @@ contains
     integer             :: i
     logical             :: ok
 
-    alpha = 1.e0_wp
+    alpha = 1._wp
     final_delta = delta_x
-    phi_old = 0.5e0_wp * dot_product(F_current, F_current)
+    phi_old = 0.5_wp * dot_product(F_current, F_current)
     ok = .false.
 
     if (present(J_est)) then
       slope0 = dot_product(F_current, matmul(J_est, delta_x))
     else
-      slope0 = -phi_old * 2.e0_wp ! Fallback to a steep descent assumption
+      slope0 = -phi_old * 2._wp ! Fallback to a steep descent assumption
     end if
-    if (slope0 > -1.e-12_wp) slope0 = -phi_old * 2.e0_wp
+    if (slope0 > -1.e-12_wp) slope0 = -phi_old * 2._wp
 
     do i = 1, max_iter
       x_trial = x_current + alpha * delta_x
       call from_solver_coords(x_trial, hc_trial, rep_trial)
       call evaluate_func(hc_trial, rep_trial, F_trial, rho0_tmp, ee_tmp, er_tmp)
 
-      phi_new = 0.5e0_wp * dot_product(F_trial, F_trial)
+      phi_new = 0.5_wp * dot_product(F_trial, F_trial)
       if (phi_new <= phi_old + c1 * alpha * slope0) then
         ok = .true.
         exit
@@ -216,22 +209,22 @@ contains
 
     select case (trim(FIX1))
     case ('M_goal')
-      deviA = Mass/MSUN/M_goal - 1.e0_wp
+      deviA = Mass/MSUN/M_goal - 1._wp
     case ('Mb_goal')
-      deviA = Mass_0/MSUN/Mb_goal - 1.e0_wp
+      deviA = Mass_0/MSUN/Mb_goal - 1._wp
     case default
-      stop "evaluate_solution: unknown FIX1"
+      error stop "evaluate_solution: unknown FIX1"
     end select
 
     select case (trim(FIX2))
     case ('J_goal')
-      deviB = J_goal / ang_mom - 1.e0_wp
+      deviB = J_goal / ang_mom - 1._wp
     case ('chi_goal')
-      deviB = chi / chi_goal - 1.e0_wp
+      deviB = chi / chi_goal - 1._wp
     case ('omc_goal')
-      deviB = Omega_c / omc_goal - 1.e0_wp
+      deviB = Omega_c / omc_goal - 1._wp
     case default
-      deviB = (Omega_K / (C/sqrt(kappa))) / Omega_e - 1.e0_wp
+      deviB = (Omega_K / (C/sqrt(kappa))) / Omega_e - 1._wp
     end select
 
     F(1) = deviA
@@ -261,7 +254,7 @@ contains
     real(wp) :: hc_p, rep_p
     integer :: i
 
-    delta = max(abs(x), 1.e0_wp) * epsilon(x(1))**(1.e0_wp/3.e0_wp)
+    delta = max(abs(x), 1._wp) * epsilon(x(1))**(1._wp/3._wp)
     do i = 1, 2
       xp = x
       xp(i) = xp(i) + delta(i)

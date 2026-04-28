@@ -4,55 +4,56 @@
 ! but adjusts r_ratio instead of hc.
 
 module shoot_solver_1d_r_ratio_mod
+  use precision_mod, only: wp
   use shoot_solver_1d_types_mod, only: newton_state_1d
   implicit none
-  real(8), parameter :: RR_CAP = 0.5d0
+  real(wp), parameter :: RR_CAP = 0.5_wp
 
 contains
   subroutine to_solver_coord_rp(rr, x)
-    real(8), intent(in)  :: rr
-    real(8), intent(out) :: x
-    real(8) :: rc
-    rc = max(1.d-3, min(rr, 1.d0 - 1.d-3))
-    x  = log(rc / (1.d0 - rc))
+    real(wp), intent(in)  :: rr
+    real(wp), intent(out) :: x
+    real(wp) :: rc
+    rc = max(1.e-3_wp, min(rr, 1._wp - 1.e-3_wp))
+    x  = log(rc / (1._wp - rc))
   end subroutine to_solver_coord_rp
 
   subroutine from_solver_coord_rp(x, rr)
-    real(8), intent(in)  :: x
-    real(8), intent(out) :: rr
-    rr = 1.d0 / (1.d0 + exp(-x))
+    real(wp), intent(in)  :: x
+    real(wp), intent(out) :: rr
+    rr = 1._wp / (1._wp + exp(-x))
   end subroutine from_solver_coord_rp
 
   subroutine clamp_step_rp(delta, er)
-    real(8), intent(inout) :: delta
-    real(8), intent(in)    :: er
-    real(8) :: cap
-    cap = min(RR_CAP, 0.1d0 + 0.4d0 * max(0.d0, 1.d0 - er))
+    real(wp), intent(inout) :: delta
+    real(wp), intent(in)    :: er
+    real(wp) :: cap
+    cap = min(RR_CAP, 0.1_wp + 0.4_wp * max(0._wp, 1._wp - er))
     delta = max(-cap, min(delta, cap))
   end subroutine clamp_step_rp
 
   subroutine line_search_rp(x_current, F_current, delta_x, hc, evaluate_func, final_delta, J_est, success)
     use shoot_solver_1d_types_mod, only: evaluation_function_1d
-    real(8), intent(in)    :: x_current, F_current, delta_x, hc
-    real(8), intent(out)   :: final_delta
+    real(wp), intent(in)    :: x_current, F_current, delta_x, hc
+    real(wp), intent(out)   :: final_delta
     procedure(evaluation_function_1d) :: evaluate_func
-    real(8), intent(in), optional :: J_est
+    real(wp), intent(in), optional :: J_est
     logical, intent(out), optional :: success
 
     integer, parameter :: max_iter = 15
-    real(8), parameter :: TAU = 0.5d0, C1 = 1.d-4
-    real(8) :: alpha, x_trial, F_trial, rr_trial, rho0_tmp, ee_tmp
-    real(8) :: rr_base, phi_old, phi_new, slope0
+    real(wp), parameter :: TAU = 0.5_wp, C1 = 1.e-4
+    real(wp) :: alpha, x_trial, F_trial, rr_trial, rho0_tmp, ee_tmp
+    real(wp) :: rr_base, phi_old, phi_new, slope0
     integer :: i
     logical :: ok
 
-    alpha = 1.d0
+    alpha = 1._wp
     final_delta = delta_x
-    phi_old = 0.5d0 * F_current**2
+    phi_old = 0.5_wp * F_current**2
     ok = .false.
     call from_solver_coord_rp(x_current, rr_base)
 
-    if (abs(delta_x) < 1.d-12) then
+    if (abs(delta_x) < 1.e-12_wp) then
       final_delta = delta_x
       if (present(success)) success = .true.
       return
@@ -63,14 +64,14 @@ contains
     else
       slope0 = -abs(F_current * delta_x)
     end if
-    if (slope0 >= 0.d0) slope0 = -abs(F_current * delta_x)
+    if (slope0 >= 0._wp) slope0 = -abs(F_current * delta_x)
 
     do i = 1, max_iter
       x_trial = x_current + alpha * delta_x
       call from_solver_coord_rp(x_trial, rr_trial)
       call evaluate_func(rr_trial, hc, F_trial, rho0_tmp, ee_tmp)
 
-      phi_new = 0.5d0 * F_trial**2
+      phi_new = 0.5_wp * F_trial**2
       if (phi_new <= phi_old + c1 * alpha * slope0) then
         ok = .true.
         exit
@@ -86,17 +87,18 @@ contains
 end module shoot_solver_1d_r_ratio_mod
 
 module shoot_solver_1d_r_ratio_helpers_mod
+  use precision_mod, only: wp
   use analysis_mod, only: mass_radius
   use eos_mod, only: n0_at_h, e_at_h
-  use para_mod, only: h_center, r_ratio, Mass, Mass_0, MSUN, M_goal, Mb_goal, FIX1
+  use para_mod, only: wp, h_center, r_ratio, Mass, Mass_0, MSUN, M_goal, Mb_goal, FIX1
   use shoot_solver_1d_types_mod, only: newton_state_1d, evaluation_function_1d
   use shoot_solver_1d_r_ratio_mod, only: from_solver_coord_rp, to_solver_coord_rp
   use rotation_solver_mod, only: rotation_solver
   implicit none
 contains
   subroutine evaluate_solution_rp(rr, hc, F, rho0, ee)
-    real(8), intent(in)  :: rr, hc
-    real(8), intent(out) :: F, rho0, ee
+    real(wp), intent(in)  :: rr, hc
+    real(wp), intent(out) :: F, rho0, ee
 
     r_ratio  = rr
     h_center = hc
@@ -108,24 +110,24 @@ contains
     ee   = e_at_h (h_center)
 
     if (trim(FIX1) == "M_goal") then
-      F = Mass / MSUN / M_goal - 1.d0
+      F = Mass / MSUN / M_goal - 1._wp
     else if (trim(FIX1) == "Mb_goal") then
-      F = Mass_0 / MSUN / Mb_goal - 1.d0
+      F = Mass_0 / MSUN / Mb_goal - 1._wp
     else
-      stop "evaluate_solution_rp: unknown FIX1"
+      error stop "evaluate_solution_rp: unknown FIX1"
     end if
   end subroutine evaluate_solution_rp
 
   subroutine build_jacobian_rp(state, x, F, rr, hc, rho0, ee, reuse_base)
     type(newton_state_1d), intent(inout) :: state
-    real(8), intent(in)    :: x
-    real(8), intent(inout) :: F
-    real(8), intent(inout) :: rr
-    real(8), intent(in)    :: hc
-    real(8), intent(out)   :: rho0, ee
+    real(wp), intent(in)    :: x
+    real(wp), intent(inout) :: F
+    real(wp), intent(inout) :: rr
+    real(wp), intent(in)    :: hc
+    real(wp), intent(out)   :: rho0, ee
     logical, intent(in), optional :: reuse_base
-    real(8), parameter :: RR_MIN = 1.d-3, RR_MAX = 1.d0 - 1.d-3, RR_FD_STEP = 2.d-3
-    real(8) :: xm, xp, Fm, Fp, rho_tmp, ee_tmp, rr_m, rr_p
+    real(wp), parameter :: RR_MIN = 1.e-3_wp, RR_MAX = 1._wp - 1.e-3_wp, RR_FD_STEP = 2.e-3_wp
+    real(wp) :: xm, xp, Fm, Fp, rho_tmp, ee_tmp, rr_m, rr_p
 
     rr = max(rr_min, min(rr, rr_max))
     rr_m = max(rr_min, rr - rr_fd_step)

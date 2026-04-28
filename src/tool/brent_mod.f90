@@ -1,7 +1,7 @@
 module brent_mod
   use precision_mod, only: wp
   implicit none
-  public :: find_omege_e, zbrent_rot
+  public :: find_omega_e, zbrent_rot
 
   abstract interface
     subroutine brent_func(x, fx)
@@ -13,53 +13,74 @@ module brent_mod
 
   integer, parameter, private :: MAX_ITER_BRACKET = 200
   integer, parameter, private :: MAX_ITER_BRENT   = 100
-  integer, parameter, private :: BRACKET_LOG_SAMPLES = 200
-  integer, parameter, private :: ROOT_SUCCESS = 0
-  integer, parameter, private :: ROOT_BRACKET_FAIL = 1
-  integer, parameter, private :: ROOT_ITER_FAIL = 2
-  integer, parameter, private :: ROOT_BAD_INPUT = 3
   real(wp), parameter, private :: ZEPS = 1.0e-8_wp
-  real(wp), parameter, private :: MIN_POSITIVE_GUESS = 1.0e-12_wp
 
 contains
 
-subroutine brent_core(x_guess, scale_up, scale_down, tol, return_value, f, ierr, errmsg, small_guess, logfile)
-  use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+subroutine brent_core(x_guess, scale_up, scale_down, tol, return_value, f, small_guess, logfile)
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_nan
   implicit none
 
   real(wp), intent(in)  :: x_guess, scale_up, scale_down, tol
   real(wp), intent(out) :: return_value
   procedure(brent_func) :: f
-  integer, intent(out) :: ierr
-  character(len=*), intent(out), optional :: errmsg
   real(wp), intent(in), optional :: small_guess
   character(*), intent(in), optional :: logfile
 
   real(wp) :: a, b, c, d, e, fa, fb, fc, p, q, r, s, xm, tol1, x0
-  real(wp) :: candidate, f_candidate
   integer  :: iter
-  logical  :: bracketed, ok_eval
+  logical  :: bracketed
 
-  ierr = ROOT_SUCCESS
-  if (present(errmsg)) errmsg = ""
-  return_value = x_guess
-
-  if (tol <= 0.0_wp .or. scale_up <= 1.0_wp .or. scale_down <= 1.0_wp) then
-    ierr = ROOT_BAD_INPUT
-    if (present(errmsg)) errmsg = "brent_core: invalid solver parameters"
-    return
+  x0 = x_guess
+  if (present(small_guess)) then
+    if (abs(x0) < epsilon(x0)) x0 = small_guess
   end if
 
-  x0 = abs(x_guess)
-  if (present(small_guess)) x0 = max(x0, abs(small_guess))
-  x0 = max(x0, max(tol, MIN_POSITIVE_GUESS))
+  a = x0
+  b = x0
+  bracketed = .false.
 
-  call find_bracket(x0, scale_up, scale_down, a, b, fa, fb, bracketed)
+  ! ====================================================================
+  ! PHASE 1: Adaptive geometric bracketing — scale outward until
+  !          f(a) and f(b) have opposite signs.
+  !          scale_up/scale_down are typically 1.1–2.0.
+  ! ====================================================================
+  bracket_loop: do iter = 1, MAX_ITER_BRACKET
+    a = a * scale_up
+    b = b / scale_down
+
+    call f(a, fa)
+    call f(b, fb)
+
+    if (ieee_is_nan(fa)) then
+      a = a / scale_up
+      call f(a, fa)
+    end if
+    if (ieee_is_nan(fb)) then
+      b = b * scale_down
+      call f(b, fb)
+    end if
+
+    if (fa * fb <= 0.0_wp) then
+      bracketed = .true.
+      exit bracket_loop
+    end if
+  end do bracket_loop
+
+  ! ====================================================================
+  ! PHASE 2: Fallback — sweep a fine grid and log f(x) for diagnostics.
+  !          If a sign change is found, use that bracket.
+  ! ====================================================================
   if (.not. bracketed) then
-    if (present(logfile)) call write_bracket_log(logfile, x0, a, b, f)
-    ierr = ROOT_BRACKET_FAIL
-    if (present(errmsg)) errmsg = "brent_core: failed to bracket root"
-    return
+    if (present(logfile)) then
+      call write_bracket_log(logfile, x_guess, f, a, b, bracketed)
+    end if
+    if (.not. bracketed) then
+      if (present(logfile)) write(*,*) "check  ", logfile
+      error stop "brent_core: failed to bracket root"
+    end if
+    call f(a, fa)
+    call f(b, fb)
   end if
 
   ! ====================================================================
@@ -86,7 +107,7 @@ subroutine brent_core(x_guess, scale_up, scale_down, tol, return_value, f, ierr,
     xm = 0.5_wp * (c - b)
 
     ! Convergence: bracket width or residual below tolerance
-    if (abs(xm) <= tol1 .or. fb == 0.0_wp) then
+    if (abs(xm) <= tol1 .or. abs(fb) < epsilon(fb)) then
       return_value = b
       return
     end if
@@ -117,114 +138,35 @@ subroutine brent_core(x_guess, scale_up, scale_down, tol, return_value, f, ierr,
       d = xm; e = d
     end if
 
-    a = b
-    fa = fb
-    candidate = b + merge(d, sign(tol1, xm), abs(d) > tol1)
-    call evaluate_point(candidate, f_candidate, ok_eval)
-    if (.not. ok_eval) then
-      candidate = b + merge(xm, sign(tol1, xm), abs(xm) > tol1)
-      call evaluate_point(candidate, f_candidate, ok_eval)
-      if (.not. ok_eval) then
-        ierr = ROOT_ITER_FAIL
-        if (present(errmsg)) errmsg = "brent_core: function evaluation failed inside bracket"
-        return_value = b
-        return
-      end if
-      d = xm
-      e = d
-    end if
-    b = candidate
-    fb = f_candidate
+    a = b; fa = fb
+    b = b + merge(d, sign(tol1, xm), abs(d) > tol1)
+    call f(b, fb)
   end do brent_loop
 
-  ierr = ROOT_ITER_FAIL
-  if (present(errmsg)) errmsg = "brent_core: exceeded maximum iterations"
-  return_value = b
+  error stop "brent_core: exceeding maximum iterations"
 
 contains
-  subroutine evaluate_point(x, fx, ok)
-    real(wp), intent(in) :: x
-    real(wp), intent(out) :: fx
-    logical, intent(out) :: ok
 
-    call f(x, fx)
-    ok = ieee_is_finite(fx)
-  end subroutine evaluate_point
-
-  subroutine find_bracket(x_seed, grow_up, grow_down, ax, bx, fax, fbx, found)
-    real(wp), intent(in) :: x_seed, grow_up, grow_down
-    real(wp), intent(out) :: ax, bx, fax, fbx
-    logical, intent(out) :: found
-    real(wp) :: x_left, x_mid, x_right, f_left, f_mid, f_right
-    logical :: ok_left, ok_mid, ok_right
-    integer :: k
-
-    found = .false.
-    x_mid = x_seed
-    call evaluate_point(x_mid, f_mid, ok_mid)
-    if (ok_mid .and. f_mid == 0.0_wp) then
-      ax = x_mid; bx = x_mid; fax = f_mid; fbx = f_mid
-      found = .true.
-      return
-    end if
-
-    x_left = max(x_seed / grow_down, MIN_POSITIVE_GUESS)
-    x_right = max(x_seed * grow_up, x_seed + MIN_POSITIVE_GUESS)
-
-    do k = 1, MAX_ITER_BRACKET
-      call evaluate_point(x_left, f_left, ok_left)
-      if (ok_left .and. f_left == 0.0_wp) then
-        ax = x_left; bx = x_left; fax = f_left; fbx = f_left
-        found = .true.
-        return
-      end if
-      if (ok_left .and. ok_mid .and. f_left * f_mid <= 0.0_wp) then
-        ax = x_left; bx = x_mid; fax = f_left; fbx = f_mid
-        found = .true.
-        return
-      end if
-
-      call evaluate_point(x_right, f_right, ok_right)
-      if (ok_right .and. f_right == 0.0_wp) then
-        ax = x_right; bx = x_right; fax = f_right; fbx = f_right
-        found = .true.
-        return
-      end if
-      if (ok_mid .and. ok_right .and. f_mid * f_right <= 0.0_wp) then
-        ax = x_mid; bx = x_right; fax = f_mid; fbx = f_right
-        found = .true.
-        return
-      end if
-      if (ok_left .and. ok_right .and. f_left * f_right <= 0.0_wp) then
-        ax = x_left; bx = x_right; fax = f_left; fbx = f_right
-        found = .true.
-        return
-      end if
-
-      x_left = max(x_left / grow_down, MIN_POSITIVE_GUESS)
-      x_right = x_right * grow_up
-    end do
-
-    ax = x_left
-    bx = x_right
-    fax = 0.0_wp
-    fbx = 0.0_wp
-  end subroutine find_bracket
-
-  subroutine write_bracket_log(fname, xg, ax, bx, func)
+  subroutine write_bracket_log(fname, xg, func, ax, bx, found)
     character(*), intent(in)  :: fname
     real(wp), intent(in)      :: xg
-    real(wp), intent(in)      :: ax, bx
     procedure(brent_func)     :: func
+    real(wp), intent(out)     :: ax, bx
+    logical, intent(out)      :: found
     integer  :: u, i
-    real(wp) :: cur_f, cur_x, x_lo, x_hi
+    real(wp) :: cur_f, prev_f, cur_x
 
-    x_lo = max(MIN_POSITIVE_GUESS, min(ax, bx, xg))
-    x_hi = max(x_lo * 1.0001_wp, max(ax, bx, xg))
+    found = .false.
     open(newunit=u, file=fname, status='replace', action='write')
-    do i = 1, BRACKET_LOG_SAMPLES
-      cur_x = x_lo + (x_hi - x_lo) * real(i - 1, wp) / real(BRACKET_LOG_SAMPLES - 1, wp)
+    do i = 1, MAX_ITER_BRACKET
+      cur_x = xg * 0.01_wp * i
       call func(cur_x, cur_f)
+      if (i > 1 .and. cur_f * prev_f <= 0.0_wp) then
+        bx = cur_x
+        ax = xg * 0.01_wp * (i - 1)
+        found = .true.
+      end if
+      prev_f = cur_f
       write(u, "(2ES15.6)") cur_x, cur_f
     end do
     close(u)
@@ -232,12 +174,10 @@ contains
 
 end subroutine brent_core
 
-subroutine find_omege_e(x_guess, re, rho_h, g_h, w_h, rho_p, g_p, tol, return_value, f, ierr, errmsg)
+subroutine find_omega_e(x_guess, re, rho_h, g_h, w_h, rho_p, g_p, tol, return_value, f)
   implicit none
   real(wp), intent(in)  :: x_guess, re, rho_h, g_h, w_h, rho_p, g_p, tol
   real(wp), intent(out) :: return_value
-  integer, intent(out), optional :: ierr
-  character(len=*), intent(out), optional :: errmsg
   interface
     subroutine f(x, fx, re, rho_h, g_h, w_h, rho_p, g_p)
       import :: wp
@@ -245,12 +185,9 @@ subroutine find_omege_e(x_guess, re, rho_h, g_h, w_h, rho_p, g_p, tol, return_va
       real(wp), intent(out) :: fx
     end subroutine f
   end interface
-  integer :: status
-  character(len=256) :: message
 
-  call brent_core(x_guess, 1.2_wp, 1.1_wp, tol, return_value, wrapped, status, message, &
-                  small_guess=1.0e-4_wp, logfile="./Cont/diff_rotation.dat")
-  call finalize_wrapper_status("find_omege_e", status, message, ierr, errmsg)
+  call brent_core(x_guess, 1.2_wp, 1.1_wp, tol, return_value, wrapped, &
+                  logfile="./Cont/diff_rotation.dat")
 
 contains
   subroutine wrapped(x, fx)
@@ -259,14 +196,12 @@ contains
     call f(x, fx, re, rho_h, g_h, w_h, rho_p, g_p)
   end subroutine wrapped
 
-end subroutine find_omege_e
+end subroutine find_omega_e
 
-subroutine zbrent_rot(x_guess, re, rho_p, ww_p, sgp, mugp, tol, return_value, f, ierr, errmsg)
+subroutine zbrent_rot(x_guess, re, rho_p, ww_p, sgp, mugp, tol, return_value, f)
   implicit none
   real(wp), intent(in)  :: x_guess, re, rho_p, ww_p, sgp, mugp, tol
   real(wp), intent(out) :: return_value
-  integer, intent(out), optional :: ierr
-  character(len=*), intent(out), optional :: errmsg
   interface
     subroutine f(x, fx, re, rho_p, ww_p, sgp, mugp)
       import :: wp
@@ -274,12 +209,9 @@ subroutine zbrent_rot(x_guess, re, rho_p, ww_p, sgp, mugp, tol, return_value, f,
       real(wp), intent(out) :: fx
     end subroutine f
   end interface
-  integer :: status
-  character(len=256) :: message
 
-  call brent_core(x_guess, 1.1_wp, 1.1_wp, tol, return_value, wrapped, status, message, &
+  call brent_core(x_guess, 1.1_wp, 1.1_wp, tol, return_value, wrapped, &
                   small_guess=1.0e-4_wp, logfile="./Cont/rotation_law.dat")
-  call finalize_wrapper_status("zbrent_rot", status, message, ierr, errmsg)
 
 contains
   subroutine wrapped(x, fx)
@@ -289,20 +221,5 @@ contains
   end subroutine wrapped
 
 end subroutine zbrent_rot
-
-subroutine finalize_wrapper_status(routine_name, status, message, ierr, errmsg)
-  character(len=*), intent(in) :: routine_name, message
-  integer, intent(in) :: status
-  integer, intent(out), optional :: ierr
-  character(len=*), intent(out), optional :: errmsg
-
-  if (present(ierr)) ierr = status
-  if (present(errmsg)) errmsg = trim(message)
-  if (status == ROOT_SUCCESS) return
-  if (.not. present(ierr)) then
-    write(*,'(A,": ",A)') trim(routine_name), trim(message)
-    stop trim(routine_name)//": root solve failed"
-  end if
-end subroutine finalize_wrapper_status
 
 end module brent_mod
