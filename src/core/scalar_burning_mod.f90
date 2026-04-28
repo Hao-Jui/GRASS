@@ -54,8 +54,12 @@ contains
     if (burn_iter >= scalar_burn_max_iter .and. current_mphi < target_mphi) then
       write(unit=*, fmt=*) "scalar burn stage reached iteration limit before hitting target mass."
     end if
-    write(*,"(A)") " ", merge("*** initial guess is non-scalarized", &
-                      "*** Starts with sphi max : "//trim(adjustl(string)), &
-                      sphi_m < 1.e-5_wp), " "
+    write(*,"(A)") " "
+    if (sphi_m < 1.e-5_wp) then
+      write(*,"(A)") "*** initial guess is non-scalarized"
+    else
+      write(*,"(A)") "*** Starts with sphi max : "//trim(adjustl(string))
+    end if
+    write(*,"(A)") " "
   end subroutine perform_scalar_burn
 end module scalar_burning_mod

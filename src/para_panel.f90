@@ -6,6 +6,11 @@ module para_mod
   integer, parameter :: THEORY_ST = 1
   integer :: active_theory = THEORY_ST
 
+  ! -- Model-family selection -------------------------------------------------
+  integer, parameter :: MODEL_NS = 1
+  integer, parameter :: MODEL_BH_TOROID = 2
+  integer :: model_family = MODEL_NS
+
   ! hybrid / anderson
   ! -- Running option --------------------------------------------------------
   integer, parameter :: MODE_REGRID  = 1, MODE_DEFAULT = 2
@@ -71,6 +76,7 @@ module para_mod
   real(wp) :: p_center = 0.0_wp
   real(wp) :: h_center = 0.0_wp
   real(wp) :: e_center = 0.0_wp
+  real(wp) :: e_center_default = .8e15_wp
   real(wp) :: enthalpy_min = 0.0_wp
 
   ! -- Grid configuration ----------------------------------------------------
@@ -203,8 +209,32 @@ contains
     DM   = 1.0_wp  / (real(MDIV, wp) - 1.0_wp)
     s_inner = edge_in**(1.0_wp / real(s_pwr, wp)) / (edge_in**(1.0_wp / real(s_pwr, wp)) + 1.0_wp)
 
+    call apply_runtime_overrides()
+
     call allocate_fields()
   end subroutine initialize_theory
+
+  subroutine apply_runtime_overrides()
+    character(len=64) :: buf
+    integer :: stat, length, ios
+    real(wp) :: rval
+
+    call get_environment_variable("GRASS_TIMING", buf, length, stat)
+    if (stat == 0 .and. length > 0) then
+      select case (trim(adjustl(to_lower_str(buf))))
+      case ("1", "true", "yes", "on", "t")
+        timing = .true.
+      case ("0", "false", "no", "off", "f")
+        timing = .false.
+      end select
+    end if
+
+    call get_environment_variable("GRASS_E_CENTER", buf, length, stat)
+    if (stat == 0 .and. length > 0) then
+      read(buf, *, iostat=ios) rval
+      if (ios == 0) e_center_default = rval
+    end if
+  end subroutine apply_runtime_overrides
 
   subroutine apply_gr_defaults()
     has_scalar = .false.

@@ -6,7 +6,7 @@ module starting_model_mod
   use regrid_mod, only: regrid_read
   use sphere_mod, only: sphere
   use para_mod, only: run_mode, MODE_REGRID, C, KSCALE, KAPPA, &
-                      SDIV, MDIV, e_center, p_center, h_center, &
+                      SDIV, MDIV, e_center, e_center_default, p_center, h_center, &
                       solver_type, r_ratio, shooting, SHOOT_2D, output, &
                       active_theory, THEORY_GR, mphi_goal, &
                       mphi_burn_threshold, B_coup, B_goal, mphi_r, l_uni
@@ -34,7 +34,7 @@ contains
       h_center = h_at_p(p_center)
     case default
       r_ratio  = merge(0.9_wp, 1._wp, trim(adjustl(solver_type)) == "uryu")
-      e_center = .8e15_wp
+      e_center = e_center_default
       e_center = e_center * C * C * KSCALE
       p_center = p_at_e(e_center)
       h_center = h_at_p(p_center)
