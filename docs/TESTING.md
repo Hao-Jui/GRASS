@@ -13,9 +13,6 @@ purpose, not by oversight.
 # Full suite (unit + integration + regression)
 ctest --test-dir build --output-on-failure
 
-# Integration-only with the dev-config harness
-bash tests/run_with_test_config.sh
-
 # Single test
 ctest --test-dir build -R test_eos --output-on-failure
 ```
@@ -72,26 +69,34 @@ error exceeds **1e-4** (4 significant digits). Catches reintroduced
 solver bugs and silent EOS-table changes. The gate is invoked
 automatically by every integration test via CTest.
 
-### Dev-config harness (`tests/run_with_test_config.sh`)
+### Runtime config overrides (`GRASS_TIMING`, `GRASS_E_CENTER`)
 
-The integration tests rely on `e_center = .8e15` and `timing = .false.`
-in `src/core/starting_model_mod.f90` and `src/para_panel.f90`. Those two
-knobs are also the developer's local sweep / profiling configuration,
-so they drift between commits. The harness:
+The integration tests pin two knobs that double as developer
+sweep / profiling state:
 
-1. Backs up the two source files to `$TMPDIR`.
-2. Rewrites `e_center` (default branch) and `timing` to the reference
-   baseline.
-3. Rebuilds the affected targets via `cmake --build build`.
-4. Runs `ctest` (or any wrapped command after `--`).
-5. Restores the developer's local config on exit (trap).
+- `e_center` default-branch literal (`src/core/starting_model_mod.f90`),
+  pulled from `e_center_default` in `src/para_panel.f90`.
+- `timing` flag (`src/para_panel.f90`).
 
-Usage:
+Both are now read at startup from environment variables in
+`apply_runtime_overrides` (called from `initialize_theory`):
+
+| Env var | Effect | Accepted values |
+|---|---|---|
+| `GRASS_TIMING` | overrides `timing` | `0/1`, `true/false`, `yes/no`, `on/off`, `t/f` |
+| `GRASS_E_CENTER` | overrides `e_center_default` (cgs g/cm³) | float literal, e.g. `0.8e15` |
+
+`tests/CMakeLists.txt` sets `ENVIRONMENT "GRASS_TIMING=0;GRASS_E_CENTER=0.8e15"`
+on every integration test, so `ctest` is hermetic regardless of the
+developer's local compile-time defaults. No source patching, no rebuild
+between dev work and tests.
+
+Manual examples:
 
 ```bash
-bash tests/run_with_test_config.sh                      # all ctest
-bash tests/run_with_test_config.sh -R test_gr_uryu      # filter
-bash tests/run_with_test_config.sh -- ./build/grass     # custom command
+GRASS_TIMING=1 ./build/grass                    # profiling run
+GRASS_E_CENTER=1.0e15 ./build/grass             # different central density
+ctest --test-dir build -R test_gr_uryu          # baseline (env set by CTest)
 ```
 
 ---
@@ -160,8 +165,9 @@ Note: cpu_time is the *sum* across all BLAS-internal threads. With
 OpenBLAS at default thread count, the CPU/wall ratio for these buckets
 is roughly 3–6×; divide by that ratio to recover wall-clock impact.
 
-The `tests/run_with_test_config.sh` harness flips `timing` to `.false.`
-so integration tests run to convergence; for profiling, leave it on.
+Integration tests force `GRASS_TIMING=0` so the solver runs to
+convergence regardless of the source default; for profiling, set
+`GRASS_TIMING=1` in the shell before invoking the binary.
 
 ### Audit reports
 

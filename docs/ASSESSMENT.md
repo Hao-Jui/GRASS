@@ -40,7 +40,7 @@ The 2026-04-10 score reflected "no perf work done". This pass added measurable w
 
 ### What changed
 - **EOS interpolation rewrite**: barycentric Lagrange (n_order = 4, 9-point stencil per call) replaced with monotone PCHIP cubic Hermite using Fritsch–Carlson slopes precomputed once in `loadEos`. O(1) Hermite eval after binary search vs O(n_order) stencil sum. Phase-transition rows now handled implicitly via the slope-zero branch — the explicit `interp_*_pt` paths are gone.
-- **Test-config harness**: `tests/run_with_test_config.sh` swaps the source-baked `e_center` + `timing` knobs to the reference baseline, rebuilds, runs ctest, restores on exit. Lets developers leave local sweep config in the working tree without breaking CI / regression.
+- **Test-config via env vars**: `e_center` and `timing` are now overridable at runtime through `GRASS_E_CENTER` / `GRASS_TIMING`, read by `apply_runtime_overrides` in `para_panel.f90`. `tests/CMakeLists.txt` injects the reference-baseline values via CTest `ENVIRONMENT` properties, so `ctest` is hermetic regardless of any local sweep / profiling defaults in the working tree. The earlier `tests/run_with_test_config.sh` source-patching wrapper is retired.
 - **Performance audit shipped** (`.omc/research/theory_perf_audit.md` + `theory_perf_audit_evidence.md`): top-3 wall-clock phases identified (precompute, eos_loop, deriv_m_sub-in-update_alpha), 5 ranked recommendations bounded by a microbenchmark (`bench_dgemm_stack.f90`) that links against the same OpenBLAS the production binary uses.
 - **Microbench-bounded expectations**: combined wins from the two highest-ranked items (batched derivative DGEMM in `precompute` + hoist `update_alpha`'s lone `deriv_m_sub`) are **0.8–1.4 ms wall per `get_all_targets` iteration** ≈ **10–15 % wall-clock**, an order of magnitude smaller than what the `cpu_time` sums suggested before unit conversion. Both still worth doing as a pair (~50 LOC, low risk).
 
@@ -56,7 +56,7 @@ The 2026-04-10 score reflected "no perf work done". This pass added measurable w
 Carry-over from 2026-04-10 stays valid: CMake primary, `CMakePresets.json` (release / debug / sanitizer), automatic module dependency resolution, `cmake --install`, three-config CI matrix.
 
 ### Net change since last assessment
-- `tests/run_with_test_config.sh` integrates with both `ctest` and arbitrary wrapped commands (`-- <cmd>`).
+- `apply_runtime_overrides` (env vars `GRASS_TIMING`, `GRASS_E_CENTER`) replaces the source-patching test wrapper; CTest injects the baseline via `ENVIRONMENT` properties.
 - Reproducibility section added to `README.md`.
 
 ### Remaining (8 points)
@@ -70,7 +70,7 @@ Carry-over from 2026-04-10 stays valid: CMake primary, `CMakePresets.json` (rele
 ### Net change since last assessment
 - `eos_mod.f90` reorganised into seven explicit sections (state / loader / slope kernel / cell finder / Hermite evaluators / public API / Fornberg derivative). Net −29 LOC.
 - All public API of `eos_mod` audited for redundancy: 10 functions, 6 forward/reverse directions plus 4 specials (`p_at_e_dual`, `pe_at_h`, `pressure_derivative_n`, `loadEos`). None dead, none mergeable without losing inlining or AD compatibility.
-- Local-config drift (developer's `e_center`, `eos_file`, `THEORY_*`, `output_path`) no longer pollutes the regression baseline — captured by `tests/run_with_test_config.sh` rather than checked into source.
+- Local-config drift (developer's `e_center`, `timing`, `eos_file`, `THEORY_*`, `output_path`) no longer pollutes the regression baseline — `e_center` / `timing` are now runtime-overridable via env vars and CTest sets the baseline; the rest stay as uncommitted working-tree edits.
 
 ### Remaining (12 points)
 - Global mutable state in `para_panel.f90` (~115 vars) — fundamental architecture, not a bug.
@@ -89,7 +89,7 @@ Carry-over from 2026-04-10 stays valid: CMake primary, `CMakePresets.json` (rele
 | Integration programs | 6 | GR-uniform, GR-constJ, GR-uryu, ST-uniform, ST-uniform-r07, restart round-trip |
 | Reference-value regression | 6 `.ref` files | gated at 1e-4 relative tolerance |
 | Sanitizer matrix | ASan + UBSan | runs full unit + integration on push |
-| `tests/run_with_test_config.sh` | new | reproduces reference config without reverting local sweep state |
+| Runtime config overrides | new | `GRASS_TIMING` / `GRASS_E_CENTER` env vars; CTest injects baseline so `ctest` is hermetic |
 
 The `test_eos` PCHIP rewrite kept all 18 prior assertions green: 1e-10 round-trips at table nodes, 1e-12 `pe_at_h` consistency, 1e-4 dual derivative vs FD, table-edge stability.
 
@@ -140,7 +140,7 @@ The `test_eos` PCHIP rewrite kept all 18 prior assertions green: 1e-10 round-tri
 | LICENSE | absent | **MIT** |
 | Production-grade doc set | partial | **README + TESTING + CONTRIBUTING + ASSESSMENT + LICENSE** |
 | Perf audit | absent | **2 reports + 1 microbench** |
-| Local-run-config / regression-config separation | none | **`tests/run_with_test_config.sh`** |
+| Local-run-config / regression-config separation | none | **runtime env vars (`GRASS_TIMING`, `GRASS_E_CENTER`); CTest `ENVIRONMENT` baseline** |
 | CI green on `main` | yes | **yes** (run 25032820550) |
 
 ---

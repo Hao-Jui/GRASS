@@ -48,13 +48,14 @@ perf(eos): switch interpolation to PCHIP, add test-config harness
 
 PCHIP gives O(1) lookup after binary search, exact at table nodes,
 and naturally degrades to linear at flat phase-transition steps.
-Net -29 lines vs the prior file. tests/run_with_test_config.sh
-keeps integration regression alive without reverting local config.
+Net -29 lines vs the prior file.
 ```
 
 Do **not** mix unrelated changes in one commit. Local run-config edits
-(`e_center`, `eos_file`, `THEORY_*`, output paths) are not commits;
-keep them as uncommitted working-tree changes or stash them.
+(`eos_file`, `THEORY_*`, output paths) are not commits; keep them as
+uncommitted working-tree changes or stash them. `e_center` and `timing`
+no longer need source edits — set `GRASS_E_CENTER` / `GRASS_TIMING` in
+the shell instead.
 
 ## Code style
 
@@ -87,12 +88,12 @@ keep them as uncommitted working-tree changes or stash them.
 Run before opening a PR:
 
 ```bash
-bash tests/run_with_test_config.sh
+ctest --test-dir build --output-on-failure
 ```
 
-This wraps `ctest` with the source-baked baseline config so
-integration tests pass even when your working tree has local sweep
-config.
+Integration tests inject `GRASS_TIMING=0` and `GRASS_E_CENTER=0.8e15`
+via CTest `ENVIRONMENT` properties, so they pass regardless of any
+local sweep / profiling defaults baked into your working tree.
 
 ## Pull-request process
 
