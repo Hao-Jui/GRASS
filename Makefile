@@ -21,11 +21,13 @@ FFLAGS  ?= $(BASE_FFLAGS) $(MODE_FFLAGS)
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
   LDFLAGS ?= -Wl,-stack_size,0x4000000
+  LAPACK_BLAS_LIBS ?= -framework Accelerate
 else
   LDFLAGS ?=
+  LAPACK_BLAS_LIBS ?= -llapack -lblas
 endif
 FFTW_LIBS ?= $(shell pkg-config --libs fftw3 2>/dev/null || echo -lfftw3)
-LIBS    ?= -llapack -lblas $(FFTW_LIBS)
+LIBS    ?= $(LAPACK_BLAS_LIBS) $(FFTW_LIBS)
 BUILDDIR := build
 OBJDIR   := $(BUILDDIR)/obj
 MODDIR   := $(BUILDDIR)/mod
@@ -37,6 +39,7 @@ SRCDIR := src
 SRC_TOOL := $(SRCDIR)/tool
 SRC_CORE := $(SRCDIR)/core
 SRC_THEORY := $(SRCDIR)/theory
+SRC_BH_TOROID := $(SRCDIR)/bh_toroid
 
 # SOURCES is topologically sorted so sequential make works without
 # explicit dependency rules.  For parallel builds use CMake instead.
@@ -50,6 +53,12 @@ SOURCES := \
   $(SRC_TOOL)/spline_mod.f90 \
   $(SRC_TOOL)/spectral_hub_mod.f90 \
   src/para_panel.f90 \
+  $(SRC_BH_TOROID)/bh_toroid_validation_mod.f90 \
+  $(SRC_BH_TOROID)/bh_toroid_params_mod.f90 \
+  $(SRC_BH_TOROID)/bh_toroid_radial_map_mod.f90 \
+  $(SRC_BH_TOROID)/bh_toroid_green_mod.f90 \
+  $(SRC_BH_TOROID)/bh_toroid_updates_mod.f90 \
+  $(SRC_BH_TOROID)/bh_toroid_solver_mod.f90 \
   $(SRC_TOOL)/donutization_mod.f90 \
   $(SRC_TOOL)/toolkit_mod.f90 \
   $(SRC_CORE)/ope_eq_mod.f90 \

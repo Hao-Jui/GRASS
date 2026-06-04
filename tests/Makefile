@@ -4,7 +4,9 @@ LIBGRASS ?= ../libgrass.a
 LIBS ?= -llapack -lblas -lfftw3
 BINDIR := bin
 
-UNIT_TESTS := test_ad test_spline test_spectral test_brent test_eos
+UNIT_TESTS := test_ad test_spline test_spectral test_brent test_eos \
+  test_bh_toroid_params test_bh_toroid_radial_map test_bh_toroid_green \
+  test_bh_toroid_updates test_bh_toroid_solver
 INTEG_TESTS := test_gr_uniform test_gr_constj test_gr_uryu test_st_uniform test_st_uniform_r07
 RESTART_TEST := test_restart
 
@@ -30,7 +32,7 @@ test_spline: unit/test_spline.f90 unit/test_utils.f90
 $(INTEG_TESTS): %: integration/%.f90
 	@mkdir -p $(BINDIR)
 	@$(FC) $(FFLAGS) -o $(BINDIR)/$@ $< $(LIBGRASS) $(LIBS)
-	@cd .. && mkdir -p Cont Res && timeout 120 tests/$(BINDIR)/$@ > /dev/null 2>&1 \
+	@cd .. && mkdir -p Cont Res && GRASS_TIMING=0 GRASS_E_CENTER=0.8e15 timeout 120 tests/$(BINDIR)/$@ > /dev/null 2>&1 \
 	  && bash tests/check_regression.sh Cont/properties.dat tests/reference/$@.ref \
 	  || (printf "  $@: FAIL\n" && exit 1)
 
@@ -40,5 +42,5 @@ $(RESTART_TEST): $(INTEG_TESTS) integration/test_restart.f90
 	@mkdir -p $(BINDIR)
 	@$(FC) $(FFLAGS) -o $(BINDIR)/test_restart integration/test_restart.f90 $(LIBGRASS) $(LIBS)
 	@printf "  test_restart: " && cd .. && mkdir -p Cont Res \
-	  && timeout 120 tests/$(BINDIR)/test_restart > /dev/null 2>&1 \
+	  && GRASS_TIMING=0 GRASS_E_CENTER=0.8e15 timeout 120 tests/$(BINDIR)/test_restart > /dev/null 2>&1 \
 	  && echo "PASS (convergence)" || (echo "FAIL" && exit 1)

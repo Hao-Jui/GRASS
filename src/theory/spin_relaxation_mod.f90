@@ -140,9 +140,17 @@ contains
   contains
 
     subroutine ensure_allocated
-      if (allocated(prev_rho) .and. size(prev_rho,1) == SDIV .and. size(prev_rho,2) == MDIV) return
-      if (allocated(prev_rho)) deallocate(prev_rho, prev_gama, prev_ww, prev_sphi)
-      if (allocated(hist_rho)) deallocate(hist_rho, hist_gama, hist_ww, hist_sphi)
+      if (allocated(prev_rho)) then
+        if (size(prev_rho,1) == SDIV .and. size(prev_rho,2) == MDIV) return
+      end if
+      if (allocated(prev_rho))  deallocate(prev_rho)
+      if (allocated(prev_gama)) deallocate(prev_gama)
+      if (allocated(prev_ww))   deallocate(prev_ww)
+      if (allocated(prev_sphi)) deallocate(prev_sphi)
+      if (allocated(hist_rho))  deallocate(hist_rho)
+      if (allocated(hist_gama)) deallocate(hist_gama)
+      if (allocated(hist_ww))   deallocate(hist_ww)
+      if (allocated(hist_sphi)) deallocate(hist_sphi)
       allocate(prev_rho(SDIV,MDIV),  source=rho)
       allocate(prev_gama(SDIV,MDIV), source=gama)
       allocate(prev_ww(SDIV,MDIV),   source=ww)
