@@ -13,8 +13,11 @@ set(CMAKE_Fortran_FLAGS_SANITIZER
 set(CMAKE_EXE_LINKER_FLAGS_SANITIZER "-fsanitize=address,undefined")
 
 # External dependencies
-find_package(LAPACK REQUIRED)
+if(APPLE)
+  set(BLA_VENDOR Apple)
+endif()
 find_package(BLAS REQUIRED)
+find_package(LAPACK REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(FFTW3 REQUIRED fftw3)
 
@@ -25,7 +28,8 @@ set(CMAKE_Fortran_MODULE_DIRECTORY ${CMAKE_BINARY_DIR}/mod)
 file(GLOB CORE_SOURCES src/core/*.f90)
 file(GLOB TOOL_SOURCES src/tool/*.f90)
 file(GLOB THEORY_SOURCES src/theory/*.f90)
-set(LIB_SOURCES ${CORE_SOURCES} ${TOOL_SOURCES} ${THEORY_SOURCES}
+file(GLOB BH_TOROID_SOURCES src/bh_toroid/*.f90)
+set(LIB_SOURCES ${CORE_SOURCES} ${TOOL_SOURCES} ${THEORY_SOURCES} ${BH_TOROID_SOURCES}
   src/para_panel.f90)
 
 # Library target
