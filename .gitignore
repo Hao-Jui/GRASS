@@ -61,3 +61,4 @@ build-sanitizer/
 
 # academic papers (local reference only)
 papers/
+/projects/
