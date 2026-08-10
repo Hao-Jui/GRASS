@@ -1,6 +1,6 @@
 FC ?= gfortran
 FFLAGS ?=
-LIBGRASS ?= ../libgrass.a
+LIBGRASS ?= ../bin/libgrass.a
 LIBS ?= -llapack -lblas -lfftw3
 BINDIR := bin
 

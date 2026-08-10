@@ -3,6 +3,7 @@
 *.mod
 a.out
 build/
+/bin/
 
 # Data / EOS
 data/

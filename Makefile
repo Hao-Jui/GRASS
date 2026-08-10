@@ -33,6 +33,7 @@ OBJDIR   := $(BUILDDIR)/obj
 MODDIR   := $(BUILDDIR)/mod
 BINDIR   := $(BUILDDIR)/bin
 TARGET   := $(BINDIR)/$(PROG)
+LIBGRASS := bin/libgrass.a
 
 FFLAGS  += -J$(MODDIR) -I$(MODDIR)
 SRCDIR := src
@@ -112,10 +113,11 @@ clean:
 	$(RM) -r $(BUILDDIR) $(LIBGRASS) tests/bin
 
 # --- Test targets ---
-LIBGRASS := libgrass.a
 LIB_OBJECTS := $(filter-out $(OBJDIR)/src/main.o,$(OBJECTS))
 
 $(LIBGRASS): $(LIB_OBJECTS)
+	@mkdir -p $(dir $@)
+	$(RM) $@
 	ar rcs $@ $^
 
 .PHONY: test test-unit test-integration test-debug test-sanitizer

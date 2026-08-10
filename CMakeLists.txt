@@ -36,6 +36,9 @@ set(LIB_SOURCES ${CORE_SOURCES} ${TOOL_SOURCES} ${THEORY_SOURCES} ${BH_TOROID_SO
 
 # Library target
 add_library(grass_lib STATIC ${LIB_SOURCES})
+set_target_properties(grass_lib PROPERTIES
+  OUTPUT_NAME grass
+  ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
 target_include_directories(grass_lib PUBLIC
   ${CMAKE_Fortran_MODULE_DIRECTORY}
   ${FFTW3_INCLUDE_DIRS})
