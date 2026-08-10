@@ -321,3 +321,76 @@ $ cmake --build build --target test_eos -j2 && ctest --test-dir build --output-o
 1/1 Test #5: test_eos ... Passed 0.28 sec
 100% tests passed, 0 tests failed out of 1
 ```
+
+## 2026-08-10 — Atomic worktree commits and `bin/libgrass.a`
+
+The accumulated repository-owned worktree was partitioned into conventional
+commits for module moves, BH-toroid consolidation, restart-format validation,
+mass-radius/scalar-burning behaviour, relaxation-cycle detection, output and
+runtime configuration, EOS data/tooling, project documentation, and build
+output. The nested manuscript repository and generated LaTe files under
+`projects/` were not embedded in GRASS; `/projects/` is now ignored. The
+tracked `src/para_panel.f90` runtime configuration was committed separately;
+its schema was not represented as an untracked change.
+
+Both supported build paths now write the static library to
+`bin/libgrass.a`. CMake keeps the target name `grass_lib` for downstream
+links but sets the archive output name and directory. Make and
+`tests/Makefile` use the same archive path, create the directory, and remove
+the old archive before `ar rcs` so CMake-style and Make-style members cannot
+accumulate. A first cross-build probe exposed a missing Make source:
+
+```text
+Undefined symbols for architecture arm64:
+  "___restart_format_mod_MOD_pack_header_ints"
+  "___restart_format_mod_MOD_validate_magic"
+...
+make: *** [all] Error 2
+```
+
+`restart_format_mod.f90` was then added before `regrid_mod.f90` in Make's
+topological source list. Final cross-build verification succeeded:
+
+```text
+$ cmake --build build --target grass_lib --clean-first -j2
+[100%] Linking Fortran static library /Users/horay/ptmp/GRASS/bin/libgrass.a
+[100%] Built target grass_lib
+CMAKE_MEMBERS=41
+CMAKE_STYLE_MEMBERS=40
+
+$ make -B bin/libgrass.a && cmake --build build -j2
+MAKE_MEMBERS=41
+MAKE_CMAKE_STYLE_MEMBERS=0
+MAKE_RESTART_MEMBER=1
+[100%] Built target test_bh_toroid_solver
+```
+
+The final unit suite passed:
+
+```text
+$ ctest --test-dir build --output-on-failure -R '^test_(ad|spline|spectral|brent|eos|restart_format|bh_toroid_.*)$'
+100% tests passed, 0 tests failed out of 11
+Total Test time (real) = 2.07 sec
+```
+
+The complete suite is not clean and must not be reported as passing:
+
+```text
+$ ctest --test-dir build --output-on-failure
+78% tests passed, 4 tests failed out of 18
+13 - test_gr_uniform (Failed)
+14 - test_gr_constj (Failed)
+16 - test_st_uniform (Failed)
+17 - test_st_uniform_r07 (Failed)
+```
+
+The GR uniform and constant-J drivers inherit the current `r_ratio=0.95`
+single-model default while their references require `0.7`; their failures are
+full solution mismatches. The ordinary CTest ST checks compare a stale Uryu
+properties file and miss `M4/M^5` by `1.11e-4`. A discriminating fresh-output
+run with `tests/run_regression.sh` removed the stale file first: both ST
+executables printed solver diagnostics but produced no `Cont/properties.dat`,
+and the wrapper correctly failed with `properties.dat not found`. New ST
+reference data was not invented during this publish task. `test_gr_uryu`
+passed in 0.74 s and `test_restart` passed in 0.27 s. The production Uryu
+admissibility fix remains reverted/open as documented above.
