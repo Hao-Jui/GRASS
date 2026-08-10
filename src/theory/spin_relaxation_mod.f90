@@ -21,6 +21,8 @@ contains
     real(wp), parameter :: PICARD_THRESH = 5.e-1_wp, CHEB_THRESH = 1.e-1_wp
     real(wp), parameter :: RHO_LOCK_TOL = 2.e-2_wp, CYCLE_TOL = 1.e-3_wp
     real(wp), parameter :: DIF_TAIL_THRESH = 1.e-5_wp, ANDERSON_TAIL_THRESH = 1.e-4_wp
+    real(wp), parameter :: CYCLE_BAND_THRESH = 1.e-2_wp, CYCLE_TIGHT_TOL = 1.e-8_wp
+    integer,  parameter :: CYCLE_BAND_MIN_MATCH = 2
     integer,  parameter :: M_HIST = 3, PICARD_STALL_LIMIT = 8
     integer,  parameter :: N_CHEB = 3, N_ANDERSON = 5, N_RHO_LOCK = 3, N_CHEB_FAIL = 3
     integer,  parameter :: N_ANDERSON_FAIL = 2, ANDERSON_SEQ_MAX = 2
@@ -202,6 +204,24 @@ contains
             cycle_hit = .true.; exit
           end if
         end do
+      else if (dif < CYCLE_BAND_THRESH .and. n_of_it > CYCLE_LAGS(1)) then
+        ! Higher-dif limit-cycle escape: require near-bit-exact match (tight tol)
+        ! at multiple lags so a transient near-equal dif during ordinary descent
+        ! does not false-trigger.
+        block
+          integer :: n_match
+          n_match = 0
+          do lag_idx = 1, N_CYCLE_LAGS
+            hist_pos = modulo(ring_pos - CYCLE_LAGS(lag_idx) - 1, CYCLE_LAG_MAX) + 1
+            dif_ref = dif_ring(hist_pos)
+            if (dif_ref > 0.0_wp .and. abs(dif - dif_ref) <= CYCLE_TIGHT_TOL * max(dif, dif_ref)) then
+              n_match = n_match + 1
+              if (n_match >= CYCLE_BAND_MIN_MATCH) then
+                cycle_hit = .true.; exit
+              end if
+            end if
+          end do
+        end block
       end if
       if (cycle_hit) then
         w_mix = max(W_MIX_MIN, 0.5_wp * w_mix)
