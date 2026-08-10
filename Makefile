@@ -34,6 +34,7 @@ MODDIR   := $(BUILDDIR)/mod
 BINDIR   := $(BUILDDIR)/bin
 TARGET   := $(BINDIR)/$(PROG)
 LIBGRASS := bin/libgrass.a
+CI_LIBGRASS := bin/libgrass_ci.a
 
 FFLAGS  += -J$(MODDIR) -I$(MODDIR)
 SRCDIR := src
@@ -89,6 +90,12 @@ SOURCES := \
   src/main.f90
 
 OBJECTS := $(patsubst %.f90,$(OBJDIR)/%.o,$(SOURCES))
+CI_PARA_FILE := tests/CI/para_panel.f90
+CI_OBJDIR := $(BUILDDIR)/make_ci_obj
+CI_MODDIR := $(BUILDDIR)/make_ci_mod
+CI_SOURCES := $(patsubst src/para_panel.f90,$(CI_PARA_FILE),$(filter-out src/main.f90,$(SOURCES)))
+CI_OBJECTS := $(patsubst %.f90,$(CI_OBJDIR)/%.o,$(CI_SOURCES))
+CI_FFLAGS := $(filter-out -I$(MODDIR) -J$(MODDIR),$(FFLAGS)) -I$(CI_MODDIR) -J$(CI_MODDIR)
 
 
 .PHONY: all clean release debug
@@ -109,13 +116,22 @@ $(OBJDIR)/%.o: %.f90
 	@mkdir -p $(dir $@) $(MODDIR)
 	$(FC) $(FFLAGS) -c -o $@ $<
 
+$(CI_OBJDIR)/%.o: %.f90
+	@mkdir -p $(dir $@) $(CI_MODDIR)
+	$(FC) $(CI_FFLAGS) -c -o $@ $<
+
 clean:
-	$(RM) -r $(BUILDDIR) $(LIBGRASS) tests/bin
+	$(RM) -r $(BUILDDIR) $(LIBGRASS) $(CI_LIBGRASS) tests/bin
 
 # --- Test targets ---
 LIB_OBJECTS := $(filter-out $(OBJDIR)/src/main.o,$(OBJECTS))
 
 $(LIBGRASS): $(LIB_OBJECTS)
+	@mkdir -p $(dir $@)
+	$(RM) $@
+	ar rcs $@ $^
+
+$(CI_LIBGRASS): $(CI_OBJECTS)
 	@mkdir -p $(dir $@)
 	$(RM) $@
 	ar rcs $@ $^
@@ -127,17 +143,19 @@ test: test-unit test-integration
 
 ABSFFLAGS := -I$(CURDIR) -I$(CURDIR)/$(MODDIR) -J$(CURDIR)/$(MODDIR) \
   $(filter-out -I. -I$(MODDIR) -J$(MODDIR),$(FFLAGS))
+CI_ABSFFLAGS := -I$(CURDIR) -I$(CURDIR)/$(CI_MODDIR) -J$(CURDIR)/$(CI_MODDIR) \
+  $(filter-out -I. -I$(MODDIR) -J$(MODDIR),$(FFLAGS))
 
-test-unit: $(LIBGRASS)
-	@$(MAKE) -C tests unit FC=$(FC) FFLAGS="$(ABSFFLAGS)" LIBGRASS=$(CURDIR)/$(LIBGRASS) LIBS="$(LIBS)"
+test-unit: $(CI_LIBGRASS)
+	@$(MAKE) -C tests unit FC=$(FC) FFLAGS="$(CI_ABSFFLAGS)" LIBGRASS=$(CURDIR)/$(CI_LIBGRASS) LIBS="$(LIBS)"
 
-test-integration: $(LIBGRASS)
-	@$(MAKE) -C tests integration FC=$(FC) FFLAGS="$(ABSFFLAGS)" LIBGRASS=$(CURDIR)/$(LIBGRASS) LIBS="$(LIBS)"
+test-integration: $(CI_LIBGRASS)
+	@$(MAKE) -C tests integration FC=$(FC) FFLAGS="$(CI_ABSFFLAGS)" LIBGRASS=$(CURDIR)/$(CI_LIBGRASS) LIBS="$(LIBS)"
 
 test-debug:
-	@$(MAKE) MODE=Debug $(LIBGRASS)
-	@$(MAKE) -C tests sanitizer FC=$(FC) FFLAGS="$(ABSFFLAGS)" LIBGRASS=$(CURDIR)/$(LIBGRASS) LIBS="$(LIBS)"
+	@$(MAKE) MODE=Debug $(CI_LIBGRASS)
+	@$(MAKE) -C tests sanitizer FC=$(FC) FFLAGS="$(CI_ABSFFLAGS)" LIBGRASS=$(CURDIR)/$(CI_LIBGRASS) LIBS="$(LIBS)"
 
 test-sanitizer:
-	@$(MAKE) MODE=Sanitizer $(LIBGRASS)
-	@$(MAKE) -C tests unit FC=$(FC) FFLAGS="$(ABSFFLAGS)" LIBGRASS=$(CURDIR)/$(LIBGRASS) LIBS="$(LIBS) -fsanitize=address,undefined"
+	@$(MAKE) MODE=Sanitizer $(CI_LIBGRASS)
+	@$(MAKE) -C tests unit FC=$(FC) FFLAGS="$(CI_ABSFFLAGS)" LIBGRASS=$(CURDIR)/$(CI_LIBGRASS) LIBS="$(LIBS) -fsanitize=address,undefined"

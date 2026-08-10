@@ -56,10 +56,12 @@ tolerance** against `tests/reference/test_<name>.ref`.
 | `test_st_uniform_r07` | ST + uniform rotation, r_ratio = 0.7 (locked-axis variant) |
 | `test_restart` | round-trip of `Res/res.rst` (writer ↔ reader unit consistency) |
 
-Each test sets its own `eos_file`, `active_theory`, `solver_type`,
-`SDIV`, `MDIV`, etc. inside the test program — the global compile-time
-defaults in `src/para_panel.f90` are overridden so a single binary can
-exercise multiple configurations.
+Each test sets its model-specific `eos_file`, `active_theory`, `solver_type`,
+`SDIV`, `MDIV`, etc. inside the test program. All test executables link a
+dedicated `grass_ci_lib` compiled with `tests/CI/para_panel.f90`; production
+executables continue to use `src/para_panel.f90`. The frozen CI panel pins
+shared defaults, including `r_ratio = 0.7`, that are otherwise easy to inherit
+silently from a production run configuration.
 
 ### Regression gate (`tests/check_regression.sh`)
 
@@ -71,8 +73,7 @@ automatically by every integration test via CTest.
 
 ### Runtime config overrides (`GRASS_TIMING`, `GRASS_E_CENTER`)
 
-The integration tests pin two knobs that double as developer
-sweep / profiling state:
+The integration tests also pin two runtime-overridable knobs:
 
 - `e_center` default-branch literal (`src/core/starting_model_mod.f90`),
   pulled from `e_center_default` in `src/para_panel.f90`.
@@ -87,9 +88,9 @@ Both are now read at startup from environment variables in
 | `GRASS_E_CENTER` | overrides `e_center_default` (cgs g/cm³) | float literal, e.g. `0.8e15` |
 
 `tests/CMakeLists.txt` sets `ENVIRONMENT "GRASS_TIMING=0;GRASS_E_CENTER=0.8e15"`
-on every integration test, so `ctest` is hermetic regardless of the
-developer's local compile-time defaults. No source patching, no rebuild
-between dev work and tests.
+on every integration test. Together with the dedicated CI parameter panel,
+this keeps CTest independent of production run settings without source
+patching.
 
 Manual examples:
 

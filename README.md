@@ -145,6 +145,10 @@ integer :: MDIV = 41                         ! angular grid
 See `src/para_panel.f90` for the full list (rotation law, shooting target,
 relaxation thresholds, output verbosity).
 
+Test executables use the frozen parameter schema in
+`tests/CI/para_panel.f90`; editing the production panel therefore does not
+change regression fixtures.
+
 ---
 
 ## Repository Layout

@@ -18,7 +18,9 @@ contains
   subroutine initialize_starting_model()
     external :: restart_read, refine_read
     real(wp) :: target_mphi
+    real(wp) :: configured_r_ratio
     integer :: regrid_status
+    logical :: has_configured_r_ratio
     character(len=256) :: regrid_error
 
     select case (run_mode)
@@ -31,12 +33,15 @@ contains
       p_center = p_at_e(e_center)
       h_center = h_at_p(p_center)
     case default
-      r_ratio  = merge(0.7_wp, 1._wp, trim(adjustl(solver_type)) == "uryu")
+      configured_r_ratio = r_ratio
+      has_configured_r_ratio = abs(configured_r_ratio - 1._wp) >= epsilon(configured_r_ratio)
+      r_ratio = merge(0.7_wp, 1._wp, trim(adjustl(solver_type)) == "uryu")
       e_center = e_center_default
       e_center = e_center * C * C * KSCALE
       p_center = p_at_e(e_center)
       h_center = h_at_p(p_center)
       call sphere
+      if (has_configured_r_ratio) r_ratio = configured_r_ratio
 
       if (active_theory /= THEORY_GR .and. mphi_goal > mphi_burn_threshold) then
         target_mphi = mphi_goal

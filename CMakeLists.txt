@@ -30,9 +30,9 @@ file(GLOB TOOL_SOURCES src/tool/*.f90)
 file(GLOB THEORY_SOURCES src/theory/*.f90)
 file(GLOB BH_TOROID_SOURCES src/bh_toroid/*.f90)
 file(GLOB UTILITIES_SOURCES src/utilities/*.f90)
-set(LIB_SOURCES ${CORE_SOURCES} ${TOOL_SOURCES} ${THEORY_SOURCES} ${BH_TOROID_SOURCES}
-  ${UTILITIES_SOURCES}
-  src/para_panel.f90)
+set(GRASS_COMMON_SOURCES ${CORE_SOURCES} ${TOOL_SOURCES} ${THEORY_SOURCES}
+  ${BH_TOROID_SOURCES} ${UTILITIES_SOURCES})
+set(LIB_SOURCES ${GRASS_COMMON_SOURCES} src/para_panel.f90)
 
 # Library target
 add_library(grass_lib STATIC ${LIB_SOURCES})
@@ -44,6 +44,21 @@ target_include_directories(grass_lib PUBLIC
   ${FFTW3_INCLUDE_DIRS})
 target_link_directories(grass_lib PUBLIC ${FFTW3_LIBRARY_DIRS})
 target_link_libraries(grass_lib PUBLIC
+  ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES} ${FFTW3_LIBRARIES})
+
+# Tests compile against a frozen parameter panel so production run settings do
+# not alter regression fixtures.
+add_library(grass_ci_lib STATIC
+  ${GRASS_COMMON_SOURCES}
+  tests/CI/para_panel.f90)
+set_target_properties(grass_ci_lib PROPERTIES
+  OUTPUT_NAME grass_ci
+  Fortran_MODULE_DIRECTORY "${CMAKE_BINARY_DIR}/ci_mod")
+target_include_directories(grass_ci_lib PUBLIC
+  "${CMAKE_BINARY_DIR}/ci_mod"
+  ${FFTW3_INCLUDE_DIRS})
+target_link_directories(grass_ci_lib PUBLIC ${FFTW3_LIBRARY_DIRS})
+target_link_libraries(grass_ci_lib PUBLIC
   ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES} ${FFTW3_LIBRARIES})
 
 # Main executable

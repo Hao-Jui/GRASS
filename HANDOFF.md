@@ -394,3 +394,62 @@ and the wrapper correctly failed with `properties.dat not found`. New ST
 reference data was not invented during this publish task. `test_gr_uryu`
 passed in 0.74 s and `test_restart` passed in 0.27 s. The production Uryu
 admissibility fix remains reverted/open as documented above.
+
+## 2026-08-10 — Isolated CI parameter panel
+
+Regression targets no longer compile against the production run configuration
+in `src/para_panel.f90`. CMake now builds `grass_ci_lib`, and the root Makefile
+builds `bin/libgrass_ci.a`, from the frozen `tests/CI/para_panel.f90`; all test
+executables link that library. Production `grass` and `bin/libgrass.a` retain
+the production panel. The two panels are schema-identical and differ only in
+the CI fixture's `r_ratio=0.7` versus the production `1.0` sentinel:
+
+```text
+$ diff -u src/para_panel.f90 tests/CI/para_panel.f90
+-  real(wp) :: r_ratio = 1.0_wp
++  real(wp) :: r_ratio = 0.7_wp
+```
+
+`initialize_starting_model` now saves an explicitly configured non-spherical
+ratio, constructs the spherical seed with the existing solver-family default,
+and restores the configured ratio before the rotating solve. Thus the
+production defaults are unchanged while a CI panel can select the regression
+case. Make uses separate `build/make_ci_obj` and `build/make_ci_mod`
+directories, and the test Makefile now declares the selected archive as a link
+prerequisite so a parameter change cannot leave stale executables.
+
+Both isolated library paths compiled successfully. The Make unit suite passed:
+
+```text
+$ make -B bin/libgrass_ci.a -j1
+gfortran ... -o build/make_ci_obj/tests/CI/para_panel.o tests/CI/para_panel.f90
+ar rcs bin/libgrass_ci.a ...
+
+$ make test-unit -j1
+test_ad: 22 passed, 0 failed
+test_spline: 24 passed, 0 failed
+test_spectral: 5 passed, 0 failed
+test_brent: 4 passed, 0 failed
+test_eos: 18 passed, 0 failed
+test_bh_toroid_params: 13 passed, 0 failed
+test_bh_toroid_radial_map: 23 passed, 0 failed
+test_bh_toroid_green: 21 passed, 0 failed
+test_bh_toroid_updates: 34 passed, 0 failed
+test_bh_toroid_solver: 74 passed, 0 failed
+```
+
+A clean CMake build in `/tmp/grass-ci-verify.sGP9ei` compiled the production
+and CI libraries concurrently without module collisions. Its CI-equivalent
+status was `unit=0 gr=8 restart=0 st=8`: all five workflow unit tests passed,
+GR uniform and Uryu passed, and restart plus restart-format passed. The sole GR
+failure was the known platform-sensitive constant-J `M4/M^5` comparison:
+
+```text
+ref=-0.347492706 got=-0.347451801 rdiff=1.18e-04 tol=1.00e-04
+```
+
+This is not caused by the parameter split. A detached clean build of historical
+commit `0211b9f`, which hard-coded `r_ratio=0.7` immediately before the rotating
+solve, missed the same field by more on this machine (`rdiff=1.91e-4`). No
+reference or tolerance was changed. Both scalar-tensor tests retain their
+pre-existing allowed-failure status in GitHub Actions.

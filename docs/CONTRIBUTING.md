@@ -67,6 +67,8 @@ the shell instead.
 - Preserve existing variable names; do not rename across patches.
 - Do not add comments to `src/para_panel.f90` or other parameter files
   that change between runs.
+- Keep `tests/CI/para_panel.f90` fixed except for intentional regression-case
+  updates or schema changes mirrored from `src/para_panel.f90`.
 - Default to writing no comments; add one only when the *why* is
   non-obvious. Never narrate *what* the code does.
 - Public API of a module goes in a single `public ::` block at the top.

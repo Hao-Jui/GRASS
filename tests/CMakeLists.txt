@@ -1,6 +1,6 @@
 # Test utilities (compiled once, linked by all unit tests)
 add_library(test_utils OBJECT unit/test_utils.f90)
-target_link_libraries(test_utils grass_lib)
+target_link_libraries(test_utils grass_ci_lib)
 
 # Unit tests
 set(UNIT_TESTS test_ad test_spline test_spectral test_brent test_eos
@@ -9,7 +9,7 @@ set(UNIT_TESTS test_ad test_spline test_spectral test_brent test_eos
   test_bh_toroid_updates test_bh_toroid_solver)
 foreach(test ${UNIT_TESTS})
   add_executable(${test} unit/${test}.f90)
-  target_link_libraries(${test} test_utils grass_lib)
+  target_link_libraries(${test} test_utils grass_ci_lib)
   add_test(NAME ${test} COMMAND ${test}
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endforeach()
@@ -25,7 +25,7 @@ set(INTEG_TESTS test_gr_uniform test_gr_constj test_gr_uryu
   test_st_uniform test_st_uniform_r07)
 foreach(test ${INTEG_TESTS})
   add_executable(${test} integration/${test}.f90)
-  target_link_libraries(${test} grass_lib)
+  target_link_libraries(${test} grass_ci_lib)
   if(test STREQUAL "test_gr_uryu")
     add_test(NAME ${test}
       COMMAND bash ${CMAKE_SOURCE_DIR}/tests/run_regression.sh
@@ -49,7 +49,7 @@ set_tests_properties(test_gr_uryu PROPERTIES
 
 # Restart test (convergence check only, no regression)
 add_executable(test_restart integration/test_restart.f90)
-target_link_libraries(test_restart grass_lib)
+target_link_libraries(test_restart grass_ci_lib)
 add_test(NAME test_restart COMMAND test_restart
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_tests_properties(test_restart PROPERTIES
