@@ -40,6 +40,7 @@ SRC_TOOL := $(SRCDIR)/tool
 SRC_CORE := $(SRCDIR)/core
 SRC_THEORY := $(SRCDIR)/theory
 SRC_BH_TOROID := $(SRCDIR)/bh_toroid
+SRC_UTIL := $(SRCDIR)/utilities
 
 # SOURCES is topologically sorted so sequential make works without
 # explicit dependency rules.  For parallel builds use CMake instead.
@@ -79,13 +80,13 @@ SOURCES := \
   $(SRC_THEORY)/spin_integration_mod.f90 \
   $(SRC_THEORY)/spin_relaxation_mod.f90 \
   $(SRC_THEORY)/rotation_solver_mod.f90 \
-  $(SRC_CORE)/scalar_burning_mod.f90 \
+  $(SRC_UTIL)/scalar_burning_mod.f90 \
   $(SRC_CORE)/shoot_solver_2d_mod.f90 \
   $(SRC_CORE)/shoot_solver_1d_hc_mod.f90 \
   $(SRC_CORE)/shoot_solver_1d_r_ratio_mod.f90 \
   $(SRC_CORE)/starting_model_mod.f90 \
-  $(SRC_CORE)/shoot_mod.f90 \
-  $(SRC_CORE)/MRcurve_mod.f90 \
+  $(SRC_UTIL)/shoot_mod.f90 \
+  $(SRC_UTIL)/MRcurve_mod.f90 \
   src/main.f90
 
 OBJECTS := $(patsubst %.f90,$(OBJDIR)/%.o,$(SOURCES))

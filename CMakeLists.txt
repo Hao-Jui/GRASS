@@ -29,7 +29,9 @@ file(GLOB CORE_SOURCES src/core/*.f90)
 file(GLOB TOOL_SOURCES src/tool/*.f90)
 file(GLOB THEORY_SOURCES src/theory/*.f90)
 file(GLOB BH_TOROID_SOURCES src/bh_toroid/*.f90)
+file(GLOB UTILITIES_SOURCES src/utilities/*.f90)
 set(LIB_SOURCES ${CORE_SOURCES} ${TOOL_SOURCES} ${THEORY_SOURCES} ${BH_TOROID_SOURCES}
+  ${UTILITIES_SOURCES}
   src/para_panel.f90)
 
 # Library target
