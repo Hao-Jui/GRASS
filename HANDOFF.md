@@ -1,0 +1,80 @@
+# Development handoff
+
+## 2026-08-09 — DD2/Uryu feedback audit
+
+Scope was investigation only. No production source or test was changed.
+`src/para_panel.f90` remains a tracked local-configuration change and was
+excluded from this work: comparing the compiler's symbol trees for `HEAD` and
+the working copy produced `schema_symbol_diff_exit=0`.
+
+### Confirmed: Uryu coefficient-domain failure
+
+`src/theory/rotational_law_mod.f90` evaluates the raw equatorial momentum in
+both `cache_uryu_ab` (lines 12-16) and `diff_rotation_uryu` (lines 39-59).
+`AA_h` line 98 then raises a negative base to `1/(p+q)`.
+
+For the repository defaults (`lambda1=1.5`, `lambda2=0.3`, `p=1`, `q=3`), a
+direct call through the current module gave:
+
+```text
+threshold=  1.709976E+00
+F_e=  1.0101E-01 denominator=  7.5051E-01 base= -2.0184E-01 finite=F
+F_e=  2.2222E+00 denominator=  1.8111E+00 base=  2.1990E+00 finite=T
+```
+
+This isolates the cause from a zero denominator and from Brent itself. The
+published real-domain condition is
+`F_e > (lambda1/lambda2)^(1/q) F_max` (Iosif & Stergioulas 2021, equations
+23-25): https://academic.oup.com/mnras/article/503/1/850/6133452
+
+The existing integration executable also reproduced the downstream symptom:
+
+```text
+$ GRASS_TIMING=0 GRASS_E_CENTER=0.8e15 ./build/tests/test_gr_uryu
+Note: The following floating-point exceptions are signalling: IEEE_INVALID_FLAG
+ERROR STOP brent_core: failed to bracket root
+check  ./Cont/diff_rotation.dat
+```
+
+The resulting bracket log had 200 rows: 141 finite and 59 NaN.
+
+The feedback's proposed `safe_F_e` clamp is not accepted as a verified fix.
+Clamping only the coefficient inversion substitutes a different state and can
+hide an inadmissible root. A fix needs domain-aware bracketing/parameterisation,
+explicit rejection of invalid trials, and post-root validation before caching.
+
+Falsifier checked: a finite `AA_h` below the published threshold. It was false.
+
+### CANNOT REPRODUCE: claimed intrinsic branch discontinuity
+
+The current checkout stops on the confirmed domain failure first. The feedback's
+diagnostic instrumentation and continuation experiments are not present, and no
+raw trace was supplied. Remaining candidates are multiple-root switching,
+crossing the admissibility boundary, fixed-step `Fmax_h` overshoot/non-convergence,
+and a physical branch endpoint. The uncapped fixed-step loop is at
+`src/theory/spin_updates_mod.f90:166-219`; negative `F_equator_h` is checked only
+after root selection at line 174.
+
+Required falsifier was not checked: enumerate all admissible roots versus
+`Fmax_h` and demonstrate that the continued physical branch itself terminates
+discontinuously. A smaller-step attempt failing sooner does not distinguish the
+live candidates.
+
+### Feedback/check-out inconsistencies
+
+- No `safe_F_e` implementation exists.
+- The `r_ratio=0.7` overwrite in `single_model` is removed locally, but
+  `MODE_DEFAULT` still overwrites `r_ratio` in
+  `src/core/starting_model_mod.f90:34`, and restart loading still overwrites it
+  in `src/core/regrid_mod.f90:69`.
+- The Uryu integration test does not set `r_ratio`, `lambda1`, or `lambda2`; its
+  reference still expects the removed hard-coded ratio `0.7`.
+- The feedback's DD2 Hamiltonian-L2 numbers and constraint-field instrumentation
+  have no preserved outputs in this checkout and were not independently verified.
+
+### Adjacent confirmed issue from the same feedback
+
+The DD2 TOV run can stall without a progress/iteration cap in
+`src/core/sphere_mod.f90:142`. An isolated run produced 51,780,960 repeated
+non-progress rows (2.38 GB) before it was stopped; the temporary reproduction
+was removed. This was not an Uryu-law verdict and no fix was made.
