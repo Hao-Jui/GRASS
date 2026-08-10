@@ -4,6 +4,7 @@ target_link_libraries(test_utils grass_lib)
 
 # Unit tests
 set(UNIT_TESTS test_ad test_spline test_spectral test_brent test_eos
+  test_restart_format
   test_bh_toroid_params test_bh_toroid_radial_map test_bh_toroid_green
   test_bh_toroid_updates test_bh_toroid_solver)
 foreach(test ${UNIT_TESTS})

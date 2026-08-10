@@ -72,6 +72,7 @@ SOURCES := \
   $(SRC_THEORY)/spin_workspace_mod.f90 \
   $(SRC_THEORY)/spin_updates_mod.f90 \
   $(SRC_CORE)/sphere_mod.f90 \
+  $(SRC_CORE)/restart_format_mod.f90 \
   $(SRC_CORE)/regrid_mod.f90 \
   $(SRC_CORE)/analysis_mod.f90 \
   $(SRC_THEORY)/spin_integration_mod.f90 \

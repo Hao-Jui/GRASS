@@ -2,23 +2,17 @@ module regrid_mod
   use iso_fortran_env, only: output_unit, int32
   use para_mod, only: wp
   use grid_mod, only: make_grid, GridTrig
+  use restart_format_mod, only: restart_meta_t, restart_status_t, &
+      RESTART_MAGIC, RESTART_NFIELDS, RESTART_OK, &
+      F_ALPHA, F_GAMA, F_RHO, F_WW, F_PRESSURE, F_ENERGY, F_ENTHALPY, &
+      F_VELOCITY_SQ, F_OMG, F_SPHI, &
+      unpack_header_ints, unpack_header_meta, &
+      validate_magic, validate_version, validate_storage_size, validate_field_count
   implicit none
   private
   public :: regrid_read
 
   character(len=*), parameter :: restart_binary_path = "./Res/res.rst"
-  character(len=*), parameter :: restart_magic = "GRASSRST01"
-  integer(int32), parameter :: restart_format_version = 1_int32
-
-  integer, parameter :: NFIELDS = 10
-  integer, parameter :: F_ALPHA = 1, F_GAMA = 2, F_RHO = 3, F_WW = 4, F_PRESSURE = 5
-  integer, parameter :: F_ENERGY = 6, F_ENTHALPY = 7, F_VELOCITY_SQ = 8, F_OMG = 9, F_SPHI = 10
-
-  type :: restart_meta_t
-    integer :: sdiv = 0, mdiv = 0, spwr = 0
-    real(wp) :: r_e = 0._wp, e_center = 0._wp, r_ratio = 0._wp
-    real(wp) :: omega_e = 0._wp, omega_c = 0._wp
-  end type restart_meta_t
 
 contains
 
@@ -106,7 +100,8 @@ contains
     integer :: unit, ios
     integer(int32) :: hi(6)
     real(wp) :: hm(5)
-    character(len=len(restart_magic)) :: magic
+    character(len=len(RESTART_MAGIC)) :: magic
+    type(restart_status_t) :: vstatus
 
     ierr = 0; errmsg = ""
     open(newunit=unit, file=path, status="old", action="read", access="stream", &
@@ -117,18 +112,26 @@ contains
 
     read_block: block
       read(unit, iostat=ios) magic
-      if (ios /= 0 .or. magic /= restart_magic) exit read_block
+      if (ios /= 0) exit read_block
+      vstatus = validate_magic(magic)
+      if (vstatus%code /= RESTART_OK) exit read_block
+
       read(unit, iostat=ios) hi
       if (ios /= 0) exit read_block
-      if (hi(1) /= restart_format_version .or. hi(2) /= int(storage_size(1.0_wp), int32) .or. &
-          hi(3) /= int(NFIELDS, int32) .or. hi(4) < 2 .or. hi(5) < 2) exit read_block
+      vstatus = validate_version(hi(1))
+      if (vstatus%code /= RESTART_OK) exit read_block
+      vstatus = validate_storage_size(hi(2))
+      if (vstatus%code /= RESTART_OK) exit read_block
+      vstatus = validate_field_count(hi(3))
+      if (vstatus%code /= RESTART_OK) exit read_block
+      if (hi(4) < 2 .or. hi(5) < 2) exit read_block
+
       read(unit, iostat=ios) hm
       if (ios /= 0) exit read_block
 
-      meta = restart_meta_t(sdiv=hi(4), mdiv=hi(5), spwr=hi(6), &
-                            r_e=hm(1), e_center=hm(2), r_ratio=hm(3), &
-                            omega_e=hm(4), omega_c=hm(5))
-      allocate(old_s(meta%sdiv), old_m(meta%mdiv), old_data(NFIELDS, meta%sdiv, meta%mdiv))
+      call unpack_header_ints(hi, meta)
+      call unpack_header_meta(hm, meta)
+      allocate(old_s(meta%sdiv), old_m(meta%mdiv), old_data(RESTART_NFIELDS, meta%sdiv, meta%mdiv))
 
       read(unit, iostat=ios) old_s
       if (ios == 0) read(unit, iostat=ios) old_m
@@ -173,7 +176,7 @@ contains
     real(wp), allocatable :: s_wt(:), m_wt(:), sq_wt(:,:), mq_wt(:,:)
 
     new_sdiv = size(new_s); new_mdiv = size(new_m)
-    allocate(new_data(NFIELDS, new_sdiv, new_mdiv), source=0._wp)
+    allocate(new_data(RESTART_NFIELDS, new_sdiv, new_mdiv), source=0._wp)
     allocate(s_lo(new_sdiv), s_hi(new_sdiv), s_wt(new_sdiv))
     allocate(m_lo(new_mdiv), m_hi(new_mdiv), m_wt(new_mdiv))
 

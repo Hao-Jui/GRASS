@@ -28,8 +28,6 @@ contains
         write(error_unit, '(A)') trim(regrid_error)
         error stop "initialize_starting_model: regrid_read failed"
       end if
-      e_center = .74e15_wp
-      e_center = e_center * C * C * KSCALE
       p_center = p_at_e(e_center)
       h_center = h_at_p(p_center)
     case default

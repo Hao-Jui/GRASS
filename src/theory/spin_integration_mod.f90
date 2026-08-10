@@ -708,30 +708,39 @@ contains
   end subroutine output_helper
 
   subroutine write_restart_file(filename)
+    use restart_format_mod, only: restart_meta_t, RESTART_MAGIC, RESTART_NFIELDS, &
+        F_ALPHA, F_GAMA, F_RHO, F_WW, F_PRESSURE, F_ENERGY, F_ENTHALPY, F_VELOCITY_SQ, &
+        F_OMG, F_SPHI, pack_header_ints, pack_header_meta
     character(len=*), intent(in) :: filename
     integer :: unit, ios
     integer(int32) :: header_ints(6)
     real(wp) :: header_meta(5)
     real(wp), allocatable :: restart_data(:,:,:)
-    character(len=*), parameter :: restart_magic = "GRASSRST01"
-    integer(int32), parameter :: restart_format_version = 1_int32
-    integer(int32), parameter :: restart_field_count = 10_int32
+    type(restart_meta_t) :: meta
 
-    header_ints = [restart_format_version, int(storage_size(1.0_wp), int32), restart_field_count, &
-                   int(SDIV, int32), int(MDIV, int32), int(s_pwr, int32)]
-    header_meta = [r_e, energy(1,1), r_ratio, Omega_e, Omega_c]
+    meta%sdiv     = SDIV
+    meta%mdiv     = MDIV
+    meta%spwr     = s_pwr
+    meta%r_e      = r_e
+    meta%e_center = energy(1,1)
+    meta%r_ratio  = r_ratio
+    meta%omega_e  = Omega_e
+    meta%omega_c  = Omega_c
 
-    allocate(restart_data(restart_field_count, SDIV, MDIV), source=0.0_wp)
-    restart_data(1,:,:)  = alpha
-    restart_data(2,:,:)  = gama
-    restart_data(3,:,:)  = rho
-    restart_data(4,:,:)  = ww
-    restart_data(5,:,:)  = pressure
-    restart_data(6,:,:)  = energy
-    restart_data(7,:,:)  = enthalpy
-    restart_data(8,:,:)  = velocity_sq
-    restart_data(9,:,:)  = omg
-    restart_data(10,:,:) = sphi
+    header_ints = pack_header_ints(meta)
+    header_meta = pack_header_meta(meta)
+
+    allocate(restart_data(RESTART_NFIELDS, SDIV, MDIV), source=0.0_wp)
+    restart_data(F_ALPHA,:,:)       = alpha
+    restart_data(F_GAMA,:,:)        = gama
+    restart_data(F_RHO,:,:)         = rho
+    restart_data(F_WW,:,:)          = ww
+    restart_data(F_PRESSURE,:,:)    = pressure
+    restart_data(F_ENERGY,:,:)      = energy
+    restart_data(F_ENTHALPY,:,:)    = enthalpy
+    restart_data(F_VELOCITY_SQ,:,:) = velocity_sq
+    restart_data(F_OMG,:,:)         = omg
+    restart_data(F_SPHI,:,:)        = sphi
 
     open(newunit=unit, file=filename, status='replace', action='write', &
          access='stream', form='unformatted', iostat=ios)
@@ -741,7 +750,7 @@ contains
       return
     end if
 
-    write(unit, iostat=ios) restart_magic
+    write(unit, iostat=ios) RESTART_MAGIC
     if (ios == 0) write(unit, iostat=ios) header_ints
     if (ios == 0) write(unit, iostat=ios) header_meta
     if (ios == 0) write(unit, iostat=ios) s_gp
