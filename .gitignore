@@ -7,7 +7,7 @@ build/
 # Data / EOS
 data/
 *.dat
-!eos/*.dat
+!/eos/MPA1.dat
 logs/
 !eos/**/*.f90
 !eos/**/*.F90
