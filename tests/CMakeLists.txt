@@ -3,7 +3,7 @@ add_library(test_utils OBJECT unit/test_utils.f90)
 target_link_libraries(test_utils grass_lib)
 
 # Unit tests
-set(UNIT_TESTS test_ad test_spline test_spectral test_brent test_eos test_rotation_law
+set(UNIT_TESTS test_ad test_spline test_spectral test_brent test_eos
   test_bh_toroid_params test_bh_toroid_radial_map test_bh_toroid_green
   test_bh_toroid_updates test_bh_toroid_solver)
 foreach(test ${UNIT_TESTS})
@@ -25,14 +25,26 @@ set(INTEG_TESTS test_gr_uniform test_gr_constj test_gr_uryu
 foreach(test ${INTEG_TESTS})
   add_executable(${test} integration/${test}.f90)
   target_link_libraries(${test} grass_lib)
-  add_test(NAME ${test}
-    COMMAND bash -c "$<TARGET_FILE:${test}> > /dev/null 2>&1 && bash ${CMAKE_SOURCE_DIR}/tests/check_regression.sh ${CMAKE_SOURCE_DIR}/Cont/properties.dat ${CMAKE_SOURCE_DIR}/tests/reference/${test}.ref"
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+  if(test STREQUAL "test_gr_uryu")
+    add_test(NAME ${test}
+      COMMAND bash ${CMAKE_SOURCE_DIR}/tests/run_regression.sh
+        $<TARGET_FILE:${test}>
+        ${CMAKE_SOURCE_DIR}/Cont/properties.dat
+        ${CMAKE_SOURCE_DIR}/tests/reference/${test}.ref
+      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+  else()
+    add_test(NAME ${test}
+      COMMAND bash -c "$<TARGET_FILE:${test}> > /dev/null 2>&1 && bash ${CMAKE_SOURCE_DIR}/tests/check_regression.sh ${CMAKE_SOURCE_DIR}/Cont/properties.dat ${CMAKE_SOURCE_DIR}/tests/reference/${test}.ref"
+      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+  endif()
   set_tests_properties(${test} PROPERTIES
     TIMEOUT 120
     FIXTURES_REQUIRED OutputDirs
     ENVIRONMENT "GRASS_TIMING=0;GRASS_E_CENTER=0.8e15")
 endforeach()
+set_tests_properties(test_gr_uryu PROPERTIES
+  RUN_SERIAL TRUE
+  ENVIRONMENT "GRASS_TIMING=0")
 
 # Restart test (convergence check only, no regression)
 add_executable(test_restart integration/test_restart.f90)

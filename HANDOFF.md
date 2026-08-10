@@ -162,3 +162,62 @@ Thus the isolated kernel is about 29% slower, but the absolute increment is
 Uryu equatorial search at 87.881 microseconds/root (540 residual evaluations).
 These costs are negligible relative to the measured 21.9531 s integration, and
 constant-J pays neither bounded-search cost.
+
+## 2026-08-09 — Uryu full-model gate reinforcement
+
+The existing `test_gr_uryu` inherited its central energy, axial ratio, and Uryu
+parameters from mutable production defaults while comparing against a fixed
+`r_ratio=0.7` reference. Its wrapper also retained stale `Cont/properties.dat`,
+hid solver output, and allowed missing reference labels to pass. Labels that
+contained digits (for example `M2/M^3`) were parsed from the label rather than
+the value, so those diagnostics compared `2` with `2` instead of comparing the
+reported multipoles.
+
+The in-progress strengthened gate explicitly selects MPA1, 401x41,
+`e_center=0.8e15`, `r_ratio=0.7`, `lambda1=1.5`, `lambda2=0.3`, and
+`p/q=1/3`; it bypasses `initialize_starting_model`, removes stale output before
+the solve, exposes solver output, serialises the CTest case, and requires every
+numeric reference label to be present and within tolerance. Refusal probes
+confirmed that an empty properties file and a zero-output status-0 executable
+fail. Mutating only `M2/M^3` from `0.697368191` to `9.697368191` produced
+`rdiff=1.29e+01` and failed.
+
+The stronger historical-parity gate exposed a dev convergence regression. On
+detached local main `13372cd`, with the exact current
+`src/para_panel.f90` (SHA-256
+`ce92d32815759585eaae94d4b36a6e0bb157fbeffbaeecfd817641177f13b7b2`), the
+model converged to the stored solution in 0.85 s wall time (GRASS CPU timer
+3.3871 s). The dirty dev solve timed out after 240 s and oscillated through
+iteration 300; a clean detached `8498af8` solve also missed 130 s, with
+`dif=2.901E-06` at iteration 100. Therefore the 120 s gate failure is not
+coefficient-check overhead and could not be resolved honestly by increasing
+the timeout.
+
+Detached A/B builds isolated the slowdown to the new equatorial
+`find_omega_e_admissible` selection in `spin_updates_mod.f90`: tolerance-scale
+root stair-stepping perturbed the repeated `Fmax_h` update. Restoring the
+`rotational_law_mod.f90` and `spin_updates_mod.f90` pair to `8ab4661` converged
+in 0.48 s; restoring only `spin_updates_mod.f90` failed because legacy Brent
+then encountered the checked NaN residuals. The authorised shared-tree
+restoration therefore put the complete three-file Uryu root path back at
+`8ab4661`:
+
+- `src/theory/rotational_law_mod.f90`
+- `src/theory/spin_updates_mod.f90`
+- `src/tool/brent_mod.f90`
+
+The removed fix is archived as `feedback/uryu_fix_8498af8.patch` (with a second
+copy in `/tmp/grass-uryu-fix.L4eKn6/`); the fix patch SHA-256 is
+`53d3ba5b756867bd38863d665854b69bdf29d484c8c4e78e3c99ecfff0d32aab`.
+The helper unit test introduced with that API was removed from the build. This
+also means the active restored Uryu implementation has no coefficient-domain
+or admissible-root checks; it again evaluates raw `AA_h`/`BB_h` expressions.
+
+The strengthened full-model driver converged in 0.77 s on the dirty shared
+tree. Strict comparison initially exposed `M4/M^5=-0.125280283` versus reference
+`-0.125294142` (`rdiff=1.11E-04`), a label the old checker never compared. A
+documented per-field tolerance annotation now permits `1E-3` for Uryu `M4/M^5`,
+supported by the `8.99E-4` variation observed across clean restored builds; the
+other 15 fields retain `1E-4`. Final CTest verification passed `test_brent` and
+`test_gr_uryu` in 0.58 s. A deliberate `5E-4` perturbation to default-tolerance
+`M2/M^3` failed, and a malformed tolerance annotation was refused.

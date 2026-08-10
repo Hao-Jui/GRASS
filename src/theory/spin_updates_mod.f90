@@ -86,7 +86,7 @@ contains
     use rotation_law_mod, only: diff_rotation_const_j, rotation_law_const_j, &
                                 diff_rotation_uryu, rotation_law_uryu, &
                                 cache_uryu_ab, ctx_exp2re2rho
-    use brent_mod, only : find_omega_e, zbrent_rot, find_omega_e_admissible, zbrent_rot_admissible
+    use brent_mod, only : find_omega_e, zbrent_rot
     real(wp), intent(in) :: r_e_new, gama_pole_h, rho_pole_h, gama_equator_h, rho_equator_h
     real(wp), intent(in) :: sphi_pole_h, sphi_equator_h, ww_equator_h
     real(wp) :: metric_diff, term_in_Omega_h
@@ -167,7 +167,7 @@ contains
       Fmax_h = FMAX_INITIAL
       do while(abs(diff_Fmax) > TOLERANCE_FMAX)
         guess = Omega_e
-        call find_omega_e_admissible(guess, r_e_new, rho_equator_h, gama_equator_h, ww_equator_h, &
+        call find_omega_e(guess, r_e_new, rho_equator_h, gama_equator_h, ww_equator_h, &
                         rho_pole_h, gama_pole_h, TOLERANCE_ROOT, Fa, diff_rotation_uryu)
         Omega_e = Fa
         F_equator_h = (Omega_e - ww_equator_h) / ( exp_term_eq - (Omega_e - ww_equator_h)**2 )
@@ -185,7 +185,7 @@ contains
                       rsm_loc => rho(s,1), wwsm_loc => ww(s,1))
               guess = o_prev
               ctx_exp2re2rho = exp(2.0_wp * re2_val * rsm_loc)
-              call zbrent_rot_admissible(guess, r_e_new, rsm_loc, wwsm_loc, sg, mum, TOLERANCE_ROOT, o, rotation_law_uryu)
+              call zbrent_rot(guess, r_e_new, rsm_loc, wwsm_loc, sg, mum, TOLERANCE_ROOT, o, rotation_law_uryu)
               if (o > omg_max_h) then
                 omg_max_h = o
                 s_peak = s
@@ -205,7 +205,7 @@ contains
                       rsm_loc => rho(s,1), wwsm_loc => ww(s,1))
               guess = o
               ctx_exp2re2rho = exp(2.0_wp * re2_val * rsm_loc)
-              call zbrent_rot_admissible(guess, r_e_new, rsm_loc, wwsm_loc, sg, mum, TOLERANCE_ROOT, o, rotation_law_uryu)
+              call zbrent_rot(guess, r_e_new, rsm_loc, wwsm_loc, sg, mum, TOLERANCE_ROOT, o, rotation_law_uryu)
               if (o > omg_max_h) then
                 omg_max_h = o
                 s_peak = s
@@ -227,7 +227,7 @@ contains
                     rsm_loc => rho(s,m), wwsm_loc => ww(s,m), o => omg(s,m))
             guess = Omg(s-1,m)
             ctx_exp2re2rho = exp(2.0_wp * re2_val * rsm_loc)
-            call zbrent_rot_admissible(guess, r_e_new, rsm_loc, wwsm_loc, sg, mum_loc, TOLERANCE_ROOT, o, rotation_law_uryu)
+            call zbrent_rot(guess, r_e_new, rsm_loc, wwsm_loc, sg, mum_loc, TOLERANCE_ROOT, o, rotation_law_uryu)
             F_j(s,m) = (o - wwsm_loc) * sg**2 * (1.0_wp - mum_loc**2) &
                   / (ctx_exp2re2rho * (1.0_wp - sg)**2 - (o - wwsm_loc)**2 * sg**2 * (1.0_wp - mum_loc**2))
           end associate

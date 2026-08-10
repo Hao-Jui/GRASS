@@ -1,0 +1,898 @@
+From 8498af890cf0ca039b4c25eb1fe22473991db9d8 Mon Sep 17 00:00:00 2001
+From: Hao-Jui <94800509+Hao-Jui@users.noreply.github.com>
+Date: Sun, 9 Aug 2026 22:39:03 -0500
+Subject: [PATCH 2/2] fix: guard Uryu rotation roots
+
+---
+ HANDOFF.md                        |  84 +++++++++
+ src/theory/rotational_law_mod.f90 | 131 ++++++++++----
+ src/theory/spin_updates_mod.f90   |  10 +-
+ src/tool/brent_mod.f90            | 281 +++++++++++++++++++++++++++++-
+ tests/CMakeLists.txt              |   2 +-
+ tests/Makefile                    |   2 +-
+ tests/unit/test_rotation_law.f90  | 186 ++++++++++++++++++++
+ 7 files changed, 654 insertions(+), 42 deletions(-)
+ create mode 100644 tests/unit/test_rotation_law.f90
+
+diff --git a/HANDOFF.md b/HANDOFF.md
+index 9b2beaa..a30788a 100644
+--- a/HANDOFF.md
++++ b/HANDOFF.md
+@@ -78,3 +78,87 @@ The DD2 TOV run can stall without a progress/iteration cap in
+ `src/core/sphere_mod.f90:142`. An isolated run produced 51,780,960 repeated
+ non-progress rows (2.38 GB) before it was stopped; the temporary reproduction
+ was removed. This was not an Uryu-law verdict and no fix was made.
++
++## 2026-08-09 — Uryu admissible-domain fix and rotation smoke tests
++
++Scope was the confirmed Uryu coefficient-domain failure and smoke coverage for
++the small Uryu/constant-J rotation helpers. `src/para_panel.f90` was not edited
++or included: the coefficient/root-search change does not alter its schema.
++
++### Implementation
++
++- `uryu_coefficients` now checks the strict published boundary
++  `F_e > F_max*(lambda1/lambda2)^(1/q)`, parameter ranges, denominators, power
++  bases, and finite results before returning `A` and `B`.
++- `cache_uryu_ab` refuses an invalid final state instead of retaining or
++  clamping it. Residual callbacks return quiet NaN for invalid trial states.
++- Uryu equatorial roots use `find_omega_e_admissible`, which searches only the
++  physical velocity interval, does not bracket across a non-finite gap, and
++  reports no-root/non-convergence through an optional status for tests.
++- Uryu local roots use the bounded, guess-centred
++  `zbrent_rot_admissible`. Constant-J retains the original `find_omega_e` and
++  `zbrent_rot` implementations exactly.
++- `test_rotation_law` exercises 43 success, boundary, invalid/refusal, and
++  disconnected-domain checks across the constant-J and Uryu coefficient,
++  cache, residual, integral, context, equatorial-root, and local-root helpers.
++
++The first implementation put both laws on the bounded root routines. That was
++refuted by `test_gr_constj`: the patched path reached the 2,000-iteration stop,
++while the same checkout linked against the `HEAD` Brent implementation
++converged in 0.1418 s. The final split restores the legacy constant-J path and
++uses the admissible routines only at the six Uryu call sites.
++
++### Verification evidence
++
++```text
++$ ./build/tests/test_rotation_law
++rotation_law_mod: 43 passed, 0 failed
++
++$ ctest --test-dir build --output-on-failure -R '^(test_rotation_law|test_brent)$'
++100% tests passed, 0 tests failed out of 2
++
++$ ctest --test-dir build-debug --output-on-failure -R '^(test_rotation_law|test_brent)$'
++100% tests passed, 0 tests failed out of 2
++```
++
++Direct integration checks on the final split both exited zero and printed
++`Converged`:
++
++```text
++$ GRASS_TIMING=0 GRASS_E_CENTER=0.8e15 ./build/tests/test_gr_constj
++Elapsed time [s]: 0.1605
++STOP One model solved!
++
++$ GRASS_TIMING=0 GRASS_E_CENTER=0.8e15 ./build/tests/test_gr_uryu
++Fmax   1.128592172E-01   Omega_e   5.880283896E-02
++Elapsed time [s]: 21.9531
++STOP One model solved!
++```
++
++The direct integrations still report IEEE flags already seen in this dirty
++checkout. The CTest regression wrappers fail their stored-output comparisons:
++both references record the removed hard-coded `r_ratio=0.7`, while the current
++dirty configuration produces `0.95` for constant-J and `0.9` for Uryu. This is
++separate from the root-domain fix. The final wrapper run reported two failures;
++the constant-J comparison was isolated as
++`current_axial_ratio=9.500000000E-01`,
++`reference_axial_ratio=7.000000000E-01`.
++
++### Performance evidence
++
++An `-O3 -march=native` temporary benchmark (10,000,000 coefficient evaluations;
++source removed after the run) compared the former two coefficient functions to
++the checked consolidated calculation:
++
++```text
++legacy_coefficient_seconds=  0.162750
++checked_coefficient_seconds=  0.210142
++checked_over_legacy=  1.2912
++checked_nanoseconds_per_call=    21.014
++```
++
++Thus the isolated kernel is about 29% slower, but the absolute increment is
++4.739 ns per coefficient pair. The same benchmark measured the 512-interval
++Uryu equatorial search at 87.881 microseconds/root (540 residual evaluations).
++These costs are negligible relative to the measured 21.9531 s integration, and
++constant-J pays neither bounded-search cost.
+diff --git a/src/theory/rotational_law_mod.f90 b/src/theory/rotational_law_mod.f90
+index e2d14eb..dc323da 100644
+--- a/src/theory/rotational_law_mod.f90
++++ b/src/theory/rotational_law_mod.f90
+@@ -6,13 +6,24 @@ module rotation_law_mod
+   real(wp), save :: ctx_rho_pole_h, ctx_gama_pole_h
+   real(wp), save :: cached_aa = 0._wp, cached_bb = 0._wp
+   real(wp), save :: ctx_exp2re2rho = 1._wp
+-  private :: AA_h, BB_h
+ contains
+ 
+-  subroutine cache_uryu_ab()
++  subroutine cache_uryu_ab(valid)
+     use para_mod, only: wp, F_equator_h, Fmax_h
+-    cached_aa = AA_h(F_equator_h, Fmax_h)
+-    cached_bb = BB_h(F_equator_h, Fmax_h)
++    logical, intent(out), optional :: valid
++    logical :: coefficients_valid
++
++    call uryu_coefficients(F_equator_h, Fmax_h, cached_aa, cached_bb, coefficients_valid)
++    if (.not. coefficients_valid) then
++      cached_aa = 0._wp
++      cached_bb = 0._wp
++      if (present(valid)) then
++        valid = .false.
++        return
++      end if
++      error stop "cache_uryu_ab: inadmissible Uryu coefficients"
++    end if
++    if (present(valid)) valid = .true.
+   end subroutine cache_uryu_ab
+ 
+   subroutine diff_rotation_const_j(x, fx, re, rho_h, g_h, w_h, rho_p, g_p)
+@@ -37,37 +48,73 @@ contains
+   end subroutine rotation_law_const_j
+ 
+   subroutine diff_rotation_uryu(x, fx, re, rho_h, g_h, w_h, rho_p, g_p)
++    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite, ieee_quiet_nan, ieee_value
+     use para_mod, only: wp, lambda2, Fmax_h
+     implicit none
+     real(wp), intent(in) :: x, re, rho_h, g_h, w_h, rho_p, g_p
+     real(wp), intent(out):: fx
+-    real(wp) :: F_e, ocre, RHS, aa, bb
+-
++    real(wp) :: F_e, ocre, RHS, aa, bb, delta, exp2rho, log_argument, atanh_argument
++    logical :: coefficients_valid
++
++    delta = x - w_h
++    exp2rho = exp(2._wp*re**2*rho_h)
++    log_argument = 1._wp - (delta*exp(-re**2*rho_h))**2
++    if (.not. ieee_is_finite(exp2rho) .or. exp2rho <= delta**2 .or. &
++        .not. ieee_is_finite(log_argument) .or. log_argument <= 0._wp .or. &
++        .not. ieee_is_finite(lambda2) .or. abs(lambda2) <= tiny(lambda2)) then
++      fx = ieee_value(0._wp, ieee_quiet_nan)
++      return
++    end if
+     ocre = x / lambda2
+-    F_e  = (x - w_h) / ( exp(2._wp*re**2*rho_h) - (x-w_h)**2 )
++    F_e = delta / (exp2rho - delta**2)
++
++    call uryu_coefficients(F_e, Fmax_h, aa, bb, coefficients_valid)
++    if (.not. coefficients_valid) then
++      fx = ieee_value(0._wp, ieee_quiet_nan)
++      return
++    end if
+ 
+-    aa = AA_h(F_e, Fmax_h)
+-    bb = BB_h(F_e, Fmax_h)
++    atanh_argument = aa * F_e * sqrt(2._wp) / (F_e**2 + aa**2)
++    if (.not. ieee_is_finite(atanh_argument) .or. abs(atanh_argument) >= 1._wp) then
++      fx = ieee_value(0._wp, ieee_quiet_nan)
++      return
++    end if
+ 
+     RHS = F_e * x - aa * ocre / 4._wp * &
+           (2._wp * aa / bb * atan(F_e**2/aa**2) &
+           - sqrt(2._wp) * ( atan(1._wp - F_e*sqrt(2._wp)/aa) - atan(1._wp + F_e*sqrt(2._wp)/aa) ) &
+-          + sqrt(2._wp) * ATANH( aa * F_e * sqrt(2._wp) / (F_e**2 + aa**2) ) )
++          + sqrt(2._wp) * ATANH(atanh_argument) )
+ 
+-    fx = re**2 * (g_h + rho_h - g_p - rho_p) + log( 1._wp - ((x-w_h)*exp(-re**2*rho_h))**2 ) &
++    fx = re**2 * (g_h + rho_h - g_p - rho_p) + log(log_argument) &
+         + 2._wp * RHS
++    if (.not. ieee_is_finite(fx)) fx = ieee_value(0._wp, ieee_quiet_nan)
+   end subroutine diff_rotation_uryu
+ 
+   subroutine rotation_law_uryu(x, fx, re, rho_p, ww_p, sgp, mugp)
++    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite, ieee_quiet_nan, ieee_value
+     use para_mod, only: wp, uryu_p, uryu_q, Omega_c
+     implicit none
+     real(wp), intent(in) :: x, re, rho_p, ww_p, sgp, mugp
+     real(wp), intent(out):: fx
+-    real(wp) :: Fj, sin2m
++    real(wp) :: Fj, sin2m, denominator
+ 
+     sin2m = 1._wp - mugp**2
+-    Fj = (x-ww_p) * sgp**2 * sin2m / ( ctx_exp2re2rho * (1._wp-sgp)**2 - (x-ww_p)**2 * sgp**2 * sin2m )
++    denominator = ctx_exp2re2rho * (1._wp-sgp)**2 - (x-ww_p)**2 * sgp**2 * sin2m
++    if (.not. ieee_is_finite(denominator) .or. denominator <= 0._wp .or. &
++        .not. ieee_is_finite(cached_aa) .or. cached_aa <= 0._wp .or. &
++        .not. ieee_is_finite(cached_bb) .or. cached_bb <= 0._wp .or. &
++        .not. ieee_is_finite(Omega_c) .or. abs(Omega_c) <= tiny(Omega_c) .or. &
++        uryu_p <= 0 .or. uryu_q <= 0) then
++      fx = ieee_value(0._wp, ieee_quiet_nan)
++      return
++    end if
++    Fj = (x-ww_p) * sgp**2 * sin2m / denominator
++    if (.not. ieee_is_finite(Fj) .or. Fj < 0._wp) then
++      fx = ieee_value(0._wp, ieee_quiet_nan)
++      return
++    end if
+     fx = x / Omega_c * ( 1._wp + (Fj / cached_aa)**(uryu_p+uryu_q) ) - ( 1._wp + (Fj / cached_bb)**uryu_p )
++    if (.not. ieee_is_finite(fx)) fx = ieee_value(0._wp, ieee_quiet_nan)
+   end subroutine rotation_law_uryu
+ 
+   elemental real(wp) function intF(x, F_at_x)
+@@ -85,31 +132,47 @@ contains
+     endif
+   end function intF
+ 
+-  pure elemental real(wp) function AA_h(F_e, F_m)
++  pure subroutine uryu_coefficients(F_e, F_m, aa, bb, valid)
++    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+     use para_mod, only: wp, lambda1, lambda2, uryu_p, uryu_q
+     implicit none
+     real(wp), intent(in) :: F_e, F_m
+-    real(wp) :: tmp1, tmp2
+-
++    real(wp), intent(out) :: aa, bb
++    logical, intent(out) :: valid
++    real(wp) :: tmp1, tmp2_aa, tmp2_bb, aa_base, bb_base, minimum_F_e
++
++    aa = 0._wp
++    bb = 0._wp
++    valid = .false.
++    if (.not. ieee_is_finite(F_e) .or. .not. ieee_is_finite(F_m) .or. &
++        .not. ieee_is_finite(lambda1) .or. .not. ieee_is_finite(lambda2) .or. &
++        F_e <= 0._wp .or. F_m <= 0._wp .or. lambda1 <= 1._wp .or. &
++        lambda2 <= 0._wp .or. lambda2 >= 1._wp .or. uryu_p <= 0 .or. uryu_q <= 0) return
++    minimum_F_e = F_m*(lambda1/lambda2)**(1._wp/real(uryu_q, wp))
++    if (.not. ieee_is_finite(minimum_F_e) .or. F_e <= minimum_F_e) return
+     tmp1 = lambda2 * F_e**uryu_q &
+         - lambda1 * F_m**uryu_q
+-    tmp2 = (lambda1-1._wp) * F_e**uryu_p &
++    tmp2_aa = (lambda1-1._wp) * F_e**uryu_p &
+         - (lambda2-1._wp) * F_m**uryu_p
+-    AA_h = ( (F_e*F_m)**uryu_p * tmp1 / tmp2 )**(1._wp/real(uryu_p+uryu_q, wp))
+-  end function
+-
+-  pure elemental real(wp) function BB_h(F_e, F_m)
+-    use para_mod, only: wp, lambda1, lambda2, uryu_p, uryu_q
+-    implicit none
+-    real(wp), intent(in) :: F_e, F_m
+-    real(wp) :: tmp1, tmp2
+-
+-    tmp1 = lambda2 * F_e**uryu_q &
+-        - lambda1 * F_m**uryu_q
+-    tmp2 = lambda2 * (lambda1-1._wp) * F_e**(uryu_p+uryu_q) &
++    tmp2_bb = lambda2 * (lambda1-1._wp) * F_e**(uryu_p+uryu_q) &
+         - lambda1 * (lambda2-1._wp) * F_m**(uryu_p+uryu_q)
+-    BB_h = F_e * F_m * ( tmp1 / tmp2 )**(1._wp/real(uryu_p, wp))
+-  end function
++    if (.not. ieee_is_finite(tmp1) .or. .not. ieee_is_finite(tmp2_aa) .or. &
++        .not. ieee_is_finite(tmp2_bb) .or. abs(tmp2_aa) <= tiny(tmp2_aa) .or. &
++        abs(tmp2_bb) <= tiny(tmp2_bb)) return
++
++    aa_base = (F_e*F_m)**uryu_p * tmp1 / tmp2_aa
++    bb_base = tmp1 / tmp2_bb
++    if (.not. ieee_is_finite(aa_base) .or. .not. ieee_is_finite(bb_base) .or. &
++        aa_base <= 0._wp .or. bb_base <= 0._wp) return
++
++    aa = aa_base**(1._wp/real(uryu_p+uryu_q, wp))
++    bb = F_e * F_m * bb_base**(1._wp/real(uryu_p, wp))
++    valid = ieee_is_finite(aa) .and. ieee_is_finite(bb) .and. aa > 0._wp .and. bb > 0._wp
++    if (.not. valid) then
++      aa = 0._wp
++      bb = 0._wp
++    end if
++  end subroutine uryu_coefficients
+ 
+   subroutine set_shoot_context(rho_equator_h, gama_equator_h, ww_equator_h, rho_pole_h, gama_pole_h)
+     real(wp), intent(in) :: rho_equator_h, gama_equator_h, ww_equator_h, rho_pole_h, gama_pole_h
+@@ -123,7 +186,7 @@ contains
+   subroutine shoot_Fmax(current_Fmax_h, diff_sq)
+     use para_mod, only: wp, Fmax_h, Omega_e, Omega_c, r_e, rho, ww, F_equator_h, &
+                         SDIV, s_gp, lambda1, lambda2
+-    use brent_mod, only: find_omega_e, zbrent_rot
++    use brent_mod, only: find_omega_e_admissible, zbrent_rot_admissible
+     real(wp), intent(in)  :: current_Fmax_h
+     real(wp), intent(out) :: diff_sq
+     real(wp) :: guess, Fa, rsm, wwsm, sgp, mum, omg_max_h, diff_Fmax
+@@ -134,7 +197,7 @@ contains
+     Fmax_h = current_Fmax_h
+ 
+     guess = Omega_e
+-    call find_omega_e(guess, r_e, ctx_rho_equator_h, ctx_gama_equator_h, ctx_ww_equator_h, &
++    call find_omega_e_admissible(guess, r_e, ctx_rho_equator_h, ctx_gama_equator_h, ctx_ww_equator_h, &
+                     ctx_rho_pole_h, ctx_gama_pole_h, tolerance, Fa, diff_rotation_uryu)
+     Omega_e = Fa
+     F_equator_h = (Omega_e - ww(1,1)) / (exp(2._wp*r_e**2*rho(1,1)) - (Omega_e-ww(1,1))**2)
+@@ -153,7 +216,7 @@ contains
+       sgp = s_gp(s)
+       guess  = omg_mu_0(s-1)
+       ctx_exp2re2rho = exp(2._wp * r_e**2 * rsm)
+-      call zbrent_rot( guess, r_e, rsm, wwsm, sgp, mum, 1.e-5_wp, omg_mu_0(s), rotation_law_uryu)
++      call zbrent_rot_admissible( guess, r_e, rsm, wwsm, sgp, mum, 1.e-5_wp, omg_mu_0(s), rotation_law_uryu)
+     enddo
+     imax = maxloc(omg_mu_0(1:SDIV*2/3), 1)
+     omg_max_h = omg_mu_0(imax)
+diff --git a/src/theory/spin_updates_mod.f90 b/src/theory/spin_updates_mod.f90
+index fd7200d..30f12e3 100644
+--- a/src/theory/spin_updates_mod.f90
++++ b/src/theory/spin_updates_mod.f90
+@@ -86,7 +86,7 @@ contains
+     use rotation_law_mod, only: diff_rotation_const_j, rotation_law_const_j, &
+                                 diff_rotation_uryu, rotation_law_uryu, &
+                                 cache_uryu_ab, ctx_exp2re2rho
+-    use brent_mod, only : find_omega_e, zbrent_rot
++    use brent_mod, only : find_omega_e, zbrent_rot, find_omega_e_admissible, zbrent_rot_admissible
+     real(wp), intent(in) :: r_e_new, gama_pole_h, rho_pole_h, gama_equator_h, rho_equator_h
+     real(wp), intent(in) :: sphi_pole_h, sphi_equator_h, ww_equator_h
+     real(wp) :: metric_diff, term_in_Omega_h
+@@ -167,7 +167,7 @@ contains
+       Fmax_h = FMAX_INITIAL
+       do while(abs(diff_Fmax) > TOLERANCE_FMAX)
+         guess = Omega_e
+-        call find_omega_e(guess, r_e_new, rho_equator_h, gama_equator_h, ww_equator_h, &
++        call find_omega_e_admissible(guess, r_e_new, rho_equator_h, gama_equator_h, ww_equator_h, &
+                         rho_pole_h, gama_pole_h, TOLERANCE_ROOT, Fa, diff_rotation_uryu)
+         Omega_e = Fa
+         F_equator_h = (Omega_e - ww_equator_h) / ( exp_term_eq - (Omega_e - ww_equator_h)**2 )
+@@ -185,7 +185,7 @@ contains
+                       rsm_loc => rho(s,1), wwsm_loc => ww(s,1))
+               guess = o_prev
+               ctx_exp2re2rho = exp(2.0_wp * re2_val * rsm_loc)
+-              call zbrent_rot(guess, r_e_new, rsm_loc, wwsm_loc, sg, mum, TOLERANCE_ROOT, o, rotation_law_uryu)
++              call zbrent_rot_admissible(guess, r_e_new, rsm_loc, wwsm_loc, sg, mum, TOLERANCE_ROOT, o, rotation_law_uryu)
+               if (o > omg_max_h) then
+                 omg_max_h = o
+                 s_peak = s
+@@ -205,7 +205,7 @@ contains
+                       rsm_loc => rho(s,1), wwsm_loc => ww(s,1))
+               guess = o
+               ctx_exp2re2rho = exp(2.0_wp * re2_val * rsm_loc)
+-              call zbrent_rot(guess, r_e_new, rsm_loc, wwsm_loc, sg, mum, TOLERANCE_ROOT, o, rotation_law_uryu)
++              call zbrent_rot_admissible(guess, r_e_new, rsm_loc, wwsm_loc, sg, mum, TOLERANCE_ROOT, o, rotation_law_uryu)
+               if (o > omg_max_h) then
+                 omg_max_h = o
+                 s_peak = s
+@@ -227,7 +227,7 @@ contains
+                     rsm_loc => rho(s,m), wwsm_loc => ww(s,m), o => omg(s,m))
+             guess = Omg(s-1,m)
+             ctx_exp2re2rho = exp(2.0_wp * re2_val * rsm_loc)
+-            call zbrent_rot(guess, r_e_new, rsm_loc, wwsm_loc, sg, mum_loc, TOLERANCE_ROOT, o, rotation_law_uryu)
++            call zbrent_rot_admissible(guess, r_e_new, rsm_loc, wwsm_loc, sg, mum_loc, TOLERANCE_ROOT, o, rotation_law_uryu)
+             F_j(s,m) = (o - wwsm_loc) * sg**2 * (1.0_wp - mum_loc**2) &
+                   / (ctx_exp2re2rho * (1.0_wp - sg)**2 - (o - wwsm_loc)**2 * sg**2 * (1.0_wp - mum_loc**2))
+           end associate
+diff --git a/src/tool/brent_mod.f90 b/src/tool/brent_mod.f90
+index b2d1b8e..6bb38b8 100644
+--- a/src/tool/brent_mod.f90
++++ b/src/tool/brent_mod.f90
+@@ -1,7 +1,8 @@
+ module brent_mod
+   use precision_mod, only: wp
+   implicit none
+-  public :: find_omega_e, zbrent_rot
++  public :: find_omega_e, zbrent_rot, find_omega_e_admissible, zbrent_rot_admissible
++  private :: signs_differ
+ 
+   abstract interface
+     subroutine brent_func(x, fx)
+@@ -17,6 +18,11 @@ module brent_mod
+ 
+ contains
+ 
++pure logical function signs_differ(a, b)
++  real(wp), intent(in) :: a, b
++  signs_differ = (a < 0._wp .and. b >= 0._wp) .or. (a >= 0._wp .and. b < 0._wp)
++end function signs_differ
++
+ subroutine brent_core(x_guess, scale_up, scale_down, tol, return_value, f, small_guess, logfile)
+   use, intrinsic :: ieee_arithmetic, only: ieee_is_nan
+   implicit none
+@@ -198,6 +204,131 @@ contains
+ 
+ end subroutine find_omega_e
+ 
++subroutine find_omega_e_admissible(x_guess, re, rho_h, g_h, w_h, rho_p, g_p, tol, return_value, f, success)
++  use, intrinsic :: ieee_arithmetic, only: ieee_is_finite, ieee_quiet_nan, ieee_value
++  implicit none
++  real(wp), intent(in)  :: x_guess, re, rho_h, g_h, w_h, rho_p, g_p, tol
++  real(wp), intent(out) :: return_value
++  interface
++    subroutine f(x, fx, re, rho_h, g_h, w_h, rho_p, g_p)
++      import :: wp
++      real(wp), intent(in)  :: x, re, rho_h, g_h, w_h, rho_p, g_p
++      real(wp), intent(out) :: fx
++    end subroutine f
++  end interface
++  logical, intent(out), optional :: success
++
++  integer, parameter :: N_SCAN = 512
++  integer :: i
++  real(wp) :: speed_scale, margin, lower_bound, upper_bound, x, fx
++  real(wp) :: previous_x, previous_fx, bracket_a, bracket_b, bracket_distance
++  real(wp) :: candidate_distance
++  logical :: previous_valid, bracket_found, converged
++
++  if (present(success)) success = .false.
++  return_value = ieee_value(0._wp, ieee_quiet_nan)
++  speed_scale = exp(re**2*rho_h)
++  if (.not. ieee_is_finite(speed_scale) .or. speed_scale <= 0._wp .or. &
++      .not. ieee_is_finite(tol) .or. tol <= 0._wp) then
++    call refuse("find_omega_e_admissible: invalid search interval")
++    return
++  end if
++
++  margin = max(32._wp*epsilon(speed_scale)*max(1._wp, abs(w_h), speed_scale), 0.01_wp*tol)
++  lower_bound = w_h + margin
++  upper_bound = w_h + speed_scale - margin
++  if (.not. ieee_is_finite(lower_bound) .or. .not. ieee_is_finite(upper_bound) .or. &
++      lower_bound >= upper_bound) then
++    call refuse("find_omega_e_admissible: empty admissible interval")
++    return
++  end if
++
++  previous_valid = .false.
++  bracket_found = .false.
++  bracket_distance = huge(bracket_distance)
++  do i = 0, N_SCAN
++    x = lower_bound + (upper_bound-lower_bound)*real(i, wp)/real(N_SCAN, wp)
++    call f(x, fx, re, rho_h, g_h, w_h, rho_p, g_p)
++    if (.not. ieee_is_finite(fx)) then
++      previous_valid = .false.
++      cycle
++    end if
++    if (abs(fx) <= epsilon(fx)) then
++      return_value = x
++      if (present(success)) success = .true.
++      return
++    end if
++    if (previous_valid) then
++      if (signs_differ(previous_fx, fx)) then
++        candidate_distance = abs(0.5_wp*(previous_x+x)-x_guess)
++        if (.not. bracket_found .or. candidate_distance < bracket_distance) then
++          bracket_a = previous_x
++          bracket_b = x
++          bracket_distance = candidate_distance
++          bracket_found = .true.
++        end if
++      end if
++    end if
++    previous_x = x
++    previous_fx = fx
++    previous_valid = .true.
++  end do
++
++  if (.not. bracket_found) then
++    call refuse("find_omega_e_admissible: no root in admissible interval")
++    return
++  end if
++
++  call bisect_admissible(bracket_a, bracket_b, return_value, converged)
++  if (.not. converged) then
++    call refuse("find_omega_e_admissible: admissible root did not converge")
++    return
++  end if
++  if (present(success)) success = .true.
++
++contains
++  subroutine refuse(message)
++    character(*), intent(in) :: message
++    return_value = ieee_value(0._wp, ieee_quiet_nan)
++    if (.not. present(success)) error stop message
++  end subroutine refuse
++
++  subroutine bisect_admissible(left, right, root, root_converged)
++    real(wp), intent(in) :: left, right
++    real(wp), intent(out) :: root
++    logical, intent(out) :: root_converged
++    real(wp) :: a, b, midpoint, fa, fb, fmid
++    integer :: iteration
++
++    a = left
++    b = right
++    call f(a, fa, re, rho_h, g_h, w_h, rho_p, g_p)
++    call f(b, fb, re, rho_h, g_h, w_h, rho_p, g_p)
++    root_converged = .false.
++    if (.not. ieee_is_finite(fa) .or. .not. ieee_is_finite(fb) .or. &
++        .not. signs_differ(fa, fb)) return
++
++    do iteration = 1, MAX_ITER_BRENT
++      midpoint = a + 0.5_wp*(b-a)
++      call f(midpoint, fmid, re, rho_h, g_h, w_h, rho_p, g_p)
++      if (.not. ieee_is_finite(fmid)) return
++      if (abs(fmid) <= epsilon(fmid) .or. 0.5_wp*abs(b-a) <= tol) then
++        root = midpoint
++        root_converged = .true.
++        return
++      end if
++      if (signs_differ(fa, fmid)) then
++        b = midpoint
++        fb = fmid
++      else
++        a = midpoint
++        fa = fmid
++      end if
++    end do
++  end subroutine bisect_admissible
++
++end subroutine find_omega_e_admissible
++
+ subroutine zbrent_rot(x_guess, re, rho_p, ww_p, sgp, mugp, tol, return_value, f)
+   implicit none
+   real(wp), intent(in)  :: x_guess, re, rho_p, ww_p, sgp, mugp, tol
+@@ -222,4 +353,152 @@ contains
+ 
+ end subroutine zbrent_rot
+ 
++subroutine zbrent_rot_admissible(x_guess, re, rho_p, ww_p, sgp, mugp, tol, return_value, f, success)
++  use, intrinsic :: ieee_arithmetic, only: ieee_is_finite, ieee_quiet_nan, ieee_value
++  implicit none
++  real(wp), intent(in)  :: x_guess, re, rho_p, ww_p, sgp, mugp, tol
++  real(wp), intent(out) :: return_value
++  interface
++    subroutine f(x, fx, re, rho_p, ww_p, sgp, mugp)
++      import :: wp
++      real(wp), intent(in)  :: x, re, rho_p, ww_p, sgp, mugp
++      real(wp), intent(out) :: fx
++    end subroutine f
++  end interface
++  logical, intent(out), optional :: success
++
++  real(wp), parameter :: BRACKET_SCALE = 1.2_wp
++  real(wp) :: sin2m, speed_limit, margin, lower_delta, upper_delta, guess_delta
++  real(wp) :: left_x, right_x, left_fx, right_fx, new_x, new_fx
++  real(wp) :: bracket_a, bracket_b
++  integer :: iteration
++  logical :: left_open, right_open, bracket_found, converged
++
++  if (present(success)) success = .false.
++  return_value = ieee_value(0._wp, ieee_quiet_nan)
++  sin2m = 1._wp - mugp**2
++  if (.not. ieee_is_finite(sin2m) .or. sin2m <= 0._wp .or. sgp <= 0._wp .or. sgp >= 1._wp .or. &
++      .not. ieee_is_finite(tol) .or. tol <= 0._wp) then
++    call refuse("zbrent_rot_admissible: invalid rotation-law search interval")
++    return
++  end if
++  speed_limit = exp(re**2*rho_p)*(1._wp-sgp)/(sgp*sqrt(sin2m))
++  margin = max(32._wp*epsilon(speed_limit)*max(1._wp, abs(ww_p), speed_limit), 0.01_wp*tol)
++  lower_delta = margin
++  upper_delta = speed_limit - margin
++  if (.not. ieee_is_finite(speed_limit) .or. lower_delta >= upper_delta) then
++    call refuse("zbrent_rot_admissible: empty rotation-law search interval")
++    return
++  end if
++
++  guess_delta = min(max(x_guess-ww_p, max(1.0e-4_wp, lower_delta)), upper_delta)
++  left_x = ww_p + guess_delta
++  right_x = left_x
++  call f(left_x, left_fx, re, rho_p, ww_p, sgp, mugp)
++  if (.not. ieee_is_finite(left_fx)) then
++    call refuse("zbrent_rot_admissible: initial trial is inadmissible")
++    return
++  end if
++  if (abs(left_fx) <= epsilon(left_fx)) then
++    return_value = left_x
++    if (present(success)) success = .true.
++    return
++  end if
++
++  right_fx = left_fx
++  left_open = guess_delta > lower_delta
++  right_open = guess_delta < upper_delta
++  bracket_found = .false.
++  do iteration = 1, MAX_ITER_BRACKET
++    if (left_open) then
++      new_x = ww_p + max(lower_delta, (left_x-ww_p)/BRACKET_SCALE)
++      left_open = new_x > ww_p + lower_delta
++      call f(new_x, new_fx, re, rho_p, ww_p, sgp, mugp)
++      if (.not. ieee_is_finite(new_fx)) then
++        call refuse("zbrent_rot_admissible: lower trial left admissible domain")
++        return
++      end if
++      if (signs_differ(new_fx, left_fx)) then
++        bracket_a = new_x
++        bracket_b = left_x
++        bracket_found = .true.
++        exit
++      end if
++      left_x = new_x
++      left_fx = new_fx
++    end if
++
++    if (right_open) then
++      new_x = ww_p + min(upper_delta, (right_x-ww_p)*BRACKET_SCALE)
++      right_open = new_x < ww_p + upper_delta
++      call f(new_x, new_fx, re, rho_p, ww_p, sgp, mugp)
++      if (.not. ieee_is_finite(new_fx)) then
++        call refuse("zbrent_rot_admissible: upper trial left admissible domain")
++        return
++      end if
++      if (signs_differ(right_fx, new_fx)) then
++        bracket_a = right_x
++        bracket_b = new_x
++        bracket_found = .true.
++        exit
++      end if
++      right_x = new_x
++      right_fx = new_fx
++    end if
++    if (.not. left_open .and. .not. right_open) exit
++  end do
++
++  if (.not. bracket_found) then
++    call refuse("zbrent_rot_admissible: no root in admissible interval")
++    return
++  end if
++  call bisect_admissible(bracket_a, bracket_b, return_value, converged)
++  if (.not. converged) then
++    call refuse("zbrent_rot_admissible: admissible root did not converge")
++    return
++  end if
++  if (present(success)) success = .true.
++
++contains
++  subroutine refuse(message)
++    character(*), intent(in) :: message
++    return_value = ieee_value(0._wp, ieee_quiet_nan)
++    if (.not. present(success)) error stop message
++  end subroutine refuse
++
++  subroutine bisect_admissible(left, right, root, root_converged)
++    real(wp), intent(in) :: left, right
++    real(wp), intent(out) :: root
++    logical, intent(out) :: root_converged
++    real(wp) :: a, b, midpoint, fa, fb, fmid
++    integer :: bisect_iteration
++
++    a = left
++    b = right
++    call f(a, fa, re, rho_p, ww_p, sgp, mugp)
++    call f(b, fb, re, rho_p, ww_p, sgp, mugp)
++    root_converged = .false.
++    if (.not. ieee_is_finite(fa) .or. .not. ieee_is_finite(fb) .or. &
++        .not. signs_differ(fa, fb)) return
++    do bisect_iteration = 1, MAX_ITER_BRENT
++      midpoint = a + 0.5_wp*(b-a)
++      call f(midpoint, fmid, re, rho_p, ww_p, sgp, mugp)
++      if (.not. ieee_is_finite(fmid)) return
++      if (abs(fmid) <= epsilon(fmid) .or. 0.5_wp*abs(b-a) <= tol) then
++        root = midpoint
++        root_converged = .true.
++        return
++      end if
++      if (signs_differ(fa, fmid)) then
++        b = midpoint
++        fb = fmid
++      else
++        a = midpoint
++        fa = fmid
++      end if
++    end do
++  end subroutine bisect_admissible
++
++end subroutine zbrent_rot_admissible
++
+ end module brent_mod
+diff --git a/tests/CMakeLists.txt b/tests/CMakeLists.txt
+index 77319ec..8fab20f 100644
+--- a/tests/CMakeLists.txt
++++ b/tests/CMakeLists.txt
+@@ -3,7 +3,7 @@ add_library(test_utils OBJECT unit/test_utils.f90)
+ target_link_libraries(test_utils grass_lib)
+ 
+ # Unit tests
+-set(UNIT_TESTS test_ad test_spline test_spectral test_brent test_eos
++set(UNIT_TESTS test_ad test_spline test_spectral test_brent test_eos test_rotation_law
+   test_bh_toroid_params test_bh_toroid_radial_map test_bh_toroid_green
+   test_bh_toroid_updates test_bh_toroid_solver)
+ foreach(test ${UNIT_TESTS})
+diff --git a/tests/Makefile b/tests/Makefile
+index 9b8fd14..759e78e 100644
+--- a/tests/Makefile
++++ b/tests/Makefile
+@@ -4,7 +4,7 @@ LIBGRASS ?= ../libgrass.a
+ LIBS ?= -llapack -lblas -lfftw3
+ BINDIR := bin
+ 
+-UNIT_TESTS := test_ad test_spline test_spectral test_brent test_eos \
++UNIT_TESTS := test_ad test_spline test_spectral test_brent test_eos test_rotation_law \
+   test_bh_toroid_params test_bh_toroid_radial_map test_bh_toroid_green \
+   test_bh_toroid_updates test_bh_toroid_solver
+ INTEG_TESTS := test_gr_uniform test_gr_constj test_gr_uryu test_st_uniform test_st_uniform_r07
+diff --git a/tests/unit/test_rotation_law.f90 b/tests/unit/test_rotation_law.f90
+new file mode 100644
+index 0000000..636284b
+--- /dev/null
++++ b/tests/unit/test_rotation_law.f90
+@@ -0,0 +1,186 @@
++program test_rotation_law
++  use, intrinsic :: ieee_arithmetic, only: ieee_is_finite, ieee_is_nan, ieee_positive_inf, &
++                                           ieee_quiet_nan, ieee_value
++  use precision_mod, only: wp
++  use para_mod, only: A_diff, F_equator_h, Fmax_h, Omega_c, lambda1, lambda2, uryu_p, uryu_q
++  use rotation_law_mod, only: cached_aa, cached_bb, ctx_exp2re2rho, &
++                              cache_uryu_ab, diff_rotation_const_j, diff_rotation_uryu, intF, &
++                              rotation_law_const_j, rotation_law_uryu, set_shoot_context, &
++                              uryu_coefficients, ctx_rho_equator_h, ctx_gama_equator_h, &
++                              ctx_ww_equator_h, ctx_rho_pole_h, ctx_gama_pole_h
++  use brent_mod, only: find_omega_e, zbrent_rot, find_omega_e_admissible, zbrent_rot_admissible
++  use test_utils
++  implicit none
++
++  real(wp) :: aa, bb, fx, expected, root, threshold
++  logical :: valid, found
++  real(wp), parameter :: tol = 1.0e-10_wp
++
++  A_diff = 0.5_wp
++  Omega_c = 0.6_wp
++  call diff_rotation_const_j(0.2_wp, fx, 0.8_wp, 0.1_wp, 0.2_wp, 0.01_wp, 0.05_wp, 0.12_wp)
++  expected = 0.8_wp**2*(0.2_wp+0.1_wp-0.12_wp-0.05_wp) &
++      + log(1._wp-((0.2_wp-0.01_wp)*exp(-0.8_wp**2*0.1_wp))**2)
++  expected = expected*(1._wp-((0.2_wp-0.01_wp)*exp(-0.8_wp**2*0.1_wp))**2)**2 &
++      - ((0.2_wp-0.01_wp)*exp(-2._wp*0.8_wp**2*0.1_wp)/A_diff)**2
++  call assert_near("const-j equatorial residual", expected, fx, tol)
++
++  ctx_exp2re2rho = 1.2_wp
++  call rotation_law_const_j(0.3_wp, fx, 1._wp, 0._wp, 0.02_wp, 0.25_wp, 0.4_wp)
++  expected = (Omega_c-0.3_wp)*((1._wp-0.25_wp)**2 &
++      -(0.25_wp*(0.3_wp-0.02_wp))**2/ctx_exp2re2rho*(1._wp-0.4_wp**2)) &
++      -(0.3_wp-0.02_wp)*0.25_wp**2*(1._wp-0.4_wp**2)/ctx_exp2re2rho/A_diff**2
++  call assert_near("const-j local residual", expected, fx, tol)
++
++  lambda1 = 1.5_wp
++  lambda2 = 0.3_wp
++  uryu_p = 1
++  uryu_q = 3
++  call uryu_coefficients(2.222222222222222_wp, 1._wp, aa, bb, valid)
++  call assert_true("admissible Uryu coefficients", valid)
++  call assert_true("positive finite Uryu aa", aa > 0._wp .and. ieee_is_finite(aa))
++  call assert_true("positive finite Uryu bb", bb > 0._wp .and. ieee_is_finite(bb))
++  call uryu_coefficients(0.1_wp, 1._wp, aa, bb, valid)
++  call assert_true("inadmissible Uryu coefficients rejected", .not. valid)
++  call uryu_coefficients(0._wp, 1._wp, aa, bb, valid)
++  call assert_true("zero Uryu momentum rejected", .not. valid)
++  call uryu_coefficients(-1._wp, 1._wp, aa, bb, valid)
++  call assert_true("negative Uryu momentum rejected", .not. valid)
++  call uryu_coefficients(ieee_value(0._wp, ieee_quiet_nan), 1._wp, aa, bb, valid)
++  call assert_true("NaN Uryu momentum rejected", .not. valid)
++  call uryu_coefficients(ieee_value(0._wp, ieee_positive_inf), 1._wp, aa, bb, valid)
++  call assert_true("infinite Uryu momentum rejected", .not. valid)
++  threshold = (lambda1/lambda2)**(1._wp/real(uryu_q, wp))
++  call uryu_coefficients(threshold, 1._wp, aa, bb, valid)
++  call assert_true("Uryu coefficient boundary rejected", .not. valid)
++  call uryu_coefficients(threshold*(1._wp+sqrt(epsilon(threshold))), 1._wp, aa, bb, valid)
++  call assert_true("Uryu coefficients valid above boundary", valid)
++
++  F_equator_h = 2.222222222222222_wp
++  Fmax_h = 1._wp
++  call cache_uryu_ab(valid)
++  call assert_true("valid Uryu coefficients cached", valid)
++  call assert_true("cached Uryu coefficients positive", cached_aa > 0._wp .and. cached_bb > 0._wp)
++  F_equator_h = 0.1_wp
++  call cache_uryu_ab(valid)
++  call assert_true("invalid Uryu cache request refused", .not. valid)
++  call assert_near("invalid cache clears aa", 0._wp, cached_aa, 0._wp)
++  call assert_near("invalid cache clears bb", 0._wp, cached_bb, 0._wp)
++  call rotation_law_uryu(0.5_wp, fx, 1._wp, 0._wp, 0._wp, 0.2_wp, 0.3_wp)
++  call assert_true("invalid Uryu cache marks local residual invalid", ieee_is_nan(fx))
++
++  F_equator_h = 2.222222222222222_wp
++  call cache_uryu_ab(valid)
++  Omega_c = 0.8_wp/lambda2
++  call diff_rotation_uryu(0.8_wp, fx, 1._wp, 0._wp, 0._wp, 0._wp, 0._wp, 0._wp)
++  call assert_true("admissible Uryu equatorial residual finite", ieee_is_finite(fx))
++  call diff_rotation_uryu(0.1_wp, fx, 1._wp, 0._wp, 0._wp, 0._wp, 0._wp, 0._wp)
++  call assert_true("inadmissible Uryu equatorial residual marked invalid", ieee_is_nan(fx))
++
++  ctx_exp2re2rho = 1._wp
++  call rotation_law_uryu(0.5_wp, fx, 1._wp, 0._wp, 0._wp, 0.2_wp, 0.3_wp)
++  call assert_true("Uryu local residual finite", ieee_is_finite(fx))
++  call assert_near("zero Uryu integral", 0._wp, intF(0._wp, 0._wp), 0._wp)
++  call assert_true("nonzero Uryu integral finite", ieee_is_finite(intF(0.5_wp, 0.2_wp)))
++
++  call set_shoot_context(0.1_wp, 0.2_wp, 0.3_wp, 0.4_wp, 0.5_wp)
++  call assert_near("shoot context equatorial rho", 0.1_wp, ctx_rho_equator_h, 0._wp)
++  call assert_near("shoot context equatorial gamma", 0.2_wp, ctx_gama_equator_h, 0._wp)
++  call assert_near("shoot context equatorial omega", 0.3_wp, ctx_ww_equator_h, 0._wp)
++  call assert_near("shoot context polar rho", 0.4_wp, ctx_rho_pole_h, 0._wp)
++  call assert_near("shoot context polar gamma", 0.5_wp, ctx_gama_pole_h, 0._wp)
++
++  call find_omega_e_admissible(0.2_wp, 1._wp, 0._wp, 0._wp, 0._wp, 0._wp, 0._wp, &
++                    1.0e-10_wp, root, bounded_residual, found)
++  call assert_true("bounded Omega_e root found", found)
++  call assert_near("bounded Omega_e root", 0.8_wp, root, 1.0e-8_wp)
++  call find_omega_e_admissible(0.2_wp, 1._wp, 0._wp, 0._wp, 0._wp, 0._wp, 0._wp, &
++                    1.0e-10_wp, root, no_root_residual, found)
++  call assert_true("no-bracket Omega_e search refused", .not. found)
++  call assert_true("no-bracket Omega_e result invalid", ieee_is_nan(root))
++  call find_omega_e_admissible(0.5_wp, 1._wp, 0._wp, 0._wp, 0._wp, 0._wp, 0._wp, &
++                    1.0e-10_wp, root, disconnected_residual, found)
++  call assert_true("disconnected finite domains do not bracket", .not. found)
++
++  A_diff = 0.5_wp
++  call find_omega_e(0.2_wp, 1._wp, 0._wp, 0.3_wp, 0._wp, 0._wp, 0._wp, &
++                    1.0e-10_wp, root, diff_rotation_const_j)
++  call diff_rotation_const_j(root, fx, 1._wp, 0._wp, 0.3_wp, 0._wp, 0._wp, 0._wp)
++  call assert_near("const-j callback Omega_e residual", 0._wp, fx, 1.0e-8_wp)
++  Fmax_h = 0.01_wp
++  call find_omega_e_admissible(0.2_wp, 1._wp, 0._wp, 0.1_wp, 0._wp, 0._wp, 0._wp, &
++                    1.0e-10_wp, root, diff_rotation_uryu, found)
++  call assert_true("Uryu callback Omega_e root found", found)
++  call diff_rotation_uryu(root, fx, 1._wp, 0._wp, 0.1_wp, 0._wp, 0._wp, 0._wp)
++  call assert_near("Uryu callback Omega_e residual", 0._wp, fx, 1.0e-8_wp)
++
++  call zbrent_rot_admissible(0.2_wp, 1._wp, 0._wp, 0._wp, 0.25_wp, 0._wp, &
++                  1.0e-10_wp, root, local_residual, found)
++  call assert_true("bounded local rotation root found", found)
++  call assert_near("bounded local rotation root", 0.6_wp, root, 1.0e-8_wp)
++  call zbrent_rot_admissible(0.2_wp, 1._wp, 0._wp, 0._wp, 0.25_wp, 0._wp, &
++                  1.0e-10_wp, root, local_no_root_residual, found)
++  call assert_true("no-bracket local rotation search refused", .not. found)
++  call assert_true("no-bracket local rotation result invalid", ieee_is_nan(root))
++
++  ctx_exp2re2rho = 1._wp
++  Omega_c = 0.6_wp
++  call zbrent_rot(0.2_wp, 1._wp, 0._wp, 0._wp, 0.25_wp, 0._wp, &
++                  1.0e-10_wp, root, rotation_law_const_j)
++  call rotation_law_const_j(root, fx, 1._wp, 0._wp, 0._wp, 0.25_wp, 0._wp)
++  call assert_near("const-j callback local residual", 0._wp, fx, 1.0e-8_wp)
++  Fmax_h = 1._wp
++  F_equator_h = 2.222222222222222_wp
++  call cache_uryu_ab(valid)
++  Omega_c = 0.8_wp/lambda2
++  call zbrent_rot_admissible(2.5_wp, 1._wp, 0._wp, 0._wp, 0.25_wp, 0._wp, &
++                  1.0e-10_wp, root, rotation_law_uryu, found)
++  call assert_true("Uryu callback local root found", found)
++  call rotation_law_uryu(root, fx, 1._wp, 0._wp, 0._wp, 0.25_wp, 0._wp)
++  call assert_near("Uryu callback local residual", 0._wp, fx, 1.0e-8_wp)
++
++  call test_summary("rotation_law_mod")
++
++contains
++
++  subroutine bounded_residual(x, residual, re, rho_h, g_h, w_h, rho_p, g_p)
++    real(wp), intent(in) :: x, re, rho_h, g_h, w_h, rho_p, g_p
++    real(wp), intent(out) :: residual
++    if (x <= 0.75_wp) then
++      residual = ieee_value(0._wp, ieee_quiet_nan)
++    else
++      residual = x - 0.8_wp
++    end if
++  end subroutine bounded_residual
++
++  subroutine no_root_residual(x, residual, re, rho_h, g_h, w_h, rho_p, g_p)
++    real(wp), intent(in) :: x, re, rho_h, g_h, w_h, rho_p, g_p
++    real(wp), intent(out) :: residual
++    residual = x + 1._wp
++  end subroutine no_root_residual
++
++  subroutine disconnected_residual(x, residual, re, rho_h, g_h, w_h, rho_p, g_p)
++    real(wp), intent(in) :: x, re, rho_h, g_h, w_h, rho_p, g_p
++    real(wp), intent(out) :: residual
++    if (x < 0.4_wp) then
++      residual = -1._wp
++    else if (x > 0.6_wp) then
++      residual = 1._wp
++    else
++      residual = ieee_value(0._wp, ieee_quiet_nan)
++    end if
++  end subroutine disconnected_residual
++
++  subroutine local_residual(x, residual, re, rho_p, ww_p, sgp, mugp)
++    real(wp), intent(in) :: x, re, rho_p, ww_p, sgp, mugp
++    real(wp), intent(out) :: residual
++    residual = x - 0.6_wp
++  end subroutine local_residual
++
++  subroutine local_no_root_residual(x, residual, re, rho_p, ww_p, sgp, mugp)
++    real(wp), intent(in) :: x, re, rho_p, ww_p, sgp, mugp
++    real(wp), intent(out) :: residual
++    residual = x + 1._wp
++  end subroutine local_no_root_residual
++
++end program test_rotation_law
+-- 
+2.50.1 (Apple Git-155)
+

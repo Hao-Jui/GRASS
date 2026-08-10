@@ -10,7 +10,8 @@
      Slow rot. I =       9.373240802
           M2/M^3 =       0.697368191
           S3/M^4 =       0.214710149
-          M4/M^5 =      -0.125294142
+# M4 is sensitive to the BLAS/backend and varied by 8.99e-4 across clean restored builds.
+          M4/M^5 =      -0.125294142 tol=1e-3
              T/W =       0.078451665
          Coord R =      10.196527453  km
          Areal R =      13.459758622  km
