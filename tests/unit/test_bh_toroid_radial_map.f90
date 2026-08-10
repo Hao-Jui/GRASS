@@ -1,7 +1,7 @@
 program test_bh_toroid_radial_map
   use precision_mod, only: wp
-  use bh_toroid_radial_map_mod
-  use bh_toroid_validation_mod, only: VALID_OK, VALID_BAD_GRID_SIZE, VALID_BAD_HORIZON, VALID_BAD_RADIAL_ORDER
+  use radial_map_mod
+  use validation_mod, only: VALID_OK, VALID_BAD_GRID_SIZE, VALID_BAD_HORIZON, VALID_BAD_RADIAL_ORDER
   use test_utils
   implicit none
 
@@ -43,7 +43,7 @@ program test_bh_toroid_radial_map
 contains
 
   subroutine assert_status(label, result, expected)
-    use bh_toroid_validation_mod, only: validation_result
+    use validation_mod, only: validation_result
     character(*), intent(in) :: label
     type(validation_result), intent(in) :: result
     integer, intent(in) :: expected

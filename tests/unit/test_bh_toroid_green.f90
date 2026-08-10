@@ -1,7 +1,7 @@
 program test_bh_toroid_green
   use precision_mod, only: wp
-  use bh_toroid_green_mod
-  use bh_toroid_validation_mod, only: VALID_OK, VALID_BAD_GREEN_ARGS
+  use green_mod
+  use validation_mod, only: VALID_OK, VALID_BAD_GREEN_ARGS
   use test_utils
   implicit none
 
@@ -47,19 +47,12 @@ program test_bh_toroid_green
   call assert_near("f2 horizon image cancellation", 0.0_wp, ne_f2_kernel(2, h0, rp_left, h0), tol)
   call assert_true("finite near horizon", abs(ne_f2_kernel(2, h0 + 1.e-6_wp, rp_left, h0)) < huge(1.0_wp))
 
-  call assert_near("lambda wrapper", ne_f2_kernel(1, r_left, rp_left, h0), &
-      lambda_radial_kernel(1, r_left, rp_left, h0), tol)
-  call assert_near("B wrapper", ne_f1_kernel(1, r_left, rp_left, h0), &
-      b_radial_kernel(1, r_left, rp_left, h0), tol)
-  call assert_near("omega wrapper", ne_f2_kernel(1, r_left, rp_left, h0), &
-      omega_radial_kernel(1, r_left, rp_left, h0), tol)
-
   call test_summary("test_bh_toroid_green")
 
 contains
 
   subroutine assert_status(label, result, expected)
-    use bh_toroid_validation_mod, only: validation_result
+    use validation_mod, only: validation_result
     character(*), intent(in) :: label
     type(validation_result), intent(in) :: result
     integer, intent(in) :: expected

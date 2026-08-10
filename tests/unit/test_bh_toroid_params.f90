@@ -1,9 +1,9 @@
 program test_bh_toroid_params
   use precision_mod, only: wp
   use para_mod, only: MODEL_NS, MODEL_BH_TOROID, model_family
-  use bh_toroid_params_mod, only: bh_toroid_params, default_bh_toroid_params, &
+  use params_mod, only: bh_toroid_params, default_bh_toroid_params, &
       validate_bh_toroid_params, validate_model_family
-  use bh_toroid_validation_mod, only: validation_result, VALID_OK, &
+  use validation_mod, only: validation_result, VALID_OK, &
       VALID_BAD_HORIZON, VALID_BAD_MODEL_FAMILY, VALID_BAD_POLYTROPE, &
       VALID_BAD_RADIAL_ORDER, VALID_BAD_ROTATION, VALID_BAD_SCALE
   use test_utils

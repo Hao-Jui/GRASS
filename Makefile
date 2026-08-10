@@ -54,12 +54,9 @@ SOURCES := \
   $(SRC_TOOL)/spline_mod.f90 \
   $(SRC_TOOL)/spectral_hub_mod.f90 \
   src/para_panel.f90 \
-  $(SRC_BH_TOROID)/bh_toroid_validation_mod.f90 \
-  $(SRC_BH_TOROID)/bh_toroid_params_mod.f90 \
-  $(SRC_BH_TOROID)/bh_toroid_radial_map_mod.f90 \
-  $(SRC_BH_TOROID)/bh_toroid_green_mod.f90 \
-  $(SRC_BH_TOROID)/bh_toroid_updates_mod.f90 \
-  $(SRC_BH_TOROID)/bh_toroid_solver_mod.f90 \
+  $(SRC_BH_TOROID)/core_mod.f90 \
+  $(SRC_BH_TOROID)/updates_mod.f90 \
+  $(SRC_BH_TOROID)/solver_mod.f90 \
   $(SRC_TOOL)/donutization_mod.f90 \
   $(SRC_TOOL)/toolkit_mod.f90 \
   $(SRC_CORE)/ope_eq_mod.f90 \

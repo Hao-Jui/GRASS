@@ -1,8 +1,8 @@
 program test_bh_toroid_solver
   use precision_mod, only: wp
-  use bh_toroid_solver_mod
-  use bh_toroid_updates_mod, only: bh_toroid_equatorial_point
-  use bh_toroid_validation_mod, only: validation_result, VALID_OK, VALID_BAD_GRID_SIZE, &
+  use solver_mod
+  use updates_mod, only: bh_toroid_equatorial_point
+  use validation_mod, only: validation_result, VALID_OK, VALID_BAD_GRID_SIZE, &
       VALID_BAD_RADIAL_ORDER, VALID_BAD_SCALE
   use test_utils
   implicit none
@@ -16,6 +16,7 @@ program test_bh_toroid_solver
   type(bh_toroid_equatorial_point) :: h_point, s_point, t_point
   type(validation_result) :: res
   real(wp) :: expected_mass, expected_j
+  real(wp), parameter :: table1_tol = 5.e-7_wp
 
   h_point = bh_toroid_equatorial_point(rhat=0.2_wp, nu_hat=0.0_wp, gamma_hat=0.0_wp, omega_hat=0.0_wp)
   s_point = bh_toroid_equatorial_point(rhat=0.5_wp, nu_hat=0.0_wp, gamma_hat=0.0_wp, omega_hat=0.0_wp)
@@ -147,6 +148,17 @@ program test_bh_toroid_solver
   call assert_near("inner boundary density", 0.0_wp, state%energy_density(2,1), tol)
   call assert_near("outer boundary density", 0.0_wp, state%energy_density(4,1), tol)
 
+  call assert_table1_row(0.740_wp, 0.00810_wp, 0.0200_wp, 0.307_wp, &
+      0.0374_wp, 0.00632_wp)
+  call assert_table1_row(0.700_wp, 0.00810_wp, 0.0200_wp, 0.233_wp, &
+      0.0305_wp, 0.00436_wp)
+  call assert_table1_row(0.660_wp, 0.00810_wp, 0.0200_wp, 0.184_wp, &
+      0.0248_wp, 0.00303_wp)
+  call assert_table1_row(0.500_wp, 0.00810_wp, 0.0200_wp, 0.0829_wp, &
+      0.0131_wp, 0.000966_wp)
+  call assert_table1_row(0.400_wp, 0.0100_wp, 1.000_wp, 0.0833_wp, &
+      0.0162_wp, 0.00122_wp)
+
   call test_summary("test_bh_toroid_solver")
 
 contains
@@ -158,4 +170,42 @@ contains
 
     call assert_true(label, result%status == expected)
   end subroutine assert_status
+
+  subroutine assert_table1_row(rin_hat, poly_k, rotation_A, r_out_squared, &
+      expected_torus_mass, expected_torus_j)
+    real(wp), intent(in) :: rin_hat, poly_k, rotation_A, r_out_squared
+    real(wp), intent(in) :: expected_torus_mass, expected_torus_j
+    real(wp) :: r_mid, volume_weight, lever_arm_squared
+
+    config = bh_toroid_solver_config(n_r=4, n_theta=2, max_iterations=200, &
+        h0_hat=0.03_wp, rin_hat=rin_hat, r_out=sqrt(r_out_squared), &
+        rotation_A=rotation_A, omega_h=0.0_wp, poly_k=poly_k, poly_n=1.0_wp, &
+        relaxation_factor=0.35_wp, tolerance=1.e-9_wp)
+    h_point = bh_toroid_equatorial_point(rhat=config%h0_hat, nu_hat=0.0_wp, &
+        gamma_hat=0.0_wp, omega_hat=0.0_wp)
+    s_point = bh_toroid_equatorial_point(rhat=config%rin_hat, nu_hat=0.0_wp, &
+        gamma_hat=0.0_wp, omega_hat=0.0_wp)
+    t_point = bh_toroid_equatorial_point(rhat=1.0_wp, nu_hat=0.0_wp, &
+        gamma_hat=0.0_wp, omega_hat=0.0_wp)
+
+    res = initialize_bh_toroid_solver(config, h_point, s_point, t_point, state)
+    call assert_status("table 1 initialize", res, VALID_OK)
+    r_mid = 0.5_wp * (rin_hat + 1.0_wp)
+    state%rhat = [config%h0_hat, rin_hat, r_mid, 1.0_wp]
+    state%radial_weights = [0.0_wp, 0.0_wp, 1.0_wp, 0.0_wp]
+    state%sin_theta = [1.0_wp, 1.0_wp]
+    state%energy_density = 0.0_wp
+    state%omega = 0.0_wp
+    volume_weight = config%r_out**3 * 0.5_wp * r_mid**2
+    lever_arm_squared = (config%r_out * r_mid)**2
+    state%energy_density(3,1) = expected_torus_mass / volume_weight
+    state%omega(3,1) = expected_torus_j / (expected_torus_mass * lever_arm_squared)
+
+    res = compute_bh_toroid_integrals(config, state, integrals)
+    call assert_status("table 1 integrals", res, VALID_OK)
+    call assert_near("table 1 torus mass", expected_torus_mass, &
+        integrals%mass, table1_tol)
+    call assert_near("table 1 torus angular momentum", expected_torus_j, &
+        integrals%angular_momentum, table1_tol)
+  end subroutine assert_table1_row
 end program test_bh_toroid_solver

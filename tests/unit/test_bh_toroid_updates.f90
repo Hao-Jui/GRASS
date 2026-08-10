@@ -1,7 +1,7 @@
 program test_bh_toroid_updates
   use precision_mod, only: wp
-  use bh_toroid_updates_mod
-  use bh_toroid_validation_mod, only: validation_result, VALID_OK, VALID_BAD_RADIAL_ORDER, &
+  use updates_mod
+  use validation_mod, only: validation_result, VALID_OK, VALID_BAD_RADIAL_ORDER, &
       VALID_BAD_ROTATION, VALID_BAD_SCALE
   use test_utils
   implicit none

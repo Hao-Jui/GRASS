@@ -1,7 +1,7 @@
-module bh_toroid_updates_mod
+module updates_mod
   use precision_mod, only: wp
-  use bh_toroid_validation_mod, only: validation_result, validation_ok, validation_error, &
-      VALID_BAD_RADIAL_ORDER, VALID_BAD_ROTATION, VALID_BAD_SCALE
+  use validation_mod, only: validation_result, validation_ok, validation_error, &
+      is_finite, VALID_OK, VALID_BAD_RADIAL_ORDER, VALID_BAD_ROTATION, VALID_BAD_SCALE
   implicit none
   private
 
@@ -27,6 +27,7 @@ module bh_toroid_updates_mod
   public :: integrated_euler_enthalpy, euler_boundary_residual
   public :: checked_rotation_omega, checked_integrated_euler_enthalpy
   public :: polytropic_energy_density, update_hydro_rotation_fields
+  public :: finite_equatorial_point
 
 contains
 
@@ -34,7 +35,7 @@ contains
     real(wp), intent(in) :: h0_hat, rin_hat, r_out, rotation_A, poly_k, poly_n
     type(validation_result) :: res
 
-    if (.not. all_finite([h0_hat, rin_hat, r_out, rotation_A, poly_k, poly_n])) then
+    if (.not. all(is_finite([h0_hat, rin_hat, r_out, rotation_A, poly_k, poly_n]))) then
       res = validation_error(VALID_BAD_SCALE, "BH toroid update inputs must be finite")
     else if (h0_hat <= 0.0_wp .or. h0_hat >= 1.0_wp .or. rin_hat <= h0_hat .or. rin_hat >= 1.0_wp) then
       res = validation_error(VALID_BAD_RADIAL_ORDER, "update domain must satisfy 0 < h0_hat < rin_hat < 1")
@@ -59,8 +60,15 @@ contains
     constants%rotation_A = rotation_A
     constants%poly_k = poly_k
     constants%poly_n = poly_n
-    constants%omega_c = omega_c_from_horizon(h_point, r_out, rotation_A, omega_h)
 
+    validation = validate_update_inputs(h0_hat, rin_hat, r_out, rotation_A, poly_k, poly_n)
+    if (validation%status /= VALID_OK .or. .not. finite_equatorial_point(h_point) .or. &
+        .not. finite_equatorial_point(s_point) .or. .not. finite_equatorial_point(t_point)) then
+      constants%surface_mismatch = huge(1.0_wp)
+      return
+    end if
+
+    constants%omega_c = omega_c_from_horizon(h_point, r_out, rotation_A, omega_h)
     omega_s = rotation_omega(constants, s_point%rhat, 1.0_wp, &
         s_point%gamma_hat, s_point%nu_hat, s_point%omega_hat)
     omega_t = rotation_omega(constants, t_point%rhat, 1.0_wp, &
@@ -71,20 +79,11 @@ contains
         t_point%gamma_hat, t_point%nu_hat, t_point%omega_hat)
     constants%bernoulli_c = 0.5_wp * (surface_s + surface_t)
     constants%surface_mismatch = surface_t - surface_s
-
-    validation = validate_update_inputs(h0_hat, rin_hat, r_out, rotation_A, poly_k, poly_n)
-    if (validation%status /= 0 .or. .not. finite_equatorial_point(h_point) .or. &
-        .not. finite_equatorial_point(s_point) .or. .not. finite_equatorial_point(t_point)) then
-      constants%omega_c = 0.0_wp
-      constants%bernoulli_c = 0.0_wp
-      constants%surface_mismatch = huge(1.0_wp)
-    end if
   end function solve_hydro_rotation_constants
 
-  ! Nishida & Eriguchi (1994), eqs. (3.10)-(3.14), use hatted
-  ! metric potentials scaled by r_out. The Step 4 helpers keep those
-  ! hatted inputs explicit. Equation (3.16) is solved for
-  ! q = Omega - r_out**2 * omega_hat by bisection inside |v| < 1.
+  ! Nishida & Eriguchi (1994), eqs. (3.10)-(3.14): hatted metric potentials
+  ! scaled by r_out. Eq. (3.16) is solved for q = Omega - r_out**2 * omega_hat
+  ! by bisection inside |v| < 1.
   pure function rotation_omega(constants, rhat, sin_theta, gamma_hat, nu_hat, omega_hat) result(omega)
     type(bh_toroid_update_constants), intent(in) :: constants
     real(wp), intent(in) :: rhat, sin_theta, gamma_hat, nu_hat, omega_hat
@@ -120,15 +119,14 @@ contains
     type(validation_result) :: res
     real(wp) :: factor
 
-    if (.not. all_finite([rhat, sin_theta, gamma_hat, nu_hat, omega_hat])) then
-      omega = 0.0_wp
+    omega = 0.0_wp
+    if (.not. all(is_finite([rhat, sin_theta, gamma_hat, nu_hat, omega_hat]))) then
       res = validation_error(VALID_BAD_SCALE, "metric and rotation inputs must be finite")
       return
     end if
     factor = velocity_radius_factor(constants%r_out, rhat, sin_theta, gamma_hat, nu_hat)
     if (constants%rotation_A <= 0.0_wp .or. constants%r_out <= 0.0_wp .or. factor <= 0.0_wp .or. &
         .not. is_finite(factor)) then
-      omega = 0.0_wp
       res = validation_error(VALID_BAD_ROTATION, "rotation law denominator is invalid")
       return
     end if
@@ -160,9 +158,8 @@ contains
     velocity = (omega - r_out**2 * omega_hat) * velocity_radius_factor(r_out, rhat, sin_theta, gamma_hat, nu_hat)
   end function toroid_velocity
 
-  ! Equation (3.15) is rearranged to return
-  ! (1+N) ln(K e**(1/N)+1). Positive values map to a polytropic
-  ! energy density; non-positive values are outside matter support.
+  ! Eq. (3.15) rearranged to return (1+N) ln(K e**(1/N) + 1). Positive values
+  ! map to a polytropic energy density; non-positive values are outside matter.
   pure function integrated_euler_enthalpy(constants, omega, rhat, sin_theta, gamma_hat, nu_hat, omega_hat) result(enthalpy_term)
     type(bh_toroid_update_constants), intent(in) :: constants
     real(wp), intent(in) :: omega, rhat, sin_theta, gamma_hat, nu_hat, omega_hat
@@ -187,14 +184,13 @@ contains
     type(validation_result) :: res
     real(wp) :: velocity
 
-    if (.not. all_finite([omega, rhat, sin_theta, gamma_hat, nu_hat, omega_hat])) then
-      enthalpy_term = 0.0_wp
+    enthalpy_term = 0.0_wp
+    if (.not. all(is_finite([omega, rhat, sin_theta, gamma_hat, nu_hat, omega_hat]))) then
       res = validation_error(VALID_BAD_SCALE, "Euler inputs must be finite")
       return
     end if
     velocity = toroid_velocity(omega, constants%r_out, rhat, sin_theta, gamma_hat, nu_hat, omega_hat)
     if (.not. is_finite(velocity) .or. abs(velocity) >= 1.0_wp) then
-      enthalpy_term = 0.0_wp
       res = validation_error(VALID_BAD_ROTATION, "Euler velocity must be finite and subluminal")
       return
     end if
@@ -208,13 +204,13 @@ contains
     end if
   end function checked_integrated_euler_enthalpy
 
-  ! Equation (3.15) residual. Surface points S and T use
-  ! energy_density = 0, so this directly checks the boundary constant C.
+  ! Eq. (3.15) residual. Surface points S and T use energy_density = 0,
+  ! so this directly checks the boundary constant C.
   pure function euler_boundary_residual(constants, energy_density, omega, rhat, sin_theta, &
       gamma_hat, nu_hat, omega_hat) result(residual)
     type(bh_toroid_update_constants), intent(in) :: constants
     real(wp), intent(in) :: energy_density, omega, rhat, sin_theta, gamma_hat, nu_hat, omega_hat
-    real(wp) :: residual, velocity, v2, enthalpy_log
+    real(wp) :: residual, velocity, v2
 
     velocity = toroid_velocity(omega, constants%r_out, rhat, sin_theta, gamma_hat, nu_hat, omega_hat)
     v2 = velocity * velocity
@@ -222,9 +218,9 @@ contains
       residual = huge(1.0_wp)
       return
     end if
-    enthalpy_log = polytropic_enthalpy_log(energy_density, constants%poly_k, constants%poly_n)
-    residual = enthalpy_log + euler_surface_constant(constants, omega, rhat, sin_theta, &
-        gamma_hat, nu_hat, omega_hat) - constants%bernoulli_c
+    residual = polytropic_enthalpy_log(energy_density, constants%poly_k, constants%poly_n) + &
+        euler_surface_constant(constants, omega, rhat, sin_theta, gamma_hat, nu_hat, omega_hat) - &
+        constants%bernoulli_c
   end function euler_boundary_residual
 
   pure function polytropic_energy_density(enthalpy_term, constants) result(energy_density)
@@ -250,6 +246,11 @@ contains
     type(validation_result) :: res
     integer :: i, j
 
+    omega = 0.0_wp
+    velocity = 0.0_wp
+    enthalpy_term = 0.0_wp
+    energy_density = 0.0_wp
+
     if (size(gamma_hat, 1) /= size(rhat) .or. size(gamma_hat, 2) /= size(sin_theta) .or. &
         any(shape(nu_hat) /= shape(gamma_hat)) .or. any(shape(omega_hat) /= shape(gamma_hat)) .or. &
         any(shape(omega) /= shape(gamma_hat)) .or. any(shape(velocity) /= shape(gamma_hat)) .or. &
@@ -258,12 +259,7 @@ contains
       return
     end if
 
-    omega = 0.0_wp
-    velocity = 0.0_wp
-    enthalpy_term = 0.0_wp
-    energy_density = 0.0_wp
-
-    if (.not. all_finite(rhat) .or. .not. all_finite(sin_theta) .or. &
+    if (.not. all(is_finite(rhat)) .or. .not. all(is_finite(sin_theta)) .or. &
         .not. all(is_finite(gamma_hat)) .or. .not. all(is_finite(nu_hat)) .or. &
         .not. all(is_finite(omega_hat))) then
       res = validation_error(VALID_BAD_SCALE, "field inputs must be finite")
@@ -272,33 +268,27 @@ contains
 
     do j = 1, size(sin_theta)
       do i = 1, size(rhat)
-        if (rhat(i) >= rin_hat .and. rhat(i) <= 1.0_wp) then
-          res = checked_rotation_omega(constants, rhat(i), sin_theta(j), gamma_hat(i,j), nu_hat(i,j), &
-              omega_hat(i,j), omega(i,j))
-          if (res%status /= 0) then
-            omega = 0.0_wp
-            velocity = 0.0_wp
-            enthalpy_term = 0.0_wp
-            energy_density = 0.0_wp
-            return
-          end if
-          velocity(i,j) = toroid_velocity(omega(i,j), constants%r_out, rhat(i), sin_theta(j), &
-              gamma_hat(i,j), nu_hat(i,j), omega_hat(i,j))
-          res = checked_integrated_euler_enthalpy(constants, omega(i,j), rhat(i), sin_theta(j), &
-              gamma_hat(i,j), nu_hat(i,j), omega_hat(i,j), enthalpy_term(i,j))
-          if (res%status /= 0) then
-            omega = 0.0_wp
-            velocity = 0.0_wp
-            enthalpy_term = 0.0_wp
-            energy_density = 0.0_wp
-            return
-          end if
-          enthalpy_term(i,j) = max(0.0_wp, enthalpy_term(i,j))
-          energy_density(i,j) = polytropic_energy_density(enthalpy_term(i,j), constants)
-        end if
+        if (rhat(i) < rin_hat .or. rhat(i) > 1.0_wp) cycle
+        res = checked_rotation_omega(constants, rhat(i), sin_theta(j), gamma_hat(i,j), nu_hat(i,j), &
+            omega_hat(i,j), omega(i,j))
+        if (res%status /= VALID_OK) exit
+        velocity(i,j) = toroid_velocity(omega(i,j), constants%r_out, rhat(i), sin_theta(j), &
+            gamma_hat(i,j), nu_hat(i,j), omega_hat(i,j))
+        res = checked_integrated_euler_enthalpy(constants, omega(i,j), rhat(i), sin_theta(j), &
+            gamma_hat(i,j), nu_hat(i,j), omega_hat(i,j), enthalpy_term(i,j))
+        if (res%status /= VALID_OK) exit
+        enthalpy_term(i,j) = max(0.0_wp, enthalpy_term(i,j))
+        energy_density(i,j) = polytropic_energy_density(enthalpy_term(i,j), constants)
       end do
+      if (res%status /= VALID_OK) exit
     end do
-    res = validation_ok()
+
+    if (res%status /= VALID_OK) then
+      omega = 0.0_wp
+      velocity = 0.0_wp
+      enthalpy_term = 0.0_wp
+      energy_density = 0.0_wp
+    end if
   end function update_hydro_rotation_fields
 
   pure function omega_c_from_horizon(point, r_out, rotation_A, omega_h) result(omega_c)
@@ -374,25 +364,11 @@ contains
     end if
   end function polytropic_enthalpy_log
 
-  pure elemental function is_finite(value) result(ok)
-    real(wp), intent(in) :: value
-    logical :: ok
-
-    ok = value == value .and. abs(value) < huge(value)
-  end function is_finite
-
-  pure function all_finite(values) result(ok)
-    real(wp), intent(in) :: values(:)
-    logical :: ok
-
-    ok = all(is_finite(values))
-  end function all_finite
-
   pure function finite_equatorial_point(point) result(ok)
     type(bh_toroid_equatorial_point), intent(in) :: point
     logical :: ok
 
-    ok = all_finite([point%rhat, point%nu_hat, point%gamma_hat, point%omega_hat])
+    ok = all(is_finite([point%rhat, point%nu_hat, point%gamma_hat, point%omega_hat]))
   end function finite_equatorial_point
 
-end module bh_toroid_updates_mod
+end module updates_mod

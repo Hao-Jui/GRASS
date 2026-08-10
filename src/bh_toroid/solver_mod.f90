@@ -1,12 +1,12 @@
-module bh_toroid_solver_mod
+module solver_mod
   use precision_mod, only: wp
-  use bh_toroid_validation_mod, only: validation_result, validation_ok, validation_error, &
-      VALID_OK, VALID_BAD_GRID_SIZE, VALID_BAD_RADIAL_ORDER, VALID_BAD_SCALE
-  use bh_toroid_radial_map_mod, only: build_rhat_trapezoid_grid, classify_rhat, &
-      radial_jacobian, ZONE_HORIZON, ZONE_TORUS
-  use bh_toroid_green_mod, only: lambda_radial_kernel, b_radial_kernel, omega_radial_kernel
-  use bh_toroid_updates_mod, only: bh_toroid_equatorial_point, bh_toroid_update_constants, &
-      solve_hydro_rotation_constants, update_hydro_rotation_fields
+  use validation_mod, only: validation_result, validation_ok, validation_error, &
+      is_finite, VALID_OK, VALID_BAD_GRID_SIZE, VALID_BAD_RADIAL_ORDER, VALID_BAD_SCALE
+  use radial_map_mod, only: build_rhat_trapezoid_grid, classify_rhat, &
+      ZONE_HORIZON, ZONE_TORUS
+  use green_mod, only: ne_f1_kernel, ne_f2_kernel
+  use updates_mod, only: bh_toroid_equatorial_point, bh_toroid_update_constants, &
+      solve_hydro_rotation_constants, update_hydro_rotation_fields, finite_equatorial_point
   implicit none
   private
 
@@ -35,6 +35,8 @@ module bh_toroid_solver_mod
     real(wp) :: omega_h = 0.0_wp
     real(wp) :: omega_model = 0.0_wp
     real(wp) :: omega_residual = 0.0_wp
+    real(wp) :: mass = 0.0_wp
+    real(wp) :: angular_momentum = 0.0_wp
     real(wp) :: area_proxy = 0.0_wp
   end type bh_horizon_quantities
 
@@ -79,8 +81,8 @@ contains
 
     if (config%n_r < 2 .or. config%n_theta < 1) then
       res = validation_error(VALID_BAD_GRID_SIZE, "solver grid must have n_r >= 2 and n_theta >= 1")
-    else if (.not. all_finite_1d([config%h0_hat, config%rin_hat, config%r_out, config%rotation_A, &
-        config%omega_h, config%poly_k, config%poly_n, config%relaxation_factor, config%tolerance])) then
+    else if (.not. all(is_finite([config%h0_hat, config%rin_hat, config%r_out, config%rotation_A, &
+        config%omega_h, config%poly_k, config%poly_n, config%relaxation_factor, config%tolerance]))) then
       res = validation_error(VALID_BAD_SCALE, "solver config values must be finite")
     else if (config%h0_hat <= 0.0_wp .or. config%h0_hat >= 1.0_wp .or. &
         config%rin_hat <= config%h0_hat .or. config%rin_hat >= 1.0_wp) then
@@ -103,7 +105,7 @@ contains
     type(bh_toroid_solver_state), intent(inout) :: state
     type(validation_result) :: res
     integer :: j
-    real(wp) :: pi
+    real(wp), parameter :: pi = acos(-1.0_wp)
 
     res = validate_bh_toroid_solver_config(config)
     if (res%status /= VALID_OK) return
@@ -127,7 +129,6 @@ contains
     res = build_rhat_trapezoid_grid(config%n_r, config%h0_hat, state%rhat, state%radial_weights)
     if (res%status /= VALID_OK) return
 
-    pi = acos(-1.0_wp)
     do j = 1, config%n_theta
       state%sin_theta(j) = sin((real(j, wp) - 0.5_wp) * 0.5_wp * pi / real(config%n_theta, wp))
     end do
@@ -138,6 +139,7 @@ contains
       res = validation_error(VALID_BAD_SCALE, "hydro-rotation constants are invalid")
       return
     end if
+
     state%iteration = 0
     state%converged = .false.
     state%gamma_hat = 0.0_wp
@@ -175,26 +177,24 @@ contains
         zone = classify_rhat(state%rhat(i), config%h0_hat, config%rin_hat)
         if (zone == ZONE_HORIZON) then
           state%target_omega_hat(i,j) = horizon_target
-        else
-          r = config%r_out * state%rhat(i)
-          do jp = 1, config%n_theta
-            do ip = 1, config%n_r
-              if (classify_rhat(state%rhat(ip), config%h0_hat, config%rin_hat) == ZONE_TORUS) then
-                source = max(0.0_wp, state%energy_density(ip,jp))
-                if (source > 0.0_wp) then
-                  rp = config%r_out * state%rhat(ip)
-                  volume_weight = state%radial_weights(ip) * angular_weight * state%sin_theta(jp)
-                  state%target_nu_hat(i,j) = state%target_nu_hat(i,j) &
-                      - lambda_radial_kernel(0, r, rp, h0) * source * volume_weight
-                  state%target_gamma_hat(i,j) = state%target_gamma_hat(i,j) &
-                      + b_radial_kernel(1, r, rp, h0) * source * volume_weight * state%sin_theta(jp)
-                  state%target_omega_hat(i,j) = state%target_omega_hat(i,j) &
-                      + omega_radial_kernel(0, r, rp, h0) * source * state%omega(ip,jp) * volume_weight
-                end if
-              end if
-            end do
-          end do
+          cycle
         end if
+        r = config%r_out * state%rhat(i)
+        do jp = 1, config%n_theta
+          do ip = 1, config%n_r
+            if (classify_rhat(state%rhat(ip), config%h0_hat, config%rin_hat) /= ZONE_TORUS) cycle
+            source = max(0.0_wp, state%energy_density(ip,jp))
+            if (source <= 0.0_wp) cycle
+            rp = config%r_out * state%rhat(ip)
+            volume_weight = state%radial_weights(ip) * angular_weight * state%sin_theta(jp)
+            state%target_nu_hat(i,j) = state%target_nu_hat(i,j) &
+                - ne_f2_kernel(0, r, rp, h0) * source * volume_weight
+            state%target_gamma_hat(i,j) = state%target_gamma_hat(i,j) &
+                + ne_f1_kernel(1, r, rp, h0) * source * volume_weight * state%sin_theta(jp)
+            state%target_omega_hat(i,j) = state%target_omega_hat(i,j) &
+                + ne_f2_kernel(0, r, rp, h0) * source * state%omega(ip,jp) * volume_weight
+          end do
+        end do
       end do
     end do
     res = validation_ok()
@@ -205,8 +205,6 @@ contains
     type(bh_toroid_solver_state), intent(inout) :: state
     real(wp), intent(out) :: max_delta
     type(validation_result) :: res
-    real(wp) :: old_value
-    integer :: i, j
 
     res = validate_solver_state(config, state)
     if (res%status /= VALID_OK) then
@@ -215,21 +213,9 @@ contains
     end if
 
     max_delta = 0.0_wp
-    do j = 1, config%n_theta
-      do i = 1, config%n_r
-        old_value = state%gamma_hat(i,j)
-        state%gamma_hat(i,j) = weighted_relax(old_value, state%target_gamma_hat(i,j), config%relaxation_factor)
-        max_delta = max(max_delta, abs(state%gamma_hat(i,j) - old_value))
-
-        old_value = state%nu_hat(i,j)
-        state%nu_hat(i,j) = weighted_relax(old_value, state%target_nu_hat(i,j), config%relaxation_factor)
-        max_delta = max(max_delta, abs(state%nu_hat(i,j) - old_value))
-
-        old_value = state%omega_hat(i,j)
-        state%omega_hat(i,j) = weighted_relax(old_value, state%target_omega_hat(i,j), config%relaxation_factor)
-        max_delta = max(max_delta, abs(state%omega_hat(i,j) - old_value))
-      end do
-    end do
+    call relax_in_place(state%gamma_hat, state%target_gamma_hat, config%relaxation_factor, max_delta)
+    call relax_in_place(state%nu_hat, state%target_nu_hat, config%relaxation_factor, max_delta)
+    call relax_in_place(state%omega_hat, state%target_omega_hat, config%relaxation_factor, max_delta)
     res = validation_ok()
   end function relax_bh_toroid_targets
 
@@ -294,7 +280,7 @@ contains
     type(bh_toroid_integrals), intent(out) :: integrals
     type(validation_result) :: res
     integer :: i, j
-    real(wp) :: angular_weight, volume_weight
+    real(wp) :: angular_weight, volume_weight, lever_arm_squared
 
     res = validate_solver_state(config, state)
     if (res%status /= VALID_OK) return
@@ -304,15 +290,15 @@ contains
     angular_weight = 1.0_wp / real(config%n_theta, wp)
     do j = 1, config%n_theta
       do i = 1, config%n_r
-        if (classify_rhat(state%rhat(i), config%h0_hat, config%rin_hat) == ZONE_TORUS) then
-          ! Low-order quadrature shell for the matter terms in Nishida-Eriguchi
-          ! eqs. (4.1)-(4.2). Metric factors are explicit state inputs.
-          volume_weight = config%r_out**3 * state%radial_weights(i) * angular_weight &
-              * state%rhat(i)**2 * max(0.0_wp, state%sin_theta(j)) * radial_jacobian(config%r_out) / config%r_out
-          integrals%mass = integrals%mass + state%energy_density(i,j) * volume_weight
-          integrals%angular_momentum = integrals%angular_momentum + state%energy_density(i,j) &
-              * state%omega(i,j) * (config%r_out * state%rhat(i) * state%sin_theta(j))**2 * volume_weight
-        end if
+        if (classify_rhat(state%rhat(i), config%h0_hat, config%rin_hat) /= ZONE_TORUS) cycle
+        ! Low-order quadrature shell for the matter terms in Nishida-Eriguchi
+        ! eqs. (4.1)-(4.2). Metric factors are explicit state inputs.
+        volume_weight = config%r_out**3 * state%radial_weights(i) * angular_weight &
+            * state%rhat(i)**2 * state%sin_theta(j)
+        lever_arm_squared = (config%r_out * state%rhat(i) * state%sin_theta(j))**2
+        integrals%mass = integrals%mass + state%energy_density(i,j) * volume_weight
+        integrals%angular_momentum = integrals%angular_momentum + state%energy_density(i,j) &
+            * state%omega(i,j) * lever_arm_squared * volume_weight
       end do
     end do
     res = validation_ok()
@@ -324,7 +310,7 @@ contains
     type(bh_horizon_quantities), intent(out) :: horizon
     type(validation_result) :: res
     integer :: j_eq
-    real(wp) :: pi
+    real(wp), parameter :: pi = acos(-1.0_wp)
 
     res = validate_solver_state(config, state)
     if (res%status /= VALID_OK) return
@@ -334,7 +320,6 @@ contains
     horizon%omega_h = config%omega_h
     horizon%omega_model = config%r_out**2 * state%omega_hat(1,j_eq)
     horizon%omega_residual = horizon%omega_model - config%omega_h
-    pi = acos(-1.0_wp)
     horizon%area_proxy = 4.0_wp * pi * horizon%radius**2
     res = validation_ok()
   end function compute_bh_horizon_quantities
@@ -347,35 +332,13 @@ contains
     res = validate_bh_toroid_solver_config(config)
     if (res%status /= VALID_OK) return
 
-    if (.not. allocated(state%rhat) .or. .not. allocated(state%radial_weights) .or. &
-        .not. allocated(state%sin_theta) .or. .not. allocated(state%gamma_hat) .or. &
-        .not. allocated(state%nu_hat) .or. .not. allocated(state%omega_hat) .or. &
-        .not. allocated(state%target_gamma_hat) .or. .not. allocated(state%target_nu_hat) .or. &
-        .not. allocated(state%target_omega_hat) .or. .not. allocated(state%omega) .or. &
-        .not. allocated(state%velocity) .or. .not. allocated(state%enthalpy_term) .or. &
-        .not. allocated(state%energy_density)) then
+    if (.not. state_arrays_allocated(state)) then
       res = validation_error(VALID_BAD_GRID_SIZE, "solver state arrays are not allocated")
-    else if (size(state%rhat) /= config%n_r .or. size(state%radial_weights) /= config%n_r .or. &
-        size(state%sin_theta) /= config%n_theta .or. any(shape(state%gamma_hat) /= [config%n_r, config%n_theta]) .or. &
-        any(shape(state%nu_hat) /= [config%n_r, config%n_theta]) .or. &
-        any(shape(state%omega_hat) /= [config%n_r, config%n_theta]) .or. &
-        any(shape(state%target_gamma_hat) /= [config%n_r, config%n_theta]) .or. &
-        any(shape(state%target_nu_hat) /= [config%n_r, config%n_theta]) .or. &
-        any(shape(state%target_omega_hat) /= [config%n_r, config%n_theta]) .or. &
-        any(shape(state%omega) /= [config%n_r, config%n_theta]) .or. &
-        any(shape(state%velocity) /= [config%n_r, config%n_theta]) .or. &
-        any(shape(state%enthalpy_term) /= [config%n_r, config%n_theta]) .or. &
-        any(shape(state%energy_density) /= [config%n_r, config%n_theta])) then
+    else if (.not. state_shapes_match(state, config%n_r, config%n_theta)) then
       res = validation_error(VALID_BAD_GRID_SIZE, "solver state arrays have incompatible shapes")
     else if (.not. valid_update_constants(state%constants)) then
       res = validation_error(VALID_BAD_SCALE, "solver constants must be finite and valid")
-    else if (.not. all_finite_1d(state%rhat) .or. .not. all_finite_1d(state%radial_weights) .or. &
-        .not. all_finite_1d(state%sin_theta) .or. .not. all_finite_2d(state%gamma_hat) .or. &
-        .not. all_finite_2d(state%nu_hat) .or. .not. all_finite_2d(state%omega_hat) .or. &
-        .not. all_finite_2d(state%target_gamma_hat) .or. .not. all_finite_2d(state%target_nu_hat) .or. &
-        .not. all_finite_2d(state%target_omega_hat) .or. .not. all_finite_2d(state%omega) .or. &
-        .not. all_finite_2d(state%velocity) .or. .not. all_finite_2d(state%enthalpy_term) .or. &
-        .not. all_finite_2d(state%energy_density)) then
+    else if (.not. state_arrays_finite(state)) then
       res = validation_error(VALID_BAD_SCALE, "solver state arrays must be finite")
     else
       res = validation_ok()
@@ -385,64 +348,78 @@ contains
   subroutine release_state_arrays(state)
     type(bh_toroid_solver_state), intent(inout) :: state
 
-    if (allocated(state%rhat)) deallocate(state%rhat)
-    if (allocated(state%radial_weights)) deallocate(state%radial_weights)
-    if (allocated(state%sin_theta)) deallocate(state%sin_theta)
-    if (allocated(state%gamma_hat)) deallocate(state%gamma_hat)
-    if (allocated(state%nu_hat)) deallocate(state%nu_hat)
-    if (allocated(state%omega_hat)) deallocate(state%omega_hat)
-    if (allocated(state%target_gamma_hat)) deallocate(state%target_gamma_hat)
-    if (allocated(state%target_nu_hat)) deallocate(state%target_nu_hat)
-    if (allocated(state%target_omega_hat)) deallocate(state%target_omega_hat)
-    if (allocated(state%omega)) deallocate(state%omega)
-    if (allocated(state%velocity)) deallocate(state%velocity)
-    if (allocated(state%enthalpy_term)) deallocate(state%enthalpy_term)
-    if (allocated(state%energy_density)) deallocate(state%energy_density)
+    if (allocated(state%rhat)) deallocate(state%rhat, state%radial_weights, state%sin_theta, &
+        state%gamma_hat, state%nu_hat, state%omega_hat, state%target_gamma_hat, state%target_nu_hat, &
+        state%target_omega_hat, state%omega, state%velocity, state%enthalpy_term, state%energy_density)
   end subroutine release_state_arrays
 
-  pure function weighted_relax(old_value, target_value, factor) result(value)
-    real(wp), intent(in) :: old_value, target_value, factor
-    real(wp) :: value
+  subroutine relax_in_place(field, target_field, factor, max_delta)
+    real(wp), intent(inout) :: field(:,:)
+    real(wp), intent(in) :: target_field(:,:)
+    real(wp), intent(in) :: factor
+    real(wp), intent(inout) :: max_delta
+    real(wp) :: delta
+    integer :: i, j
 
-    value = (1.0_wp - factor) * old_value + factor * target_value
-  end function weighted_relax
+    do j = 1, size(field, 2)
+      do i = 1, size(field, 1)
+        delta = factor * (target_field(i,j) - field(i,j))
+        field(i,j) = field(i,j) + delta
+        max_delta = max(max_delta, abs(delta))
+      end do
+    end do
+  end subroutine relax_in_place
 
-  pure elemental function is_finite(value) result(ok)
-    real(wp), intent(in) :: value
+  pure function state_arrays_allocated(state) result(ok)
+    type(bh_toroid_solver_state), intent(in) :: state
     logical :: ok
 
-    ok = value == value .and. abs(value) < huge(value)
-  end function is_finite
+    ok = allocated(state%rhat) .and. allocated(state%radial_weights) .and. &
+        allocated(state%sin_theta) .and. allocated(state%gamma_hat) .and. &
+        allocated(state%nu_hat) .and. allocated(state%omega_hat) .and. &
+        allocated(state%target_gamma_hat) .and. allocated(state%target_nu_hat) .and. &
+        allocated(state%target_omega_hat) .and. allocated(state%omega) .and. &
+        allocated(state%velocity) .and. allocated(state%enthalpy_term) .and. &
+        allocated(state%energy_density)
+  end function state_arrays_allocated
 
-  pure function all_finite_1d(values) result(ok)
-    real(wp), intent(in) :: values(:)
+  pure function state_shapes_match(state, n_r, n_theta) result(ok)
+    type(bh_toroid_solver_state), intent(in) :: state
+    integer, intent(in) :: n_r, n_theta
+    logical :: ok
+    integer :: expected(2)
+
+    expected = [n_r, n_theta]
+    ok = size(state%rhat) == n_r .and. size(state%radial_weights) == n_r .and. &
+        size(state%sin_theta) == n_theta .and. &
+        all(shape(state%gamma_hat) == expected) .and. all(shape(state%nu_hat) == expected) .and. &
+        all(shape(state%omega_hat) == expected) .and. all(shape(state%target_gamma_hat) == expected) .and. &
+        all(shape(state%target_nu_hat) == expected) .and. all(shape(state%target_omega_hat) == expected) .and. &
+        all(shape(state%omega) == expected) .and. all(shape(state%velocity) == expected) .and. &
+        all(shape(state%enthalpy_term) == expected) .and. all(shape(state%energy_density) == expected)
+  end function state_shapes_match
+
+  pure function state_arrays_finite(state) result(ok)
+    type(bh_toroid_solver_state), intent(in) :: state
     logical :: ok
 
-    ok = all(is_finite(values))
-  end function all_finite_1d
-
-  pure function all_finite_2d(values) result(ok)
-    real(wp), intent(in) :: values(:,:)
-    logical :: ok
-
-    ok = all(is_finite(values))
-  end function all_finite_2d
-
-  pure function finite_equatorial_point(point) result(ok)
-    type(bh_toroid_equatorial_point), intent(in) :: point
-    logical :: ok
-
-    ok = all_finite_1d([point%rhat, point%nu_hat, point%gamma_hat, point%omega_hat])
-  end function finite_equatorial_point
+    ok = all(is_finite(state%rhat)) .and. all(is_finite(state%radial_weights)) .and. &
+        all(is_finite(state%sin_theta)) .and. all(is_finite(state%gamma_hat)) .and. &
+        all(is_finite(state%nu_hat)) .and. all(is_finite(state%omega_hat)) .and. &
+        all(is_finite(state%target_gamma_hat)) .and. all(is_finite(state%target_nu_hat)) .and. &
+        all(is_finite(state%target_omega_hat)) .and. all(is_finite(state%omega)) .and. &
+        all(is_finite(state%velocity)) .and. all(is_finite(state%enthalpy_term)) .and. &
+        all(is_finite(state%energy_density))
+  end function state_arrays_finite
 
   pure function valid_update_constants(constants) result(ok)
     type(bh_toroid_update_constants), intent(in) :: constants
     logical :: ok
 
-    ok = all_finite_1d([constants%r_out, constants%rotation_A, constants%poly_k, &
-        constants%poly_n, constants%omega_c, constants%bernoulli_c, constants%surface_mismatch]) &
+    ok = all(is_finite([constants%r_out, constants%rotation_A, constants%poly_k, &
+        constants%poly_n, constants%omega_c, constants%bernoulli_c, constants%surface_mismatch])) &
         .and. constants%r_out > 0.0_wp .and. constants%rotation_A > 0.0_wp &
         .and. constants%poly_k > 0.0_wp .and. constants%poly_n > 0.0_wp
   end function valid_update_constants
 
-end module bh_toroid_solver_mod
+end module solver_mod
