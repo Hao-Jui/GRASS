@@ -51,7 +51,7 @@ subroutine sphere
           lambda_s = 2._wp * log( 1._wp + m_final / (2._wp*r_is_s) )
           nu_s     = log( (1._wp - m_final / (2._wp*r_is_s)) / (1._wp + m_final / (2._wp * r_is_s) ) )
       endif
-      sphi (s,:) = ( 1._wp - exp(nu_s) ) /1.e2_wp * exp(-sqrt(mphi_r)*r_is_s) 
+      sphi (s,:) = ( 1._wp - exp(nu_s) ) /1.e2_wp * exp(-sqrt(mphi_r)*r_is_s)
       rho  (s,:) = nu_s-lambda_s
       gama (s,:) = lambda_s+nu_s
       alpha(s,:) = (lambda_s-nu_s) / 2._wp
@@ -62,14 +62,14 @@ subroutine sphere
 
   ww(:,:) = 0._wp
   omg(:,:)= 0._wp
-  
+
   call interp(s_gp, gama_mu_0, SDIV, s_e, gama_eq)
   call interp(s_gp,  rho_mu_0, SDIV, s_e,  rho_eq)
-    
+
   ! r_e is roughly r_is_final
   r_e = r_final * exp( (rho_eq-gama_eq) / 2._wp )
 
-    if ( disk_present ) then 
+    if ( disk_present ) then
     call set_disk(r_e)
 
     open(newunit=unit,file="./Res/disk.dat")
@@ -138,7 +138,7 @@ subroutine TOV(i_check, r_is_gp, lambda_gp, nu_gp, e_d_gp, &
     e_d_gp(1)    = e_center
 
     i = 2
-    !write(*,"(3es15.6)") r,m,p,h; stop 
+    !write(*,"(4es15.6)") r, m, p, h, p_surface; stop
     do while(p >= p_surface)
       e_d = e_at_p(p)
 
@@ -182,7 +182,7 @@ subroutine TOV(i_check, r_is_gp, lambda_gp, nu_gp, e_d_gp, &
     r_gp   (rdiv) = r_final
     m_gp   (rdiv) = m_final
 
-    
+
     ! Rescale r_is and compute lambda, nu
     if (i_check == 3) then
       k_rescale = 0.5*(r_final/r_is_final)* &
@@ -191,7 +191,7 @@ subroutine TOV(i_check, r_is_gp, lambda_gp, nu_gp, e_d_gp, &
       r_is_final = r_is_final * k_rescale
       nu_s = log( (1._wp-m_final/(2._wp*r_is_final))/ &
           (1.0+m_final/(2.0*r_is_final)) )
-          
+
       open(988,file="./Cont/checkTOV.dat")
       do i = 1, rdiv
         r_is_gp(i) = r_is_gp(i)*k_rescale
@@ -201,7 +201,7 @@ subroutine TOV(i_check, r_is_gp, lambda_gp, nu_gp, e_d_gp, &
         else
           lambda_gp(i) = log(r_gp(i)/r_is_gp(i))
         endif
-        
+
         if(e_d_gp(i) < e_surface) then
           hh = 0._wp
         else
@@ -233,7 +233,7 @@ real(wp) function dm_dr_is(r_is,r,m,p)
   implicit none
   real(wp), intent(in) :: r_is, r, m, p
   real(wp) :: e_d
-  
+
   if(p < p_surface) then
       e_d = 0._wp
   else
@@ -273,7 +273,7 @@ real(wp) function dr_dr_is(r_is,r,m)
   use para_mod, only : tov_rmin
   implicit none
   real(wp), intent(in) :: r_is, r, m
-  
+
   if(r_is < tov_rmin) then
     dr_dr_is = 1._wp
   else

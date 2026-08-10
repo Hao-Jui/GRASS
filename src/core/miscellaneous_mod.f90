@@ -1,7 +1,7 @@
 module miscellaneous_mod
   use para_mod, only: wp, i_isco_m, i_isco_p, res, &
                       V_rr_m, V_rr_p, v_minus, v_plus, &
-                      eos_file, chi, pi, C, KAPPA, MSUN, &
+                      eos_file, chi, pi, C, G, KAPPA, MSUN, &
                       Omega_c, Omega_e, Omega_K, &
                       s_gp, s_pwr, SDIV, &
                       r_e, mass, Mb_goal, sphi_c
@@ -147,7 +147,7 @@ contains
         write(out_unit,"(A18,ES18.9)")         "  donutization =", donut
       endif
       write(out_unit,"(A18,F18.9)")             "   Slow rot. I =", I_inertia
-      write(out_unit,"(A18,F18.9)")             "        M2/M^3 =", M2
+      write(out_unit,"(A18,2F18.9)")            "        M2/M^3 =", M2
       write(out_unit,"(A18,F18.9)")             "        S3/M^4 =", S3
       write(out_unit,"(A18,F18.9)")             "        M4/M^5 =", M4
 !      write(out_unit,"(A18,F18.9)")             "        S5/M^6 =", S5
