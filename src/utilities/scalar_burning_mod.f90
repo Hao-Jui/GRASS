@@ -11,7 +11,6 @@ contains
     real(wp), intent(in) :: target_mphi
     real(wp) :: current_mphi, t0, t1
     integer :: burn_iter
-    character(100) :: string
 
     if (active_theory == THEORY_GR) return
 
@@ -29,15 +28,15 @@ contains
     do while (current_mphi < target_mphi .and. burn_iter < scalar_burn_max_iter)
       call rotation_solver()
 
-      B_coup = merge(B_coup * 1.5_wp, B_coup * 1.1_wp, current_mphi > 30._wp)
+      B_coup = merge(B_coup * 1.5_wp, B_coup * 1.2_wp, current_mphi > 5.0_wp)
 
       if (sphi_m < 0.4_wp) then
         mphi_r = mphi_r * 1.1_wp
       else
-        mphi_r = mphi_r * 1.5_wp
+        mphi_r = mphi_r * 1.4_wp
       end if
 
-      if (sphi_m < 0.5_wp) B_coup = B_coup * 1.3_wp
+      if (sphi_m < 0.4_wp) B_coup = B_coup * 1.7_wp
 
       current_mphi = sqrt(mphi_r*1.e10_wp/KAPPA) * l_uni
       if (mod(burn_iter, 10) == 0) then
@@ -47,19 +46,22 @@ contains
       burn_iter = burn_iter + 1
     end do
     output = .true.; call rotation_solver(); output = .false.; call cpu_time(t1)
-    
+
     write(*,'("Total iterations: ",i0,"  Elapsed time [s]:", f10.4)') n_of_relaxation_steps, t1-t0
     write(*,"(A)") " ", " Solution saved for restart after burning.", " "
-    write(string,"(f12.4)") sphi_m
+
     if (burn_iter >= scalar_burn_max_iter .and. current_mphi < target_mphi) then
       write(unit=*, fmt=*) "scalar burn stage reached iteration limit before hitting target mass."
     end if
     write(*,"(A)") " "
+
     if (sphi_m < 1.e-5_wp) then
       write(*,"(A)") "*** initial guess is non-scalarized"
     else
-      write(*,"(A)") "*** Starts with sphi max : "//trim(adjustl(string))
+      write(*,"(A, f10.6, 2es15.6)") "*** Starts with sphi {max|B|mphi} : ", &
+              sphi_m, B_coup, current_mphi
     end if
+
     write(*,"(A)") " "
   end subroutine perform_scalar_burn
 end module scalar_burning_mod
