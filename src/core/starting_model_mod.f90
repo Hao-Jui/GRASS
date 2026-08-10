@@ -31,7 +31,7 @@ contains
       p_center = p_at_e(e_center)
       h_center = h_at_p(p_center)
     case default
-      r_ratio  = merge(0.9_wp, 1._wp, trim(adjustl(solver_type)) == "uryu")
+      r_ratio  = merge(0.7_wp, 1._wp, trim(adjustl(solver_type)) == "uryu")
       e_center = e_center_default
       e_center = e_center * C * C * KSCALE
       p_center = p_at_e(e_center)
@@ -57,7 +57,7 @@ contains
       use para_mod, only: run_task, OneModel
       use constrain_mod, only: hamiltonian
       real(wp) :: ee, rho0, hamL2, t0, t1
-      r_ratio = 0.7_wp
+      !r_ratio = 0.8_wp
 
       output = .true.; call cpu_time(t0)
           call rotation_solver

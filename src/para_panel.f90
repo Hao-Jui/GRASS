@@ -1,10 +1,11 @@
 module para_mod
   use precision_mod, only: wp
   implicit none
+  character(len=128) :: eos_file = "MPA1"
   ! -- Theory selection ------------------------------------------------------
   integer, parameter :: THEORY_GR = 0
   integer, parameter :: THEORY_ST = 1
-  integer :: active_theory = THEORY_ST
+  integer :: active_theory = THEORY_GR
 
   ! -- Model-family selection -------------------------------------------------
   integer, parameter :: MODEL_NS = 1
@@ -14,43 +15,42 @@ module para_mod
   ! hybrid / anderson
   ! -- Running option --------------------------------------------------------
   integer, parameter :: MODE_REGRID  = 1, MODE_DEFAULT = 2
-
   integer :: run_mode = MODE_DEFAULT
 
   ! -- Running mode ----------------------------------------------------------
   integer, parameter :: shoot = 1, MRbuild = 2, OneModel = 3
-  integer :: run_task = shoot 
+  integer :: run_task = OneModel
 
   ! -- Rotation configuration ------------------------------------------------
   ! uniform / const_j / uryu
-  character(len=20) :: solver_type = "uniform"
+  character(len=20) :: solver_type = "uryu"
   integer, parameter :: COLLOCATION_UNI = 1, COLLOCATION_LEG = 2, COLLOCATION_CHEB = 3
   integer :: angular_collocation = COLLOCATION_LEG
 
-  ! -- Solver state ----------------------------------------------------------
-  logical :: output = .false.
-  logical :: timing = .false.
-  integer, parameter :: SHOOT_FIX1_HC = 1, SHOOT_FIX1_RP = 2, SHOOT_2D = 3
-  integer :: shooting = SHOOT_FIX1_HC
-  character(len=20) :: FIX1 = "Mb_goal"
-  character(len=20) :: FIX2 = "chi_goal"
-
   ! -- Resolutions -----------------------------------------------------------
-  integer, parameter :: res  = 400
+  integer, parameter :: res  = 200
   integer, parameter :: s_pwr = 1
   integer :: SDIV = 2 * res + 1
   integer :: MDIV = 41
 
   ! -- Target quantities -----------------------------------------------------
-  character(len=128) :: eos_file = "MPA1"
-  real(wp) :: M_goal   = 1.2_wp
-  real(wp) :: Mb_goal  = 2._wp
+  real(wp) :: e_center_default = 0.80e15_wp
+  real(wp) :: M_goal   = 1.4_wp
+  real(wp) :: Mb_goal  = 1.8_wp
   real(wp) :: J_goal   = 1.6_wp
-  real(wp) :: chi_goal = 0.1_wp
+  real(wp) :: chi_goal = 0.5_wp
   real(wp) :: omc_goal = 30.0_wp
 
-  real(wp) :: B_goal   = 3.5e1_wp
-  real(wp) :: mphi_goal = 0.2_wp
+  real(wp) :: B_goal   = 12.e0_wp
+  real(wp) :: mphi_goal = 0.01e0_wp
+
+  ! -- Solver state ----------------------------------------------------------
+  logical :: output = .false.
+  logical :: timing = .false.
+  integer, parameter :: SHOOT_FIX1_HC = 1, SHOOT_FIX1_RP = 2, SHOOT_2D = 3
+  integer :: shooting = SHOOT_2D
+  character(len=20) :: FIX1 = "M_goal"
+  character(len=20) :: FIX2 = "chi_goal"
 
   ! -- Rotation-law parameters (KEH, Uryu enabled) --------------------------
   real(wp) :: A_diff  = 0.5_wp
@@ -76,7 +76,6 @@ module para_mod
   real(wp) :: p_center = 0.0_wp
   real(wp) :: h_center = 0.0_wp
   real(wp) :: e_center = 0.0_wp
-  real(wp) :: e_center_default = .8e15_wp
   real(wp) :: enthalpy_min = 0.0_wp
 
   ! -- Grid configuration ----------------------------------------------------
@@ -101,15 +100,15 @@ module para_mod
   integer :: i_isco_p = 1
   integer :: i_isco_m = 1
 
-  ! Fluid
+  ! -- Fluid ---------------------------------------------------------------
   real(wp), allocatable :: pressure(:,:), enthalpy(:,:), velocity_sq(:,:), &
                           energy(:,:), omg(:,:), F_j(:,:)
   real(wp), allocatable :: v_plus(:), v_minus(:), V_rr_p(:), V_rr_m(:), sound_speed(:)
 
-  ! Metric
+  ! -- Metric --------------------------------------------------------------
   real(wp), allocatable :: gama(:,:), rho(:,:), ww(:,:), alpha(:,:), sphi(:,:)
 
-  ! Scalar field
+  ! -- Scalar field --------------------------------------------------------
   logical :: has_scalar = .false.
   real(wp) :: B_coup = 0.0_wp
   real(wp) :: mphi_r = 0.0_wp
@@ -118,12 +117,12 @@ module para_mod
   real(wp) :: r_sphi_max = 0.0_wp  ! physical equatorial radius at max(sphi)
   real(wp) :: donut      = 0.0_wp
 
-  real(wp) :: B_burn_init = 16.0_wp
+  real(wp) :: B_burn_init = 30.0_wp
   real(wp) :: mphi_burn_seed = 0.1_wp
   integer, parameter :: scalar_burn_max_iter = 200
   real(wp), parameter :: MPHI_BURN_THRESHOLD = 0.1_wp
 
-  ! Bulk properties
+  !-- Bulk properties -----------------------------------------------------
   real(wp) :: Omega_c = 0.0_wp
   real(wp) :: Omega_e = 0.0_wp
   real(wp) :: Omega_K = 0.0_wp
