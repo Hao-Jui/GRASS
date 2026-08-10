@@ -221,3 +221,49 @@ supported by the `8.99E-4` variation observed across clean restored builds; the
 other 15 fields retain `1E-4`. Final CTest verification passed `test_brent` and
 `test_gr_uryu` in 0.58 s. A deliberate `5E-4` perturbation to default-tolerance
 `M2/M^3` failed, and a malformed tolerance annotation was refused.
+
+## 2026-08-10 — Native-F Uryu attempts refuted by the runtime gate
+
+The requested follow-up was a strict admissibility fix with no more than a 5%
+full-model runtime regression. Before editing, the restored legacy executable
+was copied to `/tmp/grass-uryu-baseline.Qh0oa9/test_gr_uryu_legacy`; its SHA-256
+is `08b99d6aae04fa8f57833106bcf197825fcf9c8c377bb104d5e3cdc9f21e03d2`.
+Fifteen runs after three warm-ups had a 0.350 s median (0.350--0.370 s), making
+the acceptance ceiling 0.3675 s under the same harness.
+
+Two native-momentum implementations were tried. Both retained the legacy
+constant-J path, checked the strict Uryu coefficient domain, inverted
+`F -> Omega` analytically, and solved Uryu equatorial/local residuals in `F`.
+The inversion identities and strict coefficient boundary were independently
+checked by `wolfram/verify_uryu_momentum_inversion.wls`:
+
+```text
+$ /Applications/Wolfram.app/Contents/MacOS/wolframscript -file wolfram/verify_uryu_momentum_inversion.wls
+URYU_MOMENTUM_INVERSION=PASS
+```
+
+Attempt 1 used opposite geometrically expanded endpoints. Its focused tests
+passed (`rotation_law_mod: 19 passed, 0 failed`; `brent_mod: 4 passed, 0
+failed`), but the full gate refused an apparently empty equatorial domain in
+0.28 s. A failing-context trace showed the real cause one iteration earlier:
+at `Fmax=1.8582348002331E-4`, the local solve jumped to a distant root with
+`Omega_max=4.3990526263928`, driving the next `Fmax` to
+`0.3636530649922072`. The next admissible lower bound was
+`F=0.621837994071932` while the continuation guess mapped to
+`F=0.145506287197738`; a 2,000-point admissible scan found no sign change.
+
+Attempt 2 instead selected the nearest adjacent sign change on either
+geometric ray from the previous root. Its 44 focused coefficient, mapping,
+boundary, refusal, constant-J, Uryu, and multiple-root branch-selection checks
+all passed, as did the four existing Brent checks. Nevertheless, the `.7`
+full-model executable was still running after 52 s, over 148 times the legacy
+median and already decisively outside the 5% ceiling, so the run was stopped.
+This refutes the assumption that mathematically equivalent native-F root
+selection preserves the coupled fixed-point/Fmax iteration map.
+
+Per the two-attempt stop rule, both implementations were removed. The active
+`rotational_law_mod.f90`, `spin_updates_mod.f90`, and `brent_mod.f90` again
+match `8ab4661`, and the rebuilt Uryu executable is byte-identical to the
+frozen legacy executable (same SHA-256 above). Thus no runtime or convergence
+regression remains in the working implementation, but the original Uryu
+admissibility bug also remains open; it must not be reported as fixed.
