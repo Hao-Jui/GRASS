@@ -20,13 +20,13 @@ subroutine MRcurve
   logical :: ascending = .true.
 
   call initialize_starting_model()
-  
+
   rho0 = n0_at_h(h_center); mass_prev = mass
   r_ratio  = 1._wp
 
   it = 0; output = .true.; if (ascending) h_center = h_center / 1.005_wp
-  write(*,"(A5,7A15)") "Iter", "mass density", "ADM mass", "MoI", "Love", "Q bar", "varphi", "Donut"
-  do while (rho0*MB > 5.e13_wp .and. mass/MSUN > 0.1_wp)
+  write(*,"(A5,7A15)") "Iter", "rhoB", "ADM mass", "MoI", "Love", "Q bar", "varphi", "Donut"
+  do while (rho0*MB > 5.e13_wp .and. r_circ/1e5_wp < 3.e1)
     mass_prev = mass
     if (ascending) then
       h_center = h_center * 1.005_wp
@@ -44,7 +44,7 @@ subroutine MRcurve
     associate(sg => s_gp(s_max_sphi), sp => sphi(s_max_sphi, 1), &
               ga => gama(s_max_sphi, 1), rh => rho(s_max_sphi, 1))
       sphi_max = sp * sqrt(B_coup)
-      if (sphi_max < 1e-2_wp) then 
+      if (sphi_max < 1e-2_wp) then
         r_sphi_max = 0.0_wp; sphi_c = 0.0_wp; sphi_max = 0.0_wp
       else
         r_sphi_max = sqrt(KAPPA) * r_e * sg / (1.0_wp - sg) * &
@@ -52,10 +52,10 @@ subroutine MRcurve
       end if
     end associate
 
-    call output_seq()
-    
+    !call output_seq()
+
     if ( mod(it,10) == 0 ) write(*,"(i5,7es15.6)") it, rho0*MB, Mass/MSUN, I_inertia, Love2, Q_bar, sphi_max, donut
-    !if (mass_prev > mass .and. mass/MSUN > 2.0_wp) exit ! stop at maximum mass
+    if (mass_prev > mass .and. mass/MSUN > 2.0_wp) exit ! stop at maximum mass
     !if (sphi_max < 1e-3_wp) exit ! stop when merging back to GR
     it = it + 1
   enddo
@@ -79,7 +79,7 @@ contains
     end if
 
     write(filename, '(A, A, A, A, A, A)') &
-      "/Users/horay/Data4Projects/crazy/ALan", &
+      "/Users/horay/Data4Projects/crazy/Jaki/", &
       "/B", trim(adjustl(fil2)), "_mphi", trim(adjustl(fil1)), trim(suffix)
 
     open(newunit=unit, file=trim(filename), access='append', action='write', iostat=ios)
@@ -98,7 +98,7 @@ contains
             r_sphi_max / 1e5_wp
     close(unit)
   end subroutine output_seq
-end subroutine MRcurve 
+end subroutine MRcurve
 
 end module MRcurve_mod
 
