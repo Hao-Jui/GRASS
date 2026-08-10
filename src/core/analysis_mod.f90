@@ -278,7 +278,7 @@ subroutine solution_properties()
     suscep_slope(s) = deriv_s_1d(susceptibility, s)
   enddo
 
-  !if (output) call radial_configuration()
+  if (output) call radial_configuration()
   !call to_alexis()
   !call to_sizeng()
   call mass_radius()
@@ -295,11 +295,11 @@ subroutine solution_properties()
 contains
   subroutine radial_configuration()
     use para_mod, only: mass_0, eos_file
-    integer :: i = 1    
+    integer :: i = 2
     select case(i)
     case(1)
         write(profile_file, '(A, A, "_", I0, "_B", ES0.2, "_mphi", ES0.2,"_M",F0.2,"_Mb",F0.4,".dat")') &
-          "/Users/horay/Data4Projects/crazy/Map/1dprofile_", &
+          "/Users/horay/Data4Projects/crazy/Map/muses/1dprofile_", &
           trim(eos_file), SDIV, B_goal, mphi_goal, mass / MSUN, mass_0 / MSUN
     case(2)
         profile_file = "/Users/horay/ptmp/GRASS/Res/1dprofile.dat"
@@ -313,7 +313,7 @@ contains
           pressure(:,1)/KSCALE,                    &
           sphi(:,1) * sqrt(B_coup),                & ! 11
           sphi_deriv * sqrt(B_coup),               &
-          sound_speed,                             &
+          sound_speed,                             & ! 13
           effective_cs,                            &
           effective_pressure/KSCALE,               & 
           effective_energy/(C*C*KSCALE)  )

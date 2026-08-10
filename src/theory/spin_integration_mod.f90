@@ -654,11 +654,6 @@ contains
     character(512) :: fname
     character(len=*), parameter :: restart_binary_path = "./Res/res.rst"
 
-    if (.not. output .or. run_task == MRbuild) return
-
-    call cpu_time(t0); write(*,*) " "
-    write(*,"(A)",advance='no') " Off-loading data ..."
-
     call write_moment_tail(D2_rho, D2_omega, D2_gama)
 
     radial_geom = radial_quad_weights * real(s_pwr, wp) * (s_gp / (1.0_wp - s_gp))**(3*s_pwr - 1) / (1.0_wp - s_gp)**2
@@ -683,9 +678,13 @@ contains
     donut = donutization_number(sphi * sqrt(B_coup), volume_density, baryon_dens, &
                                 radial_geom, angular_quad_weights)
 
+    if (.not. output .or. run_task == MRbuild) return
+
+    call cpu_time(t0); write(*,*) " "
+
     rho_0 = n0_at_e(energy(1,1)) * MB
     write(fname,"(A, A, A, f0.2, A, f0.3, A, es0.2e2, A,es0.2e2, A, es0.3e2, A, f0.3)") &
-      "./Cont/", trim(eos_file), &
+      "/Users/horay/ptmp/sacra_aei_lite/initial/", trim(eos_file), &
       "_J",    ang_mom, &
       "_Mb",   mass_0/MSUN, &
       "_B",    B_coup, &
@@ -701,7 +700,8 @@ contains
     end select
     fname = trim(fname)//".dat"
 
-    !call initial_data_for_sacra_aei(trim(fname))
+    write(*,"(A)",advance='no') " Off-loading data ..."
+    call initial_data_for_sacra_aei(trim(fname))
     call write_restart_file(restart_binary_path)
 
     call cpu_time(t1); write(*,"(A, f12.6, A)") "   took ", t1-t0, " [s]"
