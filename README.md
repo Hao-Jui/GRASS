@@ -264,7 +264,8 @@ Anderson, 30–75 Aitken at ρ ≈ 0.85).
 - Hamiltonian constraint norm `O(1e-10)` at convergence.
 - M–R sequences cross-checked against published references (MPA1, APR4, …).
 - `tests/integration/test_*` exercise GR-uniform, GR-constJ, GR-Uryu, and
-  ST-uniform configurations with `1e-4` reference-tolerance gates.
+  ST-uniform configurations with `1e-4` default reference-tolerance gates and
+  documented per-field overrides.
 - Restart round-trip (`test_restart`) validates writer / reader unit consistency.
 
 See [docs/TESTING.md](docs/TESTING.md) for the full harness inventory.

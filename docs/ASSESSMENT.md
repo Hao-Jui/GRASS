@@ -85,9 +85,9 @@ Carry-over from 2026-04-10 stays valid: CMake primary, `CMakePresets.json` (rele
 
 | Layer | Count | Notes |
 |---|---|---|
-| Unit programs | 5 | `test_ad`, `test_brent`, `test_eos`, `test_spectral`, `test_spline` |
+| Unit programs | 12 | 11 Fortran programs plus the regression-gate boundary test |
 | Integration programs | 6 | GR-uniform, GR-constJ, GR-uryu, ST-uniform, ST-uniform-r07, restart round-trip |
-| Reference-value regression | 6 `.ref` files | gated at 1e-4 relative tolerance |
+| Reference-value regression | 6 `.ref` files | 1e-4 default; documented per-field overrides |
 | Sanitizer matrix | ASan + UBSan | runs full unit + integration on push |
 | Runtime config overrides | new | `GRASS_TIMING` / `GRASS_E_CENTER` env vars; CTest injects baseline so `ctest` is hermetic |
 

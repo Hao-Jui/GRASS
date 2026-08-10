@@ -9,16 +9,20 @@ UNIT_TESTS := test_ad test_spline test_spectral test_brent test_eos \
   test_bh_toroid_updates test_bh_toroid_solver
 INTEG_TESTS := test_gr_uniform test_gr_constj test_gr_uryu test_st_uniform test_st_uniform_r07
 RESTART_TEST := test_restart
+SHELL_TESTS := test_regression_gate
 
-.PHONY: unit integration sanitizer
+.PHONY: unit integration sanitizer $(SHELL_TESTS)
 .NOTPARALLEL: integration
 
-unit: $(UNIT_TESTS)
+unit: $(UNIT_TESTS) $(SHELL_TESTS)
 
 integration: $(INTEG_TESTS) $(RESTART_TEST)
 
 sanitizer: test_gr_uniform
 	@echo "Sanitizer build passed."
+
+test_regression_gate:
+	@bash unit/test_regression_gate.sh
 
 $(filter-out test_spline,$(UNIT_TESTS)): %: unit/%.f90 unit/test_utils.f90 $(LIBGRASS)
 	@mkdir -p $(BINDIR)

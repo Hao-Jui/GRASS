@@ -27,7 +27,7 @@ jobs:
         run: mkdir -p Cont Res
 
       - name: Run unit tests
-        run: ctest --test-dir build -R "test_(ad|spline|spectral|brent|eos)" --output-on-failure
+        run: ctest --test-dir build -R "test_(ad|spline|spectral|brent|eos|regression_gate)" --output-on-failure
 
       - name: Run GR integration tests
         run: ctest --test-dir build -R "test_gr_|create_output" --output-on-failure

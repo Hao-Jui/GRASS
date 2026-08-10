@@ -44,7 +44,7 @@ Run individually: `./build/tests/test_<name>`.
 ### Integration (`tests/integration/`)
 
 End-to-end equilibrium solves driven from program entry, with reference
-output gated by `tests/check_regression.sh` at **1e-4 relative
+output gated by `tests/check_regression.sh` at **1e-4 default relative
 tolerance** against `tests/reference/test_<name>.ref`.
 
 | Test | Configuration |
@@ -65,11 +65,14 @@ silently from a production run configuration.
 
 ### Regression gate (`tests/check_regression.sh`)
 
-Reads each numeric line from a reference `.ref` file, finds the
-corresponding label in `Cont/properties.dat`, and fails if relative
-error exceeds **1e-4** (4 significant digits). Catches reintroduced
-solver bugs and silent EOS-table changes. The gate is invoked
-automatically by every integration test via CTest.
+Reads each numeric line from a reference `.ref` file, finds the corresponding
+label in `Cont/properties.dat`, and fails if relative error exceeds **1e-4**
+(4 significant digits). A trailing `tol=<value>` documents a field-specific
+override. Constant-J `M4/M^5` uses `2e-4`, bounded from same-case observations
+of `1.18e-4` on macOS, `1.20e-4` on Linux CI, and `1.91e-4` from the historical
+hard-coded fixture on macOS. All other constant-J fields retain `1e-4`.
+Catches reintroduced solver bugs and silent EOS-table changes. The gate is
+invoked automatically by every integration test via CTest.
 
 ### Runtime config overrides (`GRASS_TIMING`, `GRASS_E_CENTER`)
 

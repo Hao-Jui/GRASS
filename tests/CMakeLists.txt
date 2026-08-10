@@ -13,6 +13,9 @@ foreach(test ${UNIT_TESTS})
   add_test(NAME ${test} COMMAND ${test}
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endforeach()
+add_test(NAME test_regression_gate
+  COMMAND bash ${CMAKE_SOURCE_DIR}/tests/unit/test_regression_gate.sh
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 # Ensure output directories exist for integration/restart tests
 add_test(NAME create_output_dirs

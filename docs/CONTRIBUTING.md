@@ -81,7 +81,8 @@ the shell instead.
   for assertions.
 - Integration tests live under `tests/integration/`, set their own
   configuration in-program, and are gated by
-  `tests/check_regression.sh` (1e-4 relative tolerance) against
+  `tests/check_regression.sh` (1e-4 default relative tolerance, with documented
+  per-field overrides in the reference file) against
   `tests/reference/test_<name>.ref`.
 - If you change the solver and the reference output legitimately
   shifts, regenerate it deterministically (release build, default
