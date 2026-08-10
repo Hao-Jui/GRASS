@@ -267,3 +267,57 @@ match `8ab4661`, and the rebuilt Uryu executable is byte-identical to the
 frozen legacy executable (same SHA-256 above). Thus no runtime or convergence
 regression remains in the working implementation, but the original Uryu
 admissibility bug also remains open; it must not be reported as fixed.
+
+## 2026-08-10 — EOS regression-data retention and local history rewrite
+
+All seven automated test programs that load an EOS explicitly select `MPA1`:
+`test_eos`, `test_gr_uniform`, `test_gr_constj`, `test_gr_uryu`,
+`test_st_uniform`, `test_st_uniform_r07`, and `test_restart`. Accordingly,
+`.gitignore` now ignores every `*.dat` file except `/eos/MPA1.dat`, and that is
+the only tracked EOS table. Eighteen formerly tracked tables were removed from
+the index without deleting their working-tree copies. The strongest
+counterexample is that legacy manual defaults still name `PS` or `H4`; those
+tables are intentionally local-only because the requested retention criterion
+was the automated regression suite.
+
+Before rewriting history, tracked staged and unstaged state was saved as binary
+patches and all untracked/ignored files were archived under
+`/Users/horay/ptmp/GRASS-eos-recovery.WkgHZx`. A complete verified bundle at
+`GRASS-before-eos-filter.bundle` has SHA-256
+`e9c360d4b49d15182c265b96deddca745bc4b2f1f352d9f51db145ef14aeced2`.
+It contains the old local branches, all five pre-rewrite stash commits, and the
+Codex checkpoint tree ref that otherwise caused `git-filter-repo` to skip 78
+EOS paths. The checkpoint ref was then CAS-deleted before filtering.
+
+The purge manifest contains 80 unwanted paths (79 historically reachable plus
+the untracked-only `DD2_hot_equal_pinned.dat`) and has SHA-256
+`880a6feaf228d28a4959529dbe4d1ce941ce4347d465c6709d73d9b28a5f8518`.
+`git filter-repo --force --paths-from-file ... --invert-paths` rewrote all 177
+local commits and the stash reflog. Final reachability checks reported:
+
+```text
+REACHABLE_EOS_PATHS_AFTER
+eos/MPA1.dat
+UNWANTED_REV_OBJECTS_AFTER=0
+CHECKPOINT_REF_COUNT=0
+```
+
+The rewrite removed `origin`; it was re-added with the original URL but was not
+fetched or pushed, so no old remote-tracking refs were made reachable again.
+The remote repository itself still has the old history until the owner
+explicitly force-pushes the rewritten branches. Four pre-existing user stashes
+remain after the temporary rewrite stash was applied and dropped.
+
+The user worktree was restored exactly: SHA-256 values for both the staged
+patch (`ec95491027f3b9a8427fa53d81dcf270cf4f261f32580f5b7437f6fa05dd42c1`)
+and unstaged patch
+(`3774e02202249d54d85e65076616adc54708e2f5d1ae59e4ae16727b80ad354b`)
+matched before and after filtering. All 79 physical top-level EOS tables remain
+present locally and ignored except for tracked `MPA1.dat`. The retained table
+passed its unit test:
+
+```text
+$ cmake --build build --target test_eos -j2 && ctest --test-dir build --output-on-failure -R '^test_eos$'
+1/1 Test #5: test_eos ... Passed 0.28 sec
+100% tests passed, 0 tests failed out of 1
+```
