@@ -4,7 +4,7 @@ LIBGRASS ?= ../libgrass.a
 LIBS ?= -llapack -lblas -lfftw3
 BINDIR := bin
 
-UNIT_TESTS := test_ad test_spline test_spectral test_brent test_eos \
+UNIT_TESTS := test_ad test_spline test_spectral test_brent test_eos test_rotation_law \
   test_bh_toroid_params test_bh_toroid_radial_map test_bh_toroid_green \
   test_bh_toroid_updates test_bh_toroid_solver
 INTEG_TESTS := test_gr_uniform test_gr_constj test_gr_uryu test_st_uniform test_st_uniform_r07

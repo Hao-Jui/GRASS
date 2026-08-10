@@ -78,3 +78,87 @@ The DD2 TOV run can stall without a progress/iteration cap in
 `src/core/sphere_mod.f90:142`. An isolated run produced 51,780,960 repeated
 non-progress rows (2.38 GB) before it was stopped; the temporary reproduction
 was removed. This was not an Uryu-law verdict and no fix was made.
+
+## 2026-08-09 — Uryu admissible-domain fix and rotation smoke tests
+
+Scope was the confirmed Uryu coefficient-domain failure and smoke coverage for
+the small Uryu/constant-J rotation helpers. `src/para_panel.f90` was not edited
+or included: the coefficient/root-search change does not alter its schema.
+
+### Implementation
+
+- `uryu_coefficients` now checks the strict published boundary
+  `F_e > F_max*(lambda1/lambda2)^(1/q)`, parameter ranges, denominators, power
+  bases, and finite results before returning `A` and `B`.
+- `cache_uryu_ab` refuses an invalid final state instead of retaining or
+  clamping it. Residual callbacks return quiet NaN for invalid trial states.
+- Uryu equatorial roots use `find_omega_e_admissible`, which searches only the
+  physical velocity interval, does not bracket across a non-finite gap, and
+  reports no-root/non-convergence through an optional status for tests.
+- Uryu local roots use the bounded, guess-centred
+  `zbrent_rot_admissible`. Constant-J retains the original `find_omega_e` and
+  `zbrent_rot` implementations exactly.
+- `test_rotation_law` exercises 43 success, boundary, invalid/refusal, and
+  disconnected-domain checks across the constant-J and Uryu coefficient,
+  cache, residual, integral, context, equatorial-root, and local-root helpers.
+
+The first implementation put both laws on the bounded root routines. That was
+refuted by `test_gr_constj`: the patched path reached the 2,000-iteration stop,
+while the same checkout linked against the `HEAD` Brent implementation
+converged in 0.1418 s. The final split restores the legacy constant-J path and
+uses the admissible routines only at the six Uryu call sites.
+
+### Verification evidence
+
+```text
+$ ./build/tests/test_rotation_law
+rotation_law_mod: 43 passed, 0 failed
+
+$ ctest --test-dir build --output-on-failure -R '^(test_rotation_law|test_brent)$'
+100% tests passed, 0 tests failed out of 2
+
+$ ctest --test-dir build-debug --output-on-failure -R '^(test_rotation_law|test_brent)$'
+100% tests passed, 0 tests failed out of 2
+```
+
+Direct integration checks on the final split both exited zero and printed
+`Converged`:
+
+```text
+$ GRASS_TIMING=0 GRASS_E_CENTER=0.8e15 ./build/tests/test_gr_constj
+Elapsed time [s]: 0.1605
+STOP One model solved!
+
+$ GRASS_TIMING=0 GRASS_E_CENTER=0.8e15 ./build/tests/test_gr_uryu
+Fmax   1.128592172E-01   Omega_e   5.880283896E-02
+Elapsed time [s]: 21.9531
+STOP One model solved!
+```
+
+The direct integrations still report IEEE flags already seen in this dirty
+checkout. The CTest regression wrappers fail their stored-output comparisons:
+both references record the removed hard-coded `r_ratio=0.7`, while the current
+dirty configuration produces `0.95` for constant-J and `0.9` for Uryu. This is
+separate from the root-domain fix. The final wrapper run reported two failures;
+the constant-J comparison was isolated as
+`current_axial_ratio=9.500000000E-01`,
+`reference_axial_ratio=7.000000000E-01`.
+
+### Performance evidence
+
+An `-O3 -march=native` temporary benchmark (10,000,000 coefficient evaluations;
+source removed after the run) compared the former two coefficient functions to
+the checked consolidated calculation:
+
+```text
+legacy_coefficient_seconds=  0.162750
+checked_coefficient_seconds=  0.210142
+checked_over_legacy=  1.2912
+checked_nanoseconds_per_call=    21.014
+```
+
+Thus the isolated kernel is about 29% slower, but the absolute increment is
+4.739 ns per coefficient pair. The same benchmark measured the 512-interval
+Uryu equatorial search at 87.881 microseconds/root (540 residual evaluations).
+These costs are negligible relative to the measured 21.9531 s integration, and
+constant-J pays neither bounded-search cost.

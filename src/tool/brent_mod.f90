@@ -1,7 +1,8 @@
 module brent_mod
   use precision_mod, only: wp
   implicit none
-  public :: find_omega_e, zbrent_rot
+  public :: find_omega_e, zbrent_rot, find_omega_e_admissible, zbrent_rot_admissible
+  private :: signs_differ
 
   abstract interface
     subroutine brent_func(x, fx)
@@ -16,6 +17,11 @@ module brent_mod
   real(wp), parameter, private :: ZEPS = 1.0e-8_wp
 
 contains
+
+pure logical function signs_differ(a, b)
+  real(wp), intent(in) :: a, b
+  signs_differ = (a < 0._wp .and. b >= 0._wp) .or. (a >= 0._wp .and. b < 0._wp)
+end function signs_differ
 
 subroutine brent_core(x_guess, scale_up, scale_down, tol, return_value, f, small_guess, logfile)
   use, intrinsic :: ieee_arithmetic, only: ieee_is_nan
@@ -198,6 +204,131 @@ contains
 
 end subroutine find_omega_e
 
+subroutine find_omega_e_admissible(x_guess, re, rho_h, g_h, w_h, rho_p, g_p, tol, return_value, f, success)
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_finite, ieee_quiet_nan, ieee_value
+  implicit none
+  real(wp), intent(in)  :: x_guess, re, rho_h, g_h, w_h, rho_p, g_p, tol
+  real(wp), intent(out) :: return_value
+  interface
+    subroutine f(x, fx, re, rho_h, g_h, w_h, rho_p, g_p)
+      import :: wp
+      real(wp), intent(in)  :: x, re, rho_h, g_h, w_h, rho_p, g_p
+      real(wp), intent(out) :: fx
+    end subroutine f
+  end interface
+  logical, intent(out), optional :: success
+
+  integer, parameter :: N_SCAN = 512
+  integer :: i
+  real(wp) :: speed_scale, margin, lower_bound, upper_bound, x, fx
+  real(wp) :: previous_x, previous_fx, bracket_a, bracket_b, bracket_distance
+  real(wp) :: candidate_distance
+  logical :: previous_valid, bracket_found, converged
+
+  if (present(success)) success = .false.
+  return_value = ieee_value(0._wp, ieee_quiet_nan)
+  speed_scale = exp(re**2*rho_h)
+  if (.not. ieee_is_finite(speed_scale) .or. speed_scale <= 0._wp .or. &
+      .not. ieee_is_finite(tol) .or. tol <= 0._wp) then
+    call refuse("find_omega_e_admissible: invalid search interval")
+    return
+  end if
+
+  margin = max(32._wp*epsilon(speed_scale)*max(1._wp, abs(w_h), speed_scale), 0.01_wp*tol)
+  lower_bound = w_h + margin
+  upper_bound = w_h + speed_scale - margin
+  if (.not. ieee_is_finite(lower_bound) .or. .not. ieee_is_finite(upper_bound) .or. &
+      lower_bound >= upper_bound) then
+    call refuse("find_omega_e_admissible: empty admissible interval")
+    return
+  end if
+
+  previous_valid = .false.
+  bracket_found = .false.
+  bracket_distance = huge(bracket_distance)
+  do i = 0, N_SCAN
+    x = lower_bound + (upper_bound-lower_bound)*real(i, wp)/real(N_SCAN, wp)
+    call f(x, fx, re, rho_h, g_h, w_h, rho_p, g_p)
+    if (.not. ieee_is_finite(fx)) then
+      previous_valid = .false.
+      cycle
+    end if
+    if (abs(fx) <= epsilon(fx)) then
+      return_value = x
+      if (present(success)) success = .true.
+      return
+    end if
+    if (previous_valid) then
+      if (signs_differ(previous_fx, fx)) then
+        candidate_distance = abs(0.5_wp*(previous_x+x)-x_guess)
+        if (.not. bracket_found .or. candidate_distance < bracket_distance) then
+          bracket_a = previous_x
+          bracket_b = x
+          bracket_distance = candidate_distance
+          bracket_found = .true.
+        end if
+      end if
+    end if
+    previous_x = x
+    previous_fx = fx
+    previous_valid = .true.
+  end do
+
+  if (.not. bracket_found) then
+    call refuse("find_omega_e_admissible: no root in admissible interval")
+    return
+  end if
+
+  call bisect_admissible(bracket_a, bracket_b, return_value, converged)
+  if (.not. converged) then
+    call refuse("find_omega_e_admissible: admissible root did not converge")
+    return
+  end if
+  if (present(success)) success = .true.
+
+contains
+  subroutine refuse(message)
+    character(*), intent(in) :: message
+    return_value = ieee_value(0._wp, ieee_quiet_nan)
+    if (.not. present(success)) error stop message
+  end subroutine refuse
+
+  subroutine bisect_admissible(left, right, root, root_converged)
+    real(wp), intent(in) :: left, right
+    real(wp), intent(out) :: root
+    logical, intent(out) :: root_converged
+    real(wp) :: a, b, midpoint, fa, fb, fmid
+    integer :: iteration
+
+    a = left
+    b = right
+    call f(a, fa, re, rho_h, g_h, w_h, rho_p, g_p)
+    call f(b, fb, re, rho_h, g_h, w_h, rho_p, g_p)
+    root_converged = .false.
+    if (.not. ieee_is_finite(fa) .or. .not. ieee_is_finite(fb) .or. &
+        .not. signs_differ(fa, fb)) return
+
+    do iteration = 1, MAX_ITER_BRENT
+      midpoint = a + 0.5_wp*(b-a)
+      call f(midpoint, fmid, re, rho_h, g_h, w_h, rho_p, g_p)
+      if (.not. ieee_is_finite(fmid)) return
+      if (abs(fmid) <= epsilon(fmid) .or. 0.5_wp*abs(b-a) <= tol) then
+        root = midpoint
+        root_converged = .true.
+        return
+      end if
+      if (signs_differ(fa, fmid)) then
+        b = midpoint
+        fb = fmid
+      else
+        a = midpoint
+        fa = fmid
+      end if
+    end do
+  end subroutine bisect_admissible
+
+end subroutine find_omega_e_admissible
+
 subroutine zbrent_rot(x_guess, re, rho_p, ww_p, sgp, mugp, tol, return_value, f)
   implicit none
   real(wp), intent(in)  :: x_guess, re, rho_p, ww_p, sgp, mugp, tol
@@ -221,5 +352,153 @@ contains
   end subroutine wrapped
 
 end subroutine zbrent_rot
+
+subroutine zbrent_rot_admissible(x_guess, re, rho_p, ww_p, sgp, mugp, tol, return_value, f, success)
+  use, intrinsic :: ieee_arithmetic, only: ieee_is_finite, ieee_quiet_nan, ieee_value
+  implicit none
+  real(wp), intent(in)  :: x_guess, re, rho_p, ww_p, sgp, mugp, tol
+  real(wp), intent(out) :: return_value
+  interface
+    subroutine f(x, fx, re, rho_p, ww_p, sgp, mugp)
+      import :: wp
+      real(wp), intent(in)  :: x, re, rho_p, ww_p, sgp, mugp
+      real(wp), intent(out) :: fx
+    end subroutine f
+  end interface
+  logical, intent(out), optional :: success
+
+  real(wp), parameter :: BRACKET_SCALE = 1.2_wp
+  real(wp) :: sin2m, speed_limit, margin, lower_delta, upper_delta, guess_delta
+  real(wp) :: left_x, right_x, left_fx, right_fx, new_x, new_fx
+  real(wp) :: bracket_a, bracket_b
+  integer :: iteration
+  logical :: left_open, right_open, bracket_found, converged
+
+  if (present(success)) success = .false.
+  return_value = ieee_value(0._wp, ieee_quiet_nan)
+  sin2m = 1._wp - mugp**2
+  if (.not. ieee_is_finite(sin2m) .or. sin2m <= 0._wp .or. sgp <= 0._wp .or. sgp >= 1._wp .or. &
+      .not. ieee_is_finite(tol) .or. tol <= 0._wp) then
+    call refuse("zbrent_rot_admissible: invalid rotation-law search interval")
+    return
+  end if
+  speed_limit = exp(re**2*rho_p)*(1._wp-sgp)/(sgp*sqrt(sin2m))
+  margin = max(32._wp*epsilon(speed_limit)*max(1._wp, abs(ww_p), speed_limit), 0.01_wp*tol)
+  lower_delta = margin
+  upper_delta = speed_limit - margin
+  if (.not. ieee_is_finite(speed_limit) .or. lower_delta >= upper_delta) then
+    call refuse("zbrent_rot_admissible: empty rotation-law search interval")
+    return
+  end if
+
+  guess_delta = min(max(x_guess-ww_p, max(1.0e-4_wp, lower_delta)), upper_delta)
+  left_x = ww_p + guess_delta
+  right_x = left_x
+  call f(left_x, left_fx, re, rho_p, ww_p, sgp, mugp)
+  if (.not. ieee_is_finite(left_fx)) then
+    call refuse("zbrent_rot_admissible: initial trial is inadmissible")
+    return
+  end if
+  if (abs(left_fx) <= epsilon(left_fx)) then
+    return_value = left_x
+    if (present(success)) success = .true.
+    return
+  end if
+
+  right_fx = left_fx
+  left_open = guess_delta > lower_delta
+  right_open = guess_delta < upper_delta
+  bracket_found = .false.
+  do iteration = 1, MAX_ITER_BRACKET
+    if (left_open) then
+      new_x = ww_p + max(lower_delta, (left_x-ww_p)/BRACKET_SCALE)
+      left_open = new_x > ww_p + lower_delta
+      call f(new_x, new_fx, re, rho_p, ww_p, sgp, mugp)
+      if (.not. ieee_is_finite(new_fx)) then
+        call refuse("zbrent_rot_admissible: lower trial left admissible domain")
+        return
+      end if
+      if (signs_differ(new_fx, left_fx)) then
+        bracket_a = new_x
+        bracket_b = left_x
+        bracket_found = .true.
+        exit
+      end if
+      left_x = new_x
+      left_fx = new_fx
+    end if
+
+    if (right_open) then
+      new_x = ww_p + min(upper_delta, (right_x-ww_p)*BRACKET_SCALE)
+      right_open = new_x < ww_p + upper_delta
+      call f(new_x, new_fx, re, rho_p, ww_p, sgp, mugp)
+      if (.not. ieee_is_finite(new_fx)) then
+        call refuse("zbrent_rot_admissible: upper trial left admissible domain")
+        return
+      end if
+      if (signs_differ(right_fx, new_fx)) then
+        bracket_a = right_x
+        bracket_b = new_x
+        bracket_found = .true.
+        exit
+      end if
+      right_x = new_x
+      right_fx = new_fx
+    end if
+    if (.not. left_open .and. .not. right_open) exit
+  end do
+
+  if (.not. bracket_found) then
+    call refuse("zbrent_rot_admissible: no root in admissible interval")
+    return
+  end if
+  call bisect_admissible(bracket_a, bracket_b, return_value, converged)
+  if (.not. converged) then
+    call refuse("zbrent_rot_admissible: admissible root did not converge")
+    return
+  end if
+  if (present(success)) success = .true.
+
+contains
+  subroutine refuse(message)
+    character(*), intent(in) :: message
+    return_value = ieee_value(0._wp, ieee_quiet_nan)
+    if (.not. present(success)) error stop message
+  end subroutine refuse
+
+  subroutine bisect_admissible(left, right, root, root_converged)
+    real(wp), intent(in) :: left, right
+    real(wp), intent(out) :: root
+    logical, intent(out) :: root_converged
+    real(wp) :: a, b, midpoint, fa, fb, fmid
+    integer :: bisect_iteration
+
+    a = left
+    b = right
+    call f(a, fa, re, rho_p, ww_p, sgp, mugp)
+    call f(b, fb, re, rho_p, ww_p, sgp, mugp)
+    root_converged = .false.
+    if (.not. ieee_is_finite(fa) .or. .not. ieee_is_finite(fb) .or. &
+        .not. signs_differ(fa, fb)) return
+    do bisect_iteration = 1, MAX_ITER_BRENT
+      midpoint = a + 0.5_wp*(b-a)
+      call f(midpoint, fmid, re, rho_p, ww_p, sgp, mugp)
+      if (.not. ieee_is_finite(fmid)) return
+      if (abs(fmid) <= epsilon(fmid) .or. 0.5_wp*abs(b-a) <= tol) then
+        root = midpoint
+        root_converged = .true.
+        return
+      end if
+      if (signs_differ(fa, fmid)) then
+        b = midpoint
+        fb = fmid
+      else
+        a = midpoint
+        fa = fmid
+      end if
+    end do
+  end subroutine bisect_admissible
+
+end subroutine zbrent_rot_admissible
 
 end module brent_mod
